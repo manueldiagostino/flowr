@@ -86,3 +86,17 @@ export type OnExit<OtherInfo> = (node: RNode<OtherInfo>) => void;
 
 definite in `src/r-bridge/lang-4.x/ast/model/processing/visitor.ts`. Ciò che
 viene eseguito nella visita è esplicitato dal corpo di queste due lambda.
+
+## Problemi
+
+- Il problema principale è come viene fatta la visita sull'AST normalizzato;
+  infatti, i singoli `RNode` non dispongono di un metodo classico `accept(Visitor
+v)` e il tipo `RNode` risulta essere una union dei vari tipi di nodo
+  disponibili (<https://github.com/flowr-analysis/flowr/wiki/Normalized-AST>).
+
+- Per questo motivo, il "visitor" gestisce con uno `switch case` tutti i tipi di
+  `RNode` esplicitamente.
+
+- Una possibile soluzione sarebbe quella di creare una nuova interfaccia che
+  abbia all'interno un `RNode` e un metodo virtuale `accept(Visitor v)`, così da
+  implementare le analisi come visitor classici.
