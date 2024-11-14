@@ -9,7 +9,7 @@ import {
 	benchmarkOptions,
 	exportQuadsOptions,
 	slicerOptions, statisticHelperOptions, statisticOptions,
-	summarizerOptions
+	summarizerOptions, absIntOptions
 } from './options';
 import type { MergeableRecord } from '../../util/objects';
 import { asOptionName } from '../repl/commands/repl-commands';
@@ -43,6 +43,14 @@ export type ScriptInformation = MasterScriptInformation | HelperScriptInformatio
  * We hold `_scripts` internally, as the modifiable variant and export the readonly scripts
  */
 const _scripts = {
+	'absInt': {
+		toolName:     'absInt',
+		target:       'absint-app',
+		description:  'Abstract interpretation tool for R',
+		options:      absIntOptions,
+		usageExample: 'absInt -d "sign" test/testfiles/example.R',
+		type:         'master script',
+	},
 	'slicer': {
 		toolName:     'slicer',
 		target:       'slicer-app',

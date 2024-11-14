@@ -63,6 +63,17 @@ export const slicerOptions: OptionDefinition[] = [
 	{ name: 'api',                           type: Boolean, description: 'Instead of human-readable output, dump a lot of json with the results of all intermediate steps.' },
 ];
 
+export const absIntOptions: OptionDefinition[] = [
+	{ name: 'verbose', 			alias: 'v', type: Boolean, 	description: 'Run the analysis with detailed logging' },
+	{ name: 'help',				alias: 'h', type: Boolean, 	description: 'Display this usage guide' },
+	{ name: 'input', 			alias: 'i', type: String, 	description: '(Required) Specify the input file for analysis', multiple: false, defaultOption: true, typeLabel: '{underline file}' },
+	{ name: 'input-is-text', 	alias: 'r', type: Boolean,	description: 'Indicate that the input is raw code, not a file' },
+	{ name: 'stats', 			alias: 's', type: Boolean,	description: 'Print runtime statistics and write to {italic <output>.stats}', multiple: false },
+	{ name: 'output', 			alias: 'o', type: String, 	description: 'Specify the output file for generated results (default: command line)', typeLabel: '{underline file}' },
+	{ name: 'domain', 			alias: 'd', type: String, 	description: 'Specify the abstract domain for analysis (e.g., interval, sign, octagon)', typeLabel: '{underline domain}' }
+];
+
+
 const featureNameList = [...allFeatureNames].map(s => `"${s}"`).join(', ');
 export const statisticOptions: OptionDefinition[] = [
 	{ name: 'verbose',      alias: 'v', type: Boolean, description: 'Run with verbose logging' },
