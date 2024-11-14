@@ -14,7 +14,7 @@ class SignLatticeElement implements LatticeElement {
 	}
 }
 
-class SignLattice implements Lattice<SignLatticeElement> {
+export class SignLattice implements Lattice<SignLatticeElement> {
 
 	public static readonly ZERO:   SignLatticeElement = new SignLatticeElement('(0)');
 	public static readonly TOP:    SignLatticeElement = new SignLatticeElement('(TOP)');
@@ -22,66 +22,66 @@ class SignLattice implements Lattice<SignLatticeElement> {
 	public static readonly LEQ0:   SignLatticeElement = new SignLatticeElement('(<=0)');
 	public static readonly GEQ0:   SignLatticeElement = new SignLatticeElement('(>=0)');
 
-	lessOrEqual(lhs: SignLatticeElement, rhs: SignLatticeElement): boolean {
-		if(lhs === SignLattice.BOTTOM) {
+	lessOrEqual(_lhs: SignLatticeElement, _rhs: SignLatticeElement): boolean {
+		if(_lhs === SignLattice.BOTTOM) {
 			return true;
 		}
         
-		if(rhs === SignLattice.TOP) {
+		if(_rhs === SignLattice.TOP) {
 			return true;
 		}
         
-		if(lhs === SignLattice.TOP) {
+		if(_lhs === SignLattice.TOP) {
 			return false;
 		}
         
-		if(rhs === SignLattice.BOTTOM) {
+		if(_rhs === SignLattice.BOTTOM) {
 			return false;
 		}
         
-		if(lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) {
+		if(_lhs === SignLattice.LEQ0 && _rhs === SignLattice.GEQ0) {
 			return false;
 		}
-		if(lhs === SignLattice.GEQ0 && rhs === SignLattice.LEQ0) {
+		if(_lhs === SignLattice.GEQ0 && _rhs === SignLattice.LEQ0) {
 			return false;
 		}
         
-		if(lhs === SignLattice.LEQ0 && rhs === SignLattice.ZERO) {
+		if(_lhs === SignLattice.LEQ0 && _rhs === SignLattice.ZERO) {
 			return true;
 		}
         
-		if(lhs === SignLattice.ZERO && rhs === SignLattice.LEQ0) {
+		if(_lhs === SignLattice.ZERO && _rhs === SignLattice.LEQ0) {
 			return false;
 		}
         
-		if(lhs === SignLattice.GEQ0 && rhs === SignLattice.ZERO) {
+		if(_lhs === SignLattice.GEQ0 && _rhs === SignLattice.ZERO) {
 			return true;
 		}
         
-		if(lhs === SignLattice.ZERO && rhs === SignLattice.GEQ0) {
+		if(_lhs === SignLattice.ZERO && _rhs === SignLattice.GEQ0) {
 			return false;
 		}
         
-		if(lhs === SignLattice.ZERO && rhs === SignLattice.TOP) {
+		if(_lhs === SignLattice.ZERO && _rhs === SignLattice.TOP) {
 			return true;
 		}
         
 		return false;
 	}
     
-	lub(lhs: SignLatticeElement, rhs: SignLatticeElement): SignLatticeElement {
+	lub(_lhs: SignLatticeElement, _rhs: SignLatticeElement): SignLatticeElement {
 		throw new Error('Method not implemented.');
 	}
 
-	glb(lhs: SignLatticeElement, rhs: SignLatticeElement): SignLatticeElement {
+	glb(_lhs: SignLatticeElement, _rhs: SignLatticeElement): SignLatticeElement {
 		throw new Error('Method not implemented.');
 	}
 
-	widening(lhs: SignLatticeElement, rhs: SignLatticeElement): SignLatticeElement {
+	widening(_lhs: SignLatticeElement, _rhs: SignLatticeElement): SignLatticeElement {
 		throw new Error('Method not implemented.');
 	}
 
-	narrowing(lhs: SignLatticeElement, rhs: SignLatticeElement): SignLatticeElement {
+	narrowing(_lhs: SignLatticeElement, _rhs: SignLatticeElement): SignLatticeElement {
 		throw new Error('Method not implemented.');
 	}
 
@@ -93,11 +93,11 @@ class SignLattice implements Lattice<SignLatticeElement> {
 		throw new Error('Method not implemented.');
 	}
 
-	isBottom(lhs: SignLatticeElement): boolean {
+	isBottom(_lhs: SignLatticeElement): boolean {
 		throw new Error('Method not implemented.');
 	}
     
-	isTop(lhs: SignLatticeElement): boolean {
+	isTop(_lhs: SignLatticeElement): boolean {
 		throw new Error('Method not implemented.');
 	}
 

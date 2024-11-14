@@ -1,5 +1,6 @@
 import { processCommandLineArgs } from './common/script';
 import { guard } from '../util/assert';
+import { SignLattice } from '../absInt/analysis/nonrelational/value/sign/sign-lattice';
 
 
 export interface AbsIntCliOptions {
@@ -12,7 +13,7 @@ export interface AbsIntCliOptions {
     domain:          string
 }
 
-const options = processCommandLineArgs<AbsIntCliOptions>('absInt', ['domain', 'input'], {
+const options = processCommandLineArgs<AbsIntCliOptions>('abs-int', ['domain', 'input'], {
 	subtitle: 'Perform Abstract Interpretation Analysis',
 	examples: [
 		'{bold -d} {italic "sign"} {bold -i} {italic test/testfiles/example.R}',
@@ -23,15 +24,22 @@ const options = processCommandLineArgs<AbsIntCliOptions>('absInt', ['domain', 'i
 });
 
 
-/*async*/ function getAbSint() {
+/*async*/ function getAbsInt() {
+	const _AbsIntExecutor: boolean = true;
+	const _l: SignLattice = new SignLattice(); // Aggiungi il tipo esplicito per SignLattice
 
-	const AbsIntExecutor = true;
+	try {
+		guard(options.input !== undefined, 'The input must be specified');
+		guard(options.domain !== undefined, 'An abstract domain must be specified');
+	} catch(error: unknown) {
+		if(error instanceof Error) {
+			console.error(error.message);
+		} else {
+			console.error('An unknown error occurred');
+		}
+	}
 
-	guard(options.input !== undefined, 'The input must be specified');
-	guard(options.domain !== undefined, 'An abstract domain must be specified');
-    
 	console.log('Make AbsInt');
-
 }
 
-void getAbSint();
+void getAbsInt();

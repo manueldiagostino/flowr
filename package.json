@@ -20,7 +20,7 @@
     "stats": "ts-node src/cli/statistics-app.ts",
     "stats-helper": "ts-node src/cli/statistics-helper-app.ts",
     "slicer": "ts-node src/cli/slicer-app.ts",
-    "absInt": "ts-node src/cli/absInt-app.ts",
+    "abs-int": "ts-node src/cli/abs-int-app.ts",
     "benchmark-helper": "ts-node src/cli/benchmark-helper-app.ts",
     "benchmark": "npm run build && node dist/src/cli/benchmark-app.js",
     "summarizer": "ts-node src/cli/summarizer-app.ts",

@@ -43,12 +43,12 @@ export type ScriptInformation = MasterScriptInformation | HelperScriptInformatio
  * We hold `_scripts` internally, as the modifiable variant and export the readonly scripts
  */
 const _scripts = {
-	'absInt': {
-		toolName:     'absInt',
-		target:       'absint-app',
+	'abs-int': {
+		toolName:     'abs-int',
+		target:       'abs-int-app',
 		description:  'Abstract interpretation tool for R',
 		options:      absIntOptions,
-		usageExample: 'absInt -d "sign" test/testfiles/example.R',
+		usageExample: 'abs-int -d "sign" test/testfiles/example.R',
 		type:         'master script',
 	},
 	'slicer': {
