@@ -1,4 +1,4 @@
-import { RType } from "../../../../r-bridge/lang-4.x/ast/model/type";
+import type { RType } from '../../../../r-bridge/lang-4.x/ast/model/type';
 
 export interface BaseNonRelationalValueDomain<T> {
 

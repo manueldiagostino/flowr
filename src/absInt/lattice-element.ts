@@ -1,5 +1,5 @@
 export interface LatticeElement {
 
-    readonly name : string;
+    readonly name: string;
 
 }
