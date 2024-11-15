@@ -152,24 +152,6 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 	}
 
 	/**
-	 * This method is not implemented.
-	 * 
-	 * @throws Error indicating the method is not implemented
-	 */
-	widening(_lhs: SignLatticeElement, _rhs: SignLatticeElement): SignLatticeElement {
-		throw new Error('Method not implemented.');
-	}
-
-	/**
-	 * This method is not implemented.
-	 * 
-	 * @throws Error indicating the method is not implemented
-	 */
-	narrowing(_lhs: SignLatticeElement, _rhs: SignLatticeElement): SignLatticeElement {
-		throw new Error('Method not implemented.');
-	}
-
-	/**
 	 * Returns the bottom element of the lattice.
 	 *
 	 * @returns The bottom element
