@@ -5,7 +5,7 @@ import type { LatticeElement } from '../../../../lattice-element';
  * The `SignLatticeElement` class represents an element of the sign lattice. 
  * It encapsulates a name and provides a method to retrieve this name.
  */
-class SignLatticeElement implements LatticeElement {
+export class SignLatticeElement implements LatticeElement {
 
 	/** The name of the lattice element */
 	readonly name: string;
