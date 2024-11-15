@@ -1,4 +1,6 @@
-export interface Lattice<T> {
+import type { LatticeElement } from './lattice-element';
+
+export interface Lattice<T extends LatticeElement> {
 	/**
 	 * Checks if `lhs` is less than or equal to `rhs` according to the partial order relation.
 	 * @param lhs - The left-hand side element.
