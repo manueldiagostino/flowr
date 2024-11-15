@@ -121,8 +121,12 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 			return rhs;
 		} else if(rhs === SignLattice.BOTTOM) {
 			return lhs;
-		} else if(lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) {
+		} else if((lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) || (rhs === SignLattice.LEQ0 && lhs === SignLattice.GEQ0)) {
 			return SignLattice.TOP;
+		} else if((lhs === SignLattice.ZERO && rhs === SignLattice.GEQ0) || (rhs === SignLattice.ZERO && lhs === SignLattice.GEQ0)) {
+			return SignLattice.GEQ0;
+		} else if((lhs === SignLattice.ZERO && rhs === SignLattice.LEQ0) || (rhs === SignLattice.ZERO && lhs === SignLattice.LEQ0)) {
+			return SignLattice.LEQ0;
 		} else if(lhs === rhs) {
 			return lhs;
 		} else {
@@ -146,8 +150,12 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 			return rhs;
 		} else if(rhs === SignLattice.TOP) {
 			return lhs;
-		} else if(lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) {
-			return SignLattice.BOTTOM;
+		} else if((lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) || (rhs === SignLattice.LEQ0 && lhs === SignLattice.GEQ0)) {
+			return SignLattice.ZERO;
+		} else if((lhs === SignLattice.ZERO && rhs === SignLattice.GEQ0) || (rhs === SignLattice.ZERO && lhs === SignLattice.GEQ0)) {
+			return SignLattice.ZERO;
+		} else if((lhs === SignLattice.ZERO && rhs === SignLattice.LEQ0) || (rhs === SignLattice.ZERO && lhs === SignLattice.LEQ0)) {
+			return SignLattice.ZERO;
 		} else if(lhs === rhs) {
 			return lhs;
 		} else {
