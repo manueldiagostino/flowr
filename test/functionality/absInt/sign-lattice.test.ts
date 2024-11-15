@@ -29,6 +29,17 @@ describe('SignLattice Tests', () => {
 			expect(lattice.lub(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.TOP);
 		});
 
+		it('should return ZERO when lub is called with LEQ0 and GEQ0', () => {
+			expect(lattice.lub(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+		});
+
+		it('should return BOTTOM when lub is called with ZERO and GEQ0', () => {
+			expect(lattice.lub(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.GEQ0);
+		});
+
+		it('should return BOTTOM when lub is called with ZERO and LEQ0', () => {
+			expect(lattice.lub(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.LEQ0);
+		});
 	});
 
 	describe('GLB (Greatest Lower Bound) operation', () => {
@@ -42,8 +53,16 @@ describe('SignLattice Tests', () => {
 			expect(lattice.glb(SignLattice.GEQ0, SignLattice.TOP)).toBe(SignLattice.GEQ0);
 		});
 
-		it('should return BOTTOM when glb is called with LEQ0 and GEQ0', () => {
-			expect(lattice.glb(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.BOTTOM);
+		it('should return ZERO when glb is called with LEQ0 and GEQ0', () => {
+			expect(lattice.glb(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.ZERO);
+		});
+
+		it('should return BOTTOM when glb is called with ZERO and GEQ0', () => {
+			expect(lattice.glb(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.ZERO);
+		});
+
+		it('should return BOTTOM when glb is called with ZERO and LEQ0', () => {
+			expect(lattice.glb(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.ZERO);
 		});
 	});
 
