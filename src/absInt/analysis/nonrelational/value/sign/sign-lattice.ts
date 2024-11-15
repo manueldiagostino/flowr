@@ -123,6 +123,8 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 			return lhs;
 		} else if(lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) {
 			return SignLattice.TOP;
+		} else if(lhs === rhs) {
+			return lhs;
 		} else {
 			throw new Error(`[SignLattice::lub()] unhandled case: lhs=${lhs.name}, rhs=${rhs.name}`);
 		}
@@ -146,6 +148,8 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 			return lhs;
 		} else if(lhs === SignLattice.LEQ0 && rhs === SignLattice.GEQ0) {
 			return SignLattice.BOTTOM;
+		} else if(lhs === rhs) {
+			return lhs;
 		} else {
 			throw new Error(`[SignLattice::lub()] unhandled case: lhs=${lhs.name}, rhs=${rhs.name}`);
 		}
