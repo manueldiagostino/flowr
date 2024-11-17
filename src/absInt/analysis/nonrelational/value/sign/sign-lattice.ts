@@ -19,12 +19,20 @@ export class SignLatticeElement implements LatticeElement {
 		this.name = name;
 	}
 
+	isEqual(other: LatticeElement): boolean {
+		return this.name == other.name;
+	}
+
 	/**
 	 * Returns the name of the lattice element.
 	 *
 	 * @returns The name of the lattice element
 	 */
 	getName(): string {
+		return this.name;
+	}
+
+	toString(): string {
 		return this.name;
 	}
 }
@@ -188,7 +196,7 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 	 * @returns `true` if the element is the bottom, `false` otherwise
 	 */
 	isBottom(elem: SignLatticeElement): boolean {
-		return elem === SignLattice.BOTTOM;
+		return elem.name === SignLattice.BOTTOM.name;
 	}
 
 	/**
@@ -198,6 +206,6 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 	 * @returns `true` if the element is the top, `false` otherwise
 	 */
 	isTop(elem: SignLatticeElement): boolean {
-		return elem === SignLattice.TOP;
+		return elem.name === SignLattice.TOP.name;
 	}
 }
