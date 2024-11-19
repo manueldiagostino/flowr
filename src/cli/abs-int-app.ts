@@ -1,16 +1,20 @@
 import { processCommandLineArgs } from './common/script';
 import { guard } from '../util/assert';
 import { SignLattice } from '../absInt/analysis/nonrelational/value/sign/sign-lattice';
+import { PipelineExecutor } from '../core/pipeline-executor';
+import { DEFAULT_ABSINT_PIPELINE, DEFAULT_SLICING_PIPELINE } from '../core/steps/pipeline/default-pipelines';
+import { RShell } from '../r-bridge/shell';
+import { requestFromInput } from '../r-bridge/retriever';
 
 
 export interface AbsIntCliOptions {
-    verbose:         boolean
+    verbose:         	boolean
 	help:               boolean
 	input:              string | undefined
 	output:             string | undefined
-    'input-is-text': boolean
+    'input-is-text': 	boolean
 	stats:              boolean
-    domain:          string
+    domain:          	string
 }
 
 const options = processCommandLineArgs<AbsIntCliOptions>('abs-int', ['domain', 'input'], {
@@ -24,22 +28,40 @@ const options = processCommandLineArgs<AbsIntCliOptions>('abs-int', ['domain', '
 });
 
 
-/*async*/ function getAbsInt() {
-	const _AbsIntExecutor: boolean = true;
-	const _l: SignLattice = new SignLattice(); // Aggiungi il tipo esplicito per SignLattice
+async function getAbsInt() {
+	
+	guard(options.input !== undefined, 'The input must be specified');
+	guard(options.domain !== undefined, 'An abstract domain must be specified');
+	
+	const shell = new RShell();
 
 	try {
-		guard(options.input !== undefined, 'The input must be specified');
-		guard(options.domain !== undefined, 'An abstract domain must be specified');
-	} catch(error: unknown) {
-		if(error instanceof Error) {
-			console.error(error.message);
-		} else {
-			console.error('An unknown error occurred');
+
+		const pipeline = new PipelineExecutor(DEFAULT_ABSINT_PIPELINE, {
+			shell,
+			domain: 	options.domain,
+			request:   	options['input-is-text'] ? { request: 'text', content: options.input } : { request: 'file', content: options.input }
+		});
+
+		const result = await pipeline.allRemainingSteps();
+
+		console.log(result);
+
+	} catch (error) { 
+
+		console.error(`Error in abs-int : ${(error instanceof Error) ? error.message : String(error)}`);
+		process.exitCode = 1;
+
+	} finally {
+		if (shell) {
+			try {
+				shell.close();
+			} catch (closeError) {
+				console.error(`Failed to close shell`);
+			}
 		}
 	}
 
-	console.log('Make AbsInt');
 }
 
-void getAbsInt();
+getAbsInt();

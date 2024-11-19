@@ -15,7 +15,7 @@ import { SignLattice } from './sign-lattice';
  * (addition, subtraction, multiplication, division).
  */
 export class Sign implements AbstractDomain<SignLattice, string> {
-
+	
 	/**
 	 * The name of the abstract domain.
 	 * 

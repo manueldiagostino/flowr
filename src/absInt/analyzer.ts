@@ -9,5 +9,4 @@ export interface Analyzer {
     pipeline:      PipelineExecutor<typeof DEFAULT_ABSINT_PIPELINE>;
     analyze():      void;
 
-
 }
