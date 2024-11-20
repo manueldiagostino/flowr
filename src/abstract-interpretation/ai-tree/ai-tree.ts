@@ -18,7 +18,7 @@ import type { RString } from '../../r-bridge/lang-4.x/ast/model/nodes/r-string';
 import type { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 import type { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import type { RWhileLoop } from '../../r-bridge/lang-4.x/ast/model/nodes/r-while-loop';
-import type { AINode } from '../ai-node';
+import type { AINode } from './ai-node';
 import type { Visitor } from '../normalized-ast-visitor';
 
 export class AIString implements AINode<NoInfo> {

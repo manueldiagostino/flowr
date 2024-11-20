@@ -1,5 +1,5 @@
-import type { Lattice } from './lattice';
-import type { LatticeElement } from './lattice-element';
+import type { Lattice } from '../lattice';
+import type { LatticeElement } from '../lattice-element';
 
 type AbstractElement = LatticeElement;
 
@@ -11,7 +11,7 @@ type AbstractElement = LatticeElement;
  * @typeParam T - The type of the lattice associated with the abstract domain, extending the `Lattice<AbstractElement>` type.
  * @typeParam ConcreteElement - The type of the concrete element associated with the abstract domain.
  */
-export interface AbstractDomain<T extends Lattice<AbstractElement>, ConcreteElement> {
+export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElement>, ConcreteElement> {
 
 	/**
 	 * The name of the abstract domain.
