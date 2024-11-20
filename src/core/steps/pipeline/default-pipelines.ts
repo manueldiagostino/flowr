@@ -7,7 +7,7 @@ import { NORMALIZE } from '../all/core/10-normalize';
 import { STATIC_DATAFLOW } from '../all/core/20-dataflow';
 import { STATIC_SLICE } from '../all/static-slicing/00-slice';
 import { NAIVE_RECONSTRUCT } from '../all/static-slicing/10-reconstruct';
-import { ABSINT_ANALYSIS } from '../all/absInt/40-absint-analysis';
+import { ABSINT_ANALYSIS } from '../all/abstract-interpretation/40-abstract-interpretation-analysis';
 
 export const DEFAULT_SLICING_PIPELINE = createPipeline(PARSE_WITH_R_SHELL_STEP, NORMALIZE, STATIC_DATAFLOW, STATIC_SLICE, NAIVE_RECONSTRUCT);
 export const DEFAULT_SLICE_AND_RECONSTRUCT_PIPELINE = DEFAULT_SLICING_PIPELINE;

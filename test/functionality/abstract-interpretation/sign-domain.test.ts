@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { Sign } from '../../../src/absInt/analysis/nonrelational/value/sign/sign-domain';
-import { SignLattice } from '../../../src/absInt/analysis/nonrelational/value/sign/sign-lattice';
-import { EmptySet } from '../../../src/absInt/utils';
+import { Sign } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-domain';
+import { SignLattice } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
+import { EmptySet } from '../../../src/abstract-interpretation/utils';
 
 describe('Sign Tests', () => {
 	const sign = new Sign();

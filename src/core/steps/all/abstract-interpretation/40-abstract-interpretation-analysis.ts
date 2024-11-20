@@ -3,7 +3,7 @@ import type { IPipelineStep } from '../../pipeline-step';
 import { PipelineStepStage } from '../../pipeline-step';
 import { internalPrinter, StepOutputFormat } from '../../../print/print';
 import type { NormalizedAst } from '../../../../r-bridge/lang-4.x/ast/model/processing/decorate';
-import { executeAbsInt } from '../../../../absInt/execute-abs-int';
+import { executeAbsInt } from '../../../../abstract-interpretation/execute-abs-int';
 
 export interface AbsInteRequiredInput {
 	readonly domain: string,
@@ -14,8 +14,8 @@ function processor(results: { normalize?: NormalizedAst }, input : Partial<AbsIn
 }
 
 export const ABSINT_ANALYSIS = {
-	name:              'absInt',
-	humanReadableName: 'absInt',
+	name:              'abstract-interpretation',
+	humanReadableName: 'abstract-interpretation',
 	description:       'Abstract interpretation analysis',
 	processor,
 	executed:          PipelineStepStage.OncePerRequest,
@@ -24,4 +24,4 @@ export const ABSINT_ANALYSIS = {
 		[StepOutputFormat.Internal]: internalPrinter,
 	},
 	requiredInput: undefined as unknown as AbsInteRequiredInput
-} as const satisfies DeepReadonly<IPipelineStep<'absInt', typeof processor>>;
+} as const satisfies DeepReadonly<IPipelineStep<'abstract-interpretation', typeof processor>>;
