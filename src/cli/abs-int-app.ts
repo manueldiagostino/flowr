@@ -5,13 +5,13 @@ import { DEFAULT_ABSINT_PIPELINE } from '../core/steps/pipeline/default-pipeline
 import { RShell } from '../r-bridge/shell';
 
 export interface AbsIntCliOptions {
-	verbose:			      boolean;
-	help:				        boolean;
-	input: 				      string | undefined;
-	output:				      string | undefined;
-	'input-is-text':	boolean;
-	stats: 				      boolean;
-	domain: 			      string;
+	verbose:         boolean;
+	help:            boolean;
+	input:           string | undefined;
+	output:          string | undefined;
+	'input-is-text': boolean;
+	stats:           boolean;
+	domain:          string;
 }
 
 const options = processCommandLineArgs<AbsIntCliOptions>('abs-int', ['domain', 'input'], {
@@ -40,14 +40,14 @@ async function getAbsInt() {
 		});
 
 		const result = await pipeline.allRemainingSteps();
-		if (Array.isArray(result.normalize.ast.children)) {
+		if(Array.isArray(result.normalize.ast.children)) {
 			result.normalize.ast.children.forEach(child => {
 				console.log(JSON.stringify(child, null, 2));
 			});
 		} else {
 			console.error("'children' non è un array!");
 		}
-		
+
 	} catch(error) {
 		console.error('Error in abs-int: ' + (error instanceof Error ? error.message : String(error)));
 		process.exitCode = 1;
