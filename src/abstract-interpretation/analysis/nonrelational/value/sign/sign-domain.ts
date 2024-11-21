@@ -1,11 +1,11 @@
-import type { AbstractDomain } from '../../../../abstract-domain';
-import { EmptySet } from '../../../../utils';
+import type { NonRelationalValueAbstractDomain } from '../../value-abstract-domain';
+import { EmptySet } from '../../../utils';
 import type { SignLatticeElement } from './sign-lattice';
 import { SignLattice } from './sign-lattice';
 
 
 /**
- * The `Sign` class implements the `AbstractDomain` interface for the `SignLattice`, 
+ * The `Sign` class implements the `NonRelationalValueAbstractDomain` interface for the `SignLattice`, 
  * which represents a specific abstract domain for analyzing and manipulating 
  * sign-related information. This domain is used to model the sign of numbers 
  * (positive, negative, zero) and provides operations for abstract interpretation.
@@ -14,8 +14,8 @@ import { SignLattice } from './sign-lattice';
  * such as intersection, union, widening, narrowing, and binary operations
  * (addition, subtraction, multiplication, division).
  */
-export class Sign implements AbstractDomain<SignLattice, string> {
-	
+export class Sign implements NonRelationalValueAbstractDomain<SignLattice, string> {
+
 	/**
 	 * The name of the abstract domain.
 	 * 

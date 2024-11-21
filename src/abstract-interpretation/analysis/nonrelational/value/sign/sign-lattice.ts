@@ -1,5 +1,5 @@
-import type { Lattice } from '../../../../lattice';
-import type { LatticeElement } from '../../../../lattice-element';
+import type { Lattice } from '../../../lattice';
+import type { LatticeElement } from '../../../lattice-element';
 
 /**
  * The `SignLatticeElement` class represents an element of the sign lattice. 
