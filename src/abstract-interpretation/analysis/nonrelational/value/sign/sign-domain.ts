@@ -1,4 +1,4 @@
-import type { NonRelationalValueAbstractDomain } from '../../value-abstract-domain';
+import type { NonRelationalValueAbstractDomain } from '../../abstract-domain';
 import { EmptySet } from '../../../utils';
 import type { SignLatticeElement } from './sign-lattice';
 import { SignLattice } from './sign-lattice';
