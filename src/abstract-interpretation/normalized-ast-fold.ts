@@ -41,11 +41,6 @@ export type SingleOrArrayOrNothing<T> = T | readonly (T | null | undefined)[] | 
 
 export type EntryExitVisitor<Info> = ((node: RNode<Info>) => void) | undefined;
 
-/**
- * TODO: documentation
- * default impls will always return empty, we may accept monoids in the future!
- * is a fold as well
- */
 export class DefaultNormalizedAstFold<Returns = void, Info = NoInfo> implements NormalizedAstFold<Returns, Info> {
 	protected readonly enter: EntryExitVisitor<Info>;
 	protected readonly exit:  EntryExitVisitor<Info>;
