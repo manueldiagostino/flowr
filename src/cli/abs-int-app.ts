@@ -40,7 +40,14 @@ async function getAbsInt() {
 		});
 
 		const result = await pipeline.allRemainingSteps();
-		console.log(result);
+		if (Array.isArray(result.normalize.ast.children)) {
+			result.normalize.ast.children.forEach(child => {
+				console.log(JSON.stringify(child, null, 2));
+			});
+		} else {
+			console.error("'children' non è un array!");
+		}
+		
 	} catch(error) {
 		console.error('Error in abs-int: ' + (error instanceof Error ? error.message : String(error)));
 		process.exitCode = 1;

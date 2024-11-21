@@ -1,7 +1,7 @@
 import type { Lattice } from './lattice';
 import type { LatticeElement } from './lattice-element';
 
-type AbstractElement = LatticeElement;
+export type AbstractElement = LatticeElement;
 
 /**
  * Represents an abstract domain that provides an abstraction for lattice concepts and algebraic operations on its elements.

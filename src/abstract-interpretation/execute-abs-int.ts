@@ -1,5 +1,4 @@
 import type { NormalizedAst } from '../r-bridge/lang-4.x/ast/model/processing/decorate';
-
 export interface AbsIntResult {
 	result: string;
 }
