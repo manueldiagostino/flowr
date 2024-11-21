@@ -1,4 +1,4 @@
-import type { NonRelationalValueAbstractDomain } from '../../abstract-domain';
+import type { AbstractElement, NonRelationalValueAbstractDomain } from '../abstract-domain';
 import { EmptySet } from '../../../utils';
 import type { SignLatticeElement } from './sign-lattice';
 import { SignLattice } from './sign-lattice';
@@ -114,8 +114,17 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 			case SignLattice.GEQ0.toString():
 				return SignLattice.GEQ0;
 			default:
-				return SignLattice.TOP;
+				break;
 		}
+
+		const num: number = Number(concreteElement);
+		if(num === 0) {
+			return SignLattice.ZERO;
+		} else if(num >= 0) {
+			return SignLattice.GEQ0;
+		}
+
+		return SignLattice.TOP;
 	}
 
 	/**
@@ -143,7 +152,7 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 			return lhs;
 		}
 
-		throw new Error('Sign::evalAddOp unhandled case <${lhs},${rhs}>');
+		throw new Error(`Sign::evalAddOp unhandled case <${lhs.toString()},${rhs.toString()}>`);
 	}
 
 	/**
@@ -163,15 +172,15 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 			return SignLattice.TOP;
 		} else if(lhs.isEqual(SignLattice.LEQ0) && rhs.isEqual(SignLattice.GEQ0)) {
 			return SignLattice.LEQ0;
-		} else if(!lhs.isEqual(SignLattice.GEQ0) && rhs.isEqual(SignLattice.LEQ0)) {
+		} else if(lhs.isEqual(SignLattice.GEQ0) && rhs.isEqual(SignLattice.LEQ0)) {
 			return SignLattice.GEQ0;
 		} else if(lhs.isEqual(SignLattice.ZERO)) {
-			return rhs;
+			return this.evalUnaryOp('-', rhs);
 		} else if(rhs.isEqual(SignLattice.ZERO)) {
 			return lhs;
 		}
 
-		throw new Error('Sign::evalDifOp unhandled case <${lhs},${rhs}>');
+		throw new Error(`Sign::evalDifOp unhandled case <${lhs.toString()},${rhs.toString()}>`);
 	}
 
 	/**
@@ -193,9 +202,11 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 			return SignLattice.LEQ0;
 		} else if(lhs.isEqual(SignLattice.GEQ0) && rhs.isEqual(SignLattice.LEQ0)) {
 			return SignLattice.LEQ0;
+		} else if(lhs.isEqual(rhs)) {
+			return SignLattice.GEQ0;
 		}
 
-		throw new Error('Sign::evalMulOp unhandled case <${lhs},${rhs}>');
+		throw new Error(`Sign::evalMulOp unhandled case <${lhs.toString()},${rhs.toString()}>`);
 	}
 
 	/**
@@ -219,9 +230,11 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 			return SignLattice.GEQ0;
 		} else if(lhs.isEqual(SignLattice.GEQ0) && rhs.isEqual(SignLattice.LEQ0)) {
 			return SignLattice.LEQ0;
+		} else if(lhs.isEqual(rhs)) {
+			return SignLattice.GEQ0;
 		}
 
-		throw new Error('Sign::evalDivOp unhandled case <${lhs},${rhs}>');
+		throw new Error(`Sign::evalDivOp unhandled case <${lhs.toString()},${rhs.toString()}>`);
 	}
 
 	/**
@@ -247,4 +260,18 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 				throw new Error(`Sign::evalBinaryOp unhandled operator <${operator}>`);
 		}
 	}
+
+	evalUnaryOp(operator: string, operand: AbstractElement): AbstractElement {
+		if(operator === '-') {
+			if(operand.isEqual(SignLattice.TOP) || operand.isEqual(SignLattice.BOTTOM) || operand.isEqual(SignLattice.ZERO)) {
+				return operand;
+			} else if(operand.isEqual(SignLattice.LEQ0)) {
+				return SignLattice.GEQ0;
+			} else {
+				return SignLattice.LEQ0;
+			}
+		}
+		return operand;
+	}
+
 }

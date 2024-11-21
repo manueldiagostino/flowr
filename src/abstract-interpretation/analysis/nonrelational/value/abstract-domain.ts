@@ -1,5 +1,5 @@
-import type { Lattice } from '../lattice';
-import type { LatticeElement } from '../lattice-element';
+import type { Lattice } from '../../lattice';
+import type { LatticeElement } from '../../lattice-element';
 
 export type AbstractElement = LatticeElement;
 
@@ -99,4 +99,14 @@ export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElem
 	 * @returns The result of applying the operator to `lhs` and `rhs`.
 	 */
 	evalBinaryOp(operator: string, lhs: AbstractElement, rhs: AbstractElement): AbstractElement;
+
+	/**
+ * Evaluates a binary operator between two abstract elements in the domain.
+ * This method is designed for operations based on an Abstract Syntax Tree (AST).
+ *
+ * @param operator - The unary operator to be applied.
+ * @param operand - The operand abstract element.
+ * @returns The result of applying the operator to operand.
+ */
+	evalUnaryOp(operator: string, operand: AbstractElement): AbstractElement;
 }
