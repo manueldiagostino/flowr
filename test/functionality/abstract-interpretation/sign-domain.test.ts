@@ -65,43 +65,136 @@ describe('Sign Tests', () => {
 	});
 
 	describe('Binary operations', () => {
-		it('should evaluate addition correctly', () => {
+		it('should evaluate addition correctly for all cases', () => {
+			expect(sign.evalAddOp(SignLattice.GEQ0, SignLattice.GEQ0)).toBe(SignLattice.GEQ0);
+			expect(sign.evalAddOp(SignLattice.GEQ0, SignLattice.LEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.GEQ0, SignLattice.ZERO)).toBe(SignLattice.GEQ0);
+			expect(sign.evalAddOp(SignLattice.GEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.GEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
 			expect(sign.evalAddOp(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.LEQ0, SignLattice.LEQ0)).toBe(SignLattice.LEQ0);
+			expect(sign.evalAddOp(SignLattice.LEQ0, SignLattice.ZERO)).toBe(SignLattice.LEQ0);
+			expect(sign.evalAddOp(SignLattice.LEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.LEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalAddOp(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.GEQ0);
+			expect(sign.evalAddOp(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.LEQ0);
 			expect(sign.evalAddOp(SignLattice.ZERO, SignLattice.ZERO)).toBe(SignLattice.ZERO);
 			expect(sign.evalAddOp(SignLattice.ZERO, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.ZERO, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalAddOp(SignLattice.TOP, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.TOP, SignLattice.LEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.TOP, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalAddOp(SignLattice.TOP, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalAddOp(SignLattice.BOTTOM, SignLattice.GEQ0)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalAddOp(SignLattice.BOTTOM, SignLattice.LEQ0)).toBe(SignLattice.BOTTOM);
 			expect(sign.evalAddOp(SignLattice.BOTTOM, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
 			expect(sign.evalAddOp(SignLattice.BOTTOM, SignLattice.TOP)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalAddOp(SignLattice.BOTTOM, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
 		});
 
-		it('should evaluate subtraction correctly', () => {
+
+		it('should evaluate Diftraction correctly for all cases', () => {
+			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.LEQ0)).toBe(SignLattice.GEQ0);
+			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.ZERO)).toBe(SignLattice.GEQ0);
+			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
 			expect(sign.evalDifOp(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.LEQ0);
+			expect(sign.evalDifOp(SignLattice.LEQ0, SignLattice.LEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.LEQ0, SignLattice.ZERO)).toBe(SignLattice.LEQ0);
+			expect(sign.evalDifOp(SignLattice.LEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.LEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalDifOp(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.LEQ0);
+			expect(sign.evalDifOp(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.GEQ0);
 			expect(sign.evalDifOp(SignLattice.ZERO, SignLattice.ZERO)).toBe(SignLattice.ZERO);
 			expect(sign.evalDifOp(SignLattice.ZERO, SignLattice.TOP)).toBe(SignLattice.TOP);
-			expect(sign.evalDifOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.TOP);
 			expect(sign.evalDifOp(SignLattice.ZERO, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
-			expect(sign.evalDifOp(SignLattice.LEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+
+			expect(sign.evalDifOp(SignLattice.TOP, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.TOP, SignLattice.LEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.TOP, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalDifOp(SignLattice.TOP, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.GEQ0)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.LEQ0)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.TOP)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
 		});
 
-		it('should evaluate multiplication correctly', () => {
-			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.ZERO);
+
+		it('should evaluate multiplication correctly for all cases', () => {
+			expect(sign.evalMulOp(SignLattice.GEQ0, SignLattice.GEQ0)).toBe(SignLattice.GEQ0);
 			expect(sign.evalMulOp(SignLattice.GEQ0, SignLattice.LEQ0)).toBe(SignLattice.LEQ0);
-			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.ZERO)).toBe(SignLattice.ZERO);
-			expect(sign.evalMulOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.ZERO);
-			expect(sign.evalMulOp(SignLattice.LEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalMulOp(SignLattice.GEQ0, SignLattice.ZERO)).toBe(SignLattice.ZERO);
 			expect(sign.evalMulOp(SignLattice.GEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalMulOp(SignLattice.GEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalMulOp(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.LEQ0);
+			expect(sign.evalMulOp(SignLattice.LEQ0, SignLattice.LEQ0)).toBe(SignLattice.GEQ0);
+			expect(sign.evalMulOp(SignLattice.LEQ0, SignLattice.ZERO)).toBe(SignLattice.ZERO);
+			expect(sign.evalMulOp(SignLattice.LEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalMulOp(SignLattice.LEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.ZERO);
+			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.ZERO);
+			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.ZERO)).toBe(SignLattice.ZERO);
+			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.TOP)).toBe(SignLattice.ZERO);
+			expect(sign.evalMulOp(SignLattice.ZERO, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalMulOp(SignLattice.TOP, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalMulOp(SignLattice.TOP, SignLattice.LEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalMulOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.ZERO);
+			expect(sign.evalMulOp(SignLattice.TOP, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalMulOp(SignLattice.TOP, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalMulOp(SignLattice.BOTTOM, SignLattice.GEQ0)).toBe(SignLattice.BOTTOM);
 			expect(sign.evalMulOp(SignLattice.BOTTOM, SignLattice.LEQ0)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalMulOp(SignLattice.BOTTOM, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalMulOp(SignLattice.BOTTOM, SignLattice.TOP)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalMulOp(SignLattice.BOTTOM, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
 		});
 
-		it('should evaluate division correctly', () => {
+		it('should evaluate division correctly for all cases', () => {
+			expect(sign.evalDivOp(SignLattice.GEQ0, SignLattice.GEQ0)).toBe(SignLattice.GEQ0);
 			expect(sign.evalDivOp(SignLattice.GEQ0, SignLattice.LEQ0)).toBe(SignLattice.LEQ0);
-			expect(sign.evalDivOp(SignLattice.LEQ0, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
-			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
-			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
-			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.TOP)).toBe(SignLattice.ZERO);
-			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.ZERO);
-			expect(sign.evalDivOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.GEQ0, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
 			expect(sign.evalDivOp(SignLattice.GEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalDivOp(SignLattice.GEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalDivOp(SignLattice.LEQ0, SignLattice.GEQ0)).toBe(SignLattice.LEQ0);
+			expect(sign.evalDivOp(SignLattice.LEQ0, SignLattice.LEQ0)).toBe(SignLattice.GEQ0);
+			expect(sign.evalDivOp(SignLattice.LEQ0, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.LEQ0, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalDivOp(SignLattice.LEQ0, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.GEQ0)).toBe(SignLattice.ZERO);
+			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.LEQ0)).toBe(SignLattice.ZERO);
+			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.TOP)).toBe(SignLattice.ZERO);
+			expect(sign.evalDivOp(SignLattice.ZERO, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalDivOp(SignLattice.TOP, SignLattice.GEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalDivOp(SignLattice.TOP, SignLattice.LEQ0)).toBe(SignLattice.TOP);
+			expect(sign.evalDivOp(SignLattice.TOP, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.TOP, SignLattice.TOP)).toBe(SignLattice.TOP);
+			expect(sign.evalDivOp(SignLattice.TOP, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
+
+			expect(sign.evalDivOp(SignLattice.BOTTOM, SignLattice.GEQ0)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.BOTTOM, SignLattice.LEQ0)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.BOTTOM, SignLattice.ZERO)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.BOTTOM, SignLattice.TOP)).toBe(SignLattice.BOTTOM);
+			expect(sign.evalDivOp(SignLattice.BOTTOM, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
 		});
+
 	});
 
 	describe('Integration with lattice', () => {

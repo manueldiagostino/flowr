@@ -226,8 +226,8 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 			return SignLattice.ZERO;
 		} else if(rhs.isEqual(SignLattice.TOP)) {
 			return SignLattice.TOP;
-		} else if(lhs.isEqual(SignLattice.LEQ0) && rhs.isEqual(SignLattice.LEQ0)) {
-			return SignLattice.GEQ0;
+		} else if(lhs.isEqual(SignLattice.LEQ0) && rhs.isEqual(SignLattice.GEQ0)) {
+			return SignLattice.LEQ0;
 		} else if(lhs.isEqual(SignLattice.GEQ0) && rhs.isEqual(SignLattice.LEQ0)) {
 			return SignLattice.LEQ0;
 		} else if(lhs.isEqual(rhs)) {
