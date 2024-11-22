@@ -4,7 +4,7 @@ import { SignLattice } from '../../../src/abstract-interpretation/analysis/nonre
 import { EmptySet } from '../../../src/abstract-interpretation/analysis/utils';
 
 describe('Sign Tests', () => {
-	const sign = new Sign();
+	const sign = Sign.getInstance();
 	const lattice = sign.lattice;
 
 	describe('Sign properties', () => {

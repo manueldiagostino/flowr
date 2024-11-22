@@ -43,6 +43,16 @@ export class SignLatticeElement implements LatticeElement {
  * This lattice contains elements for zero, top, bottom, less than or equal to zero, and greater than or equal to zero.
  */
 export class SignLattice implements Lattice<SignLatticeElement> {
+	public static instance: SignLattice;
+
+	private constructor() { }
+
+	static getInstance(): SignLattice {
+		if(!SignLattice.instance) {
+			SignLattice.instance = new SignLattice();
+		}
+		return SignLattice.instance;
+	}
 
 	/** The element representing zero in the sign lattice */
 	public static readonly ZERO: SignLatticeElement = new SignLatticeElement('(0)');

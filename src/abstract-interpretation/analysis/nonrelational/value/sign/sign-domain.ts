@@ -36,7 +36,7 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice, strin
 	/**
 	 * The lattice associated with this abstract domain, which is a `SignLattice` object.
 	 */
-	readonly lattice: SignLattice = new SignLattice();
+	readonly lattice: SignLattice = SignLattice.getInstance();
 
 	/**
 	 * The top element of the lattice, representing the most general sign information.
