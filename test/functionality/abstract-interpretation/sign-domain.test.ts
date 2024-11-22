@@ -97,7 +97,6 @@ describe('Sign Tests', () => {
 			expect(sign.evalAddOp(SignLattice.BOTTOM, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
 		});
 
-
 		it('should evaluate Diftraction correctly for all cases', () => {
 			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.GEQ0)).toBe(SignLattice.TOP);
 			expect(sign.evalDifOp(SignLattice.GEQ0, SignLattice.LEQ0)).toBe(SignLattice.GEQ0);
@@ -129,7 +128,6 @@ describe('Sign Tests', () => {
 			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.TOP)).toBe(SignLattice.BOTTOM);
 			expect(sign.evalDifOp(SignLattice.BOTTOM, SignLattice.BOTTOM)).toBe(SignLattice.BOTTOM);
 		});
-
 
 		it('should evaluate multiplication correctly for all cases', () => {
 			expect(sign.evalMulOp(SignLattice.GEQ0, SignLattice.GEQ0)).toBe(SignLattice.GEQ0);

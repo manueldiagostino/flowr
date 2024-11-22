@@ -5,7 +5,6 @@ import { DEFAULT_ABSINT_PIPELINE } from '../core/steps/pipeline/default-pipeline
 import { RShell } from '../r-bridge/shell';
 import { SignAnalysis } from '../abstract-interpretation/analysis/nonrelational/value/sign/sign-analysis';
 import { Sign } from '../abstract-interpretation/analysis/nonrelational/value/sign/sign-domain';
-import type { SignLatticeElement } from '../abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
 export interface AbsIntCliOptions {
 	verbose:         boolean;
 	help:            boolean;
@@ -39,11 +38,10 @@ async function getAbsInt() {
 		});
 		const result = await pipeline.allRemainingSteps();
 		const normalizedAST = result.normalize.ast;
-		console.log(JSON.stringify(normalizedAST, null, 2));
+		// console.log(JSON.stringify(normalizedAST, null, 2));
 		const signAnalysis = new SignAnalysis(new Sign());
 		console.log('Calling the fold method');
-		const resultSign: SignLatticeElement = signAnalysis.fold(normalizedAST);
-		console.log(resultSign);
+		signAnalysis.fold(normalizedAST);
 	} catch(error) {
 		console.error('Error in abs-int: ' + (error instanceof Error ? error.message : String(error)));
 		process.exitCode = 1;
@@ -58,7 +56,7 @@ async function getAbsInt() {
 	}
 }
 getAbsInt().then(() => {
-	console.log('Abstract Interpretation completed successfully');
+	console.log('Abstract analysis completed successfully');
 }).catch((error) => {
 	console.error('Error during Abstract Interpretation:', error);
 	process.exitCode = 1;

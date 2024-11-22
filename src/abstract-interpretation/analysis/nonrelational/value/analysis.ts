@@ -27,10 +27,10 @@ export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbs
 			const child = exprList.children[i];
 
 			const result: AbstractElement = this.fold(child);
-			console.log(`[Child ${i}] ${result.name}`);
+			console.debug(`[Child ${i}] ${result.name}`);
 		}
 
-		return this.domain.top;
+		return this.domain.bottom;
 	}
 
 	foldRNumber(_node: RNumber<NoInfo>): AbstractElement {
