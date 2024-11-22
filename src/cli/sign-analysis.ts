@@ -39,7 +39,7 @@ async function getAbsInt() {
 		const result = await pipeline.allRemainingSteps();
 		const normalizedAST = result.normalize.ast;
 		// console.log(JSON.stringify(normalizedAST, null, 2));
-		const signAnalysis = new SignAnalysis(new Sign());
+		const signAnalysis = new SignAnalysis(Sign.getInstance());
 		console.log('Calling the fold method');
 		signAnalysis.fold(normalizedAST);
 	} catch(error) {

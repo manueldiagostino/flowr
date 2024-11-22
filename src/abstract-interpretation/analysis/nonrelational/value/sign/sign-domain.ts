@@ -15,6 +15,16 @@ import { SignLattice } from './sign-lattice';
  * (addition, subtraction, multiplication, division).
  */
 export class Sign implements NonRelationalValueAbstractDomain<SignLattice, string> {
+	public static instance: Sign;
+
+	private constructor() { }
+
+	static getInstance(): Sign {
+		if(!Sign.instance) {
+			Sign.instance = new Sign();
+		}
+		return Sign.instance;
+	}
 
 	/**
 	 * The name of the abstract domain.
