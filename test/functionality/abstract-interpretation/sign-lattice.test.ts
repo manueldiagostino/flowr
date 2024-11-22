@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SignLattice } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
 
 describe('SignLattice Tests', () => {
-	const lattice = new SignLattice();
+	const lattice = SignLattice.getInstance();
 
 	describe('Lattice elements', () => {
 		it('should have the correct names', () => {
