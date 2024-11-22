@@ -19,7 +19,7 @@ export class SignLatticeElement implements LatticeElement {
 		this.name = name;
 	}
 
-	isEqual(other: LatticeElement): boolean {
+	isEqual(other: SignLatticeElement): boolean {
 		return this.name == other.name;
 	}
 

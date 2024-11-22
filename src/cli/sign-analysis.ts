@@ -5,6 +5,10 @@ import { DEFAULT_ABSINT_PIPELINE } from '../core/steps/pipeline/default-pipeline
 import { RShell } from '../r-bridge/shell';
 import { SignAnalysis } from '../abstract-interpretation/analysis/nonrelational/value/sign/sign-analysis';
 import { Sign } from '../abstract-interpretation/analysis/nonrelational/value/sign/sign-domain';
+import * as fs from 'fs';
+import { normalizedAstToMermaid } from '../util/mermaid/ast';
+
+
 export interface AbsIntCliOptions {
 	verbose:         boolean;
 	help:            boolean;
@@ -38,7 +42,15 @@ async function getAbsInt() {
 		});
 		const result = await pipeline.allRemainingSteps();
 		const normalizedAST = result.normalize.ast;
+		const mermaidCode = normalizedAstToMermaid(normalizedAST);
+
+		const mermaidFilePath = './normalizedAST.mmd';
+
+		// Scrivi il codice Mermaid in un file
+		fs.writeFileSync(mermaidFilePath, mermaidCode, 'utf8');
+		console.log(`Mermaid diagram exported to ${mermaidFilePath}`);
 		// console.log(JSON.stringify(normalizedAST, null, 2));
+
 		const signAnalysis = new SignAnalysis(Sign.getInstance());
 		console.log('Calling the fold method');
 		signAnalysis.fold(normalizedAST);
