@@ -10,7 +10,7 @@ import type { RUnaryOp } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-u
 
 type AbstractElement = LatticeElement;
 
-export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbstractDomain<Lattice<AbstractElement>, unknown>> extends DefaultNormalizedAstFold<AbstractElement> {
+export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbstractDomain<Lattice<AbstractElement>>> extends DefaultNormalizedAstFold<AbstractElement> {
 	readonly domain: T;
 
 	constructor(domain: T) {
@@ -34,7 +34,7 @@ export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbs
 	}
 
 	foldRNumber(_node: RNumber<NoInfo>): AbstractElement {
-		return this.domain.getAbstract(_node.content.num);
+		return this.domain.getAbstract(_node.content.num.toString());
 	}
 
 	foldRUnaryOp(unaryOp: RUnaryOp<NoInfo>): AbstractElement {

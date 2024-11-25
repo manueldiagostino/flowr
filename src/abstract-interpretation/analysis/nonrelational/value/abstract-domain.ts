@@ -9,9 +9,8 @@ export type AbstractElement = LatticeElement;
  * as well as algebraic operations for computations on lattice domains.
  *
  * @typeParam T - The type of the lattice associated with the abstract domain, extending the `Lattice<AbstractElement>` type.
- * @typeParam ConcreteElement - The type of the concrete element associated with the abstract domain.
  */
-export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElement>, ConcreteElement> {
+export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElement>> {
 
 	/**
 	 * The name of the abstract domain.
@@ -59,7 +58,7 @@ export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElem
 	 * @param abstractElement - The abstract element to be converted.
 	 * @returns The corresponding concrete element.
 	 */
-	getConcrete(abstractElement: AbstractElement): ConcreteElement;
+	getConcrete(abstractElement: AbstractElement): string;
 
 	/**
 	 * Converts a concrete element to its corresponding abstract element.
@@ -67,7 +66,7 @@ export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElem
 	 * @param concreteElement - The concrete element to be converted.
 	 * @returns The corresponding abstract element.
 	 */
-	getAbstract(concreteElement: ConcreteElement): AbstractElement;
+	getAbstract(concreteElement: string): AbstractElement;
 
 	/**
 	 * Performs a widening operation on two abstract elements.

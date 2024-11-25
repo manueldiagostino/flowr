@@ -14,7 +14,7 @@ import { SignLattice } from './sign-lattice';
  * such as intersection, union, widening, narrowing, and binary operations
  * (addition, subtraction, multiplication, division).
  */
-export class Sign implements NonRelationalValueAbstractDomain<SignLattice, string> {
+export class Sign implements NonRelationalValueAbstractDomain<SignLattice> {
 	public static instance: Sign;
 
 	private constructor() { }

@@ -77,6 +77,10 @@ export class SignLattice implements Lattice<SignLatticeElement> {
 	 * @returns `true` if `lhs` is less than or equal to `rhs`, `false` otherwise
 	 */
 	lessOrEqual(lhs: SignLatticeElement, rhs: SignLatticeElement): boolean {
+		if(lhs === rhs) {
+			return true;
+		}
+		
 		if(lhs === SignLattice.BOTTOM) {
 			return true;
 		}

@@ -25,6 +25,7 @@ const options = processCommandLineArgs<AbsIntCliOptions>('abs-int', ['domain', '
 });
 
 async function getAbsInt() {
+
 	guard(options.input !== undefined, 'The input must be specified');
 	guard(options.domain !== undefined, 'An abstract domain must be specified');
 
