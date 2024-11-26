@@ -1,0 +1,57 @@
+flowchart TD
+    n18(["RExpressionList (18)
+ "])
+    n3(["RBinaryOp (3)
+#60;#45;"])
+    n18 -->|"expr-list-child-0"| n3
+    n0(["RSymbol (0)
+x"])
+    n3 -->|"binop-lhs"| n0
+    n2(["RUnaryOp (2)
+#45;"])
+    n3 -->|"binop-rhs"| n2
+    n1(["RNumber (1)
+1"])
+    n2 -->|"unary-operand"| n1
+    n9(["RBinaryOp (9)
+#60;#45;"])
+    n18 -->|"expr-list-child-1"| n9
+    n4(["RSymbol (4)
+y"])
+    n9 -->|"binop-lhs"| n4
+    n8(["RBinaryOp (8)
+/"])
+    n9 -->|"binop-rhs"| n8
+    n5(["RSymbol (5)
+x"])
+    n8 -->|"binop-lhs"| n5
+    n7(["RUnaryOp (7)
+#45;"])
+    n8 -->|"binop-rhs"| n7
+    n6(["RNumber (6)
+1"])
+    n7 -->|"unary-operand"| n6
+    n12(["RBinaryOp (12)
+#60;#45;"])
+    n18 -->|"expr-list-child-2"| n12
+    n10(["RSymbol (10)
+z"])
+    n12 -->|"binop-lhs"| n10
+    n11(["RNumber (11)
+0"])
+    n12 -->|"binop-rhs"| n11
+    n17(["RBinaryOp (17)
+#60;#45;"])
+    n18 -->|"expr-list-child-3"| n17
+    n13(["RSymbol (13)
+x"])
+    n17 -->|"binop-lhs"| n13
+    n16(["RBinaryOp (16)
+#42;"])
+    n17 -->|"binop-rhs"| n16
+    n14(["RSymbol (14)
+z"])
+    n16 -->|"binop-lhs"| n14
+    n15(["RSymbol (15)
+y"])
+    n16 -->|"binop-rhs"| n15

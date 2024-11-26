@@ -257,6 +257,8 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice> {
 	 * @throws Error if an unhandled operator is provided.
 	 */
 	evalBinaryOp(operator: string, lhs: SignLatticeElement, rhs: SignLatticeElement): SignLatticeElement {
+		// console.debug(`${lhs.getName()} ${operator} ${rhs.getName()}`);
+
 		switch(operator) {
 			case '+':
 				return this.evalAddOp(lhs, rhs);

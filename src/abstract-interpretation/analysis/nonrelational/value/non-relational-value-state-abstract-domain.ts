@@ -15,50 +15,50 @@ import { EmptySet } from '../../utils';
  */
 export class NonRelationalValueStateAbstractDomain<T extends NonRelationalValueAbstractDomain<Lattice<LatticeElement>>>
 implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Variable>, Lattice<LatticeElement>>> {
-  
+
 	/**
-   * The name of the abstract domain.
-   */
+	 * The name of the abstract domain.
+	 */
 	readonly name: string = 'NonRelationalValueStateAbstractDomain';
 
 	/**
-   * The lattice associated with the abstract domain, representing abstract states.
-   */
+	 * The lattice associated with the abstract domain, representing abstract states.
+	 */
 	readonly lattice: NonRelationValueAbstractState<Set<Variable>, Lattice<LatticeElement>>;
 
 	/**
-   * The underlying non-relational value abstract domain.
-   */
+	 * The underlying non-relational value abstract domain.
+	 */
 	readonly nonRelationalValueAbstractDomain: T;
 
 	/**
-   * The "bottom" environment of the abstract domain, representing the least defined state.
-   */
+	 * The "bottom" environment of the abstract domain, representing the least defined state.
+	 */
 	readonly bottom: BottomNonRelationalValueAbstractEnviroment = BottomNonRelationalValueAbstractEnviroment.getInstance();
 
 	/**
-   * Constructs an instance of the non-relational value state abstract domain.
-   *
-   * @param nonRelationalValueAbstractDomain - The specific non-relational value abstract domain to use.
-   */
+	 * Constructs an instance of the non-relational value state abstract domain.
+	 *
+	 * @param nonRelationalValueAbstractDomain - The specific non-relational value abstract domain to use.
+	 */
 	public constructor(nonRelationalValueAbstractDomain: T) {
 		this.nonRelationalValueAbstractDomain = nonRelationalValueAbstractDomain;
 		this.lattice = new NonRelationValueAbstractState(new Set<Variable>(), nonRelationalValueAbstractDomain.lattice);
 	}
 
 	/**
-   * Computes the intersection of two abstract environments, producing a new environment.
-   *
-   * @param lhs - The first abstract environment.
-   * @param rhs - The second abstract environment.
-   * @returns The intersection of `lhs` and `rhs`.
-   */
+	 * Computes the intersection of two abstract environments, producing a new environment.
+	 *
+	 * @param lhs - The first abstract environment.
+	 * @param rhs - The second abstract environment.
+	 * @returns The intersection of `lhs` and `rhs`.
+	 */
 	intersection(
 		lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>,
 		rhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>
 	): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 
-		if( this.isBottom(lhs) || this.isBottom(rhs) ) {
+		if(this.isBottom(lhs) || this.isBottom(rhs)) {
 			return this.bottom;
 		}
 
@@ -81,26 +81,26 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 		return Array.from(newEnv.getVariables()).every(
 			key => newEnv.getValue(key) === this.nonRelationalValueAbstractDomain.bottom
 		) ? this.bottom : newEnv;
-    
+
 	}
 
 	/**
-   * Computes the union of two abstract environments, producing a new environment.
-   *
-   * @param lhs - The first abstract environment.
-   * @param rhs - The second abstract environment.
-   * @returns The union of `lhs` and `rhs`.
-   */
+	 * Computes the union of two abstract environments, producing a new environment.
+	 *
+	 * @param lhs - The first abstract environment.
+	 * @param rhs - The second abstract environment.
+	 * @returns The union of `lhs` and `rhs`.
+	 */
 	union(
 		lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>,
 		rhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>
 	): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 
-		if( this.isBottom(lhs) ) {
+		if(this.isBottom(lhs)) {
 			return rhs;
 		}
 
-		if(this.isBottom(lhs) ) {
+		if(this.isBottom(lhs)) {
 			return lhs;
 		}
 
@@ -123,13 +123,13 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 	}
 
 	/**
-   * Converts an abstract environment into its corresponding concrete representation.
-   *
-   * @param abstractElement - The abstract environment to be converted.
-   * @returns A string representing the concrete state of the environment.
-   */
+	 * Converts an abstract environment into its corresponding concrete representation.
+	 *
+	 * @param abstractElement - The abstract environment to be converted.
+	 * @returns A string representing the concrete state of the environment.
+	 */
 	getConcrete(abstractElement: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>): string {
-    
+
 		if(this.isBottom(abstractElement)) {
 			return EmptySet.getInstance().toString();
 		}
@@ -150,22 +150,22 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 	}
 
 	/**
-   * Converts a concrete representation into its corresponding abstract environment.
-   *
-   * @param concreteElement - The concrete state to be converted.
-   * @returns A new abstract environment representing the concrete state.
-   */
+	 * Converts a concrete representation into its corresponding abstract environment.
+	 *
+	 * @param concreteElement - The concrete state to be converted.
+	 * @returns A new abstract environment representing the concrete state.
+	 */
 	getAbstract(concreteElement: string): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 
 		if(concreteElement === EmptySet.getInstance().toString()) {
 			return this.bottom;
 		}
- 
+
 		const parsedObject: Record<string, string> = JSON.parse(concreteElement) as Record<string, string>;
 
 
 		const abstractEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
-    
+
 		for(const key in parsedObject) {
 			if(Object.prototype.hasOwnProperty.call(parsedObject, key)) {
 				const variable = new Variable(key);
@@ -179,22 +179,22 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 
 
 	/**
-   * Performs a widening operation on two abstract environments to compute a more general state.
-   *
-   * @param lhs - The first abstract environment.
-   * @param rhs - The second abstract environment.
-   * @returns The result of the widening operation.
-   */
+	 * Performs a widening operation on two abstract environments to compute a more general state.
+	 *
+	 * @param lhs - The first abstract environment.
+	 * @param rhs - The second abstract environment.
+	 * @returns The result of the widening operation.
+	 */
 	widening(
 		lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>,
 		rhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>
 	): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 
-		if( this.isBottom(lhs) ) {
+		if(this.isBottom(lhs)) {
 			return rhs;
 		}
 
-		if(this.isBottom(lhs) ) {
+		if(this.isBottom(lhs)) {
 			return lhs;
 		}
 
@@ -214,10 +214,9 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 		}
 
 		return newEnv;
-
 	}
 
-	get top() : NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+	get top(): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 
 		const topEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('TopNonRelationalValueAbstractEnviroment');
 
@@ -226,22 +225,21 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 		}
 
 		return topEnv;
-    
 	}
 
-	isBottom(lhs : NonRelationalValueAbstractEnviroment<Variable, LatticeElement>) : boolean {
+	isBottom(lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>): boolean {
 		return lhs === this.bottom;
 	}
 
-	narrowing(_lhs: AbstractElement, _rhs: AbstractElement): NonRelationalValueAbstractEnviroment<Variable,LatticeElement> {
+	narrowing(_lhs: AbstractElement, _rhs: AbstractElement): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 		throw new Error('Method not implemented.');
 	}
 
-	evalBinaryOp(_operator: string, _lhs: AbstractElement, _rhs: AbstractElement): NonRelationalValueAbstractEnviroment<Variable,LatticeElement> {
+	evalBinaryOp(_operator: string, _lhs: AbstractElement, _rhs: AbstractElement): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 		throw new Error('Method not implemented.');
 	}
 
-	evalUnaryOp(_operator: string, _operand: AbstractElement): NonRelationalValueAbstractEnviroment<Variable,LatticeElement> {
+	evalUnaryOp(_operator: string, _operand: AbstractElement): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
 		throw new Error('Method not implemented.');
 	}
 

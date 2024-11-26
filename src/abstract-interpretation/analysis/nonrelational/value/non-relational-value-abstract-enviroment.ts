@@ -49,6 +49,10 @@ export class NonRelationalValueAbstractEnviroment<V extends Variable, L extends 
 		super.updateElement(id, value);  
 	}
 
+	updateValueFromName(name: string, value: L) {
+		super.updateElement(name, value);
+	}
+
 	/**
      * Updates the values of multiple variables in the environment.
      *
