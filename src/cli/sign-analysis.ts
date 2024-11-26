@@ -54,6 +54,7 @@ async function getAbsInt() {
 		const signAnalysis = new SignAnalysis(Sign.getInstance());
 		console.log('Calling the fold method');
 		signAnalysis.fold(normalizedAST);
+		console.log(signAnalysis.getJSONInvariants());
 	} catch(error) {
 		console.error('Error in abs-int: ' + (error instanceof Error ? error.message : String(error)));
 		process.exitCode = 1;

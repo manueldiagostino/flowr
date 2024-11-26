@@ -95,6 +95,18 @@ export class NonRelationalValueAbstractEnviroment<V extends Variable, L extends 
 		return elements;
 	}
 
+	/**
+     * Creates a deep copy of the current environment.
+     *
+     * @returns A new instance of `NonRelationalValueAbstractEnviroment` with the same elements.
+     */
+	clone(): NonRelationalValueAbstractEnviroment<V, L> {
+		const newEnv = new NonRelationalValueAbstractEnviroment<V, L>(this.getName());
+		for(const [key, value] of this.f.entries()) {
+			newEnv.updateElement(key, value);
+		}
+		return newEnv;
+	}
 }
 
 export class BottomNonRelationalValueAbstractEnviroment extends NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {

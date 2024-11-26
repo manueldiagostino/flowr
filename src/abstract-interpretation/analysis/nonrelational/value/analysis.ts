@@ -10,13 +10,17 @@ import type { RUnaryOp } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-u
 import type { RSymbol } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 import { NonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
 import type { Variable } from '../../variable';
+import { ProgramPoint } from '../../program-point';
+import type { SourceRange } from '../../../../util/range';
 
 type AbstractElement = LatticeElement;
+type NonRelationalValueAbstractEnviromentType = NonRelationalValueAbstractEnviroment<Variable, AbstractElement>;
 
 export class ReturnElement {
 	id?:                  string;
 	abstractElement?:     AbstractElement;
 	abstractEnvironment?: NonRelationalValueAbstractEnviroment<Variable, AbstractElement>;
+
 
 	constructor() {
 		this.id = undefined;
@@ -26,30 +30,70 @@ export class ReturnElement {
 }
 
 export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbstractDomain<Lattice<AbstractElement>>> extends DefaultNormalizedAstFold<ReturnElement> {
-	readonly domain:      T;
-	readonly environment: NonRelationalValueAbstractEnviroment<Variable, AbstractElement>;
+	private domain:      T;
+	private environment: NonRelationalValueAbstractEnviromentType;
+	private invariants:  Map<ProgramPoint, NonRelationalValueAbstractEnviromentType>;
 
 	constructor(domain: T) {
 		const topRet = new ReturnElement();
 		topRet.abstractElement = domain.top;
 		super(topRet);
 		this.domain = domain;
-		this.environment = new NonRelationalValueAbstractEnviroment('NonRelationalValueAnalysis');
+		this.environment = new NonRelationalValueAbstractEnviroment('NonRelationalValueAnalysisEnvironment');
+		this.invariants = new Map();
+	}
+
+	getInvariants(): Map<ProgramPoint, NonRelationalValueAbstractEnviromentType> {
+		return this.invariants;
+	}
+
+	getJSONInvariants(): string {
+		return JSON.stringify(
+			Array.from(this.invariants.entries()).map(([programPoint, environment]) => ({
+				programPoint: programPoint.toString(),
+				environment:  {
+					name: environment.name,
+					f:    Array.from(environment.f.entries()).map(([key, value]) => ({
+						// eslint-disable-next-line @typescript-eslint/no-base-to-string
+						[key]: value.toString(),
+					})),
+				},
+			})),
+			null,
+			2
+		);
+	}
+
+	updateInvariants(source: SourceRange|undefined, value: ReturnElement): void {
+		if(source && value.abstractEnvironment) {
+			this.invariants.set(
+				new ProgramPoint(source),
+				value.abstractEnvironment
+			);
+		}
 	}
 
 	foldRExpressionList(exprList: RExpressionList<NoInfo>): ReturnElement {
 		if(exprList.children.length === 1) {
-			return this.fold(exprList.children[0]);
+			const child = exprList.children[0];
+			const result: ReturnElement = this.fold(child);
+			this.updateInvariants(child.location, result);
+
+			// if(result.abstractEnvironment) {
+			// 	this.environment = result.abstractEnvironment;
+			// }
+
+			return result;
 		}
 
 		for(let i = 0; i < exprList.children.length; i++) {
 			const child = exprList.children[i];
-
 			const result: ReturnElement = this.fold(child);
+			this.updateInvariants(child.location, result);
 
-			if(result.abstractElement !== undefined){
-				console.debug(`[Child ${i}] ${result.abstractElement.getName()}`);
-			}
+			// if(result.abstractEnvironment) {
+			// 	this.environment = result.abstractEnvironment;
+			// }
 		}
 
 		return this.empty;
@@ -68,6 +112,8 @@ export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbs
 
 		if(this.environment.hasKey(node.lexeme)){
 			result.abstractElement = this.environment.apply(node.lexeme);
+		} else {
+			result.abstractElement = this.domain.top;
 		}
 		
 		return result;
@@ -115,7 +161,7 @@ export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbs
 		const result: ReturnElement = new ReturnElement();
 		result.id = id;
 		result.abstractElement = value;
-		result.abstractEnvironment = this.environment;
+		result.abstractEnvironment = this.environment.clone();
 
 		return result;
 	}
