@@ -56,7 +56,9 @@ export abstract class NonRelationalValueAnalysis<
 		return JSON.stringify(
 			Array.from(this.invariants.entries()).map(([programPoint, environment]) => ({
 				programPoint: programPoint.toString(),
-				environment:  environment
+				// Parse 'environment' string back to JSON, or use as-is if it's already an object
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+				environment:  JSON.parse(environment)
 			})),
 			null,
 			2
