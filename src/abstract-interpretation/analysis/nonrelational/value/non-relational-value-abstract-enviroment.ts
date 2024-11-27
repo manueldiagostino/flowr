@@ -1,4 +1,4 @@
-import { Enviroment } from '../../enviroment';
+import { ConstEnviroment, Enviroment } from '../../enviroment';
 import type { LatticeElement } from '../../lattice-element';
 import { Variable } from '../../variable';
 
@@ -107,6 +107,14 @@ export class NonRelationalValueAbstractEnviroment<V extends Variable, L extends 
 		}
 		return newEnv;
 	}
+}
+
+export class TopNonRelationalValueAbstractEnviroment<V extends Variable, L extends LatticeElement> extends ConstEnviroment<string, L> {
+
+	getValue(_variable: V): L {
+		return this.value;
+	}
+
 }
 
 export class BottomNonRelationalValueAbstractEnviroment extends NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {

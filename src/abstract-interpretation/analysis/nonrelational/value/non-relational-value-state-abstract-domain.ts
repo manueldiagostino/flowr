@@ -3,7 +3,7 @@ import type { AbstractElement, NonRelationalValueAbstractDomain } from './abstra
 import type { Lattice } from '../../lattice';
 import { NonRelationValueAbstractState } from './non-relation-value-abstract-state';
 import { Variable } from '../../variable';
-import { BottomNonRelationalValueAbstractEnviroment, NonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
+import { BottomNonRelationalValueAbstractEnviroment, NonRelationalValueAbstractEnviroment, TopNonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
 import { EmptySet } from '../../utils';
 
 /**
@@ -14,7 +14,7 @@ import { EmptySet } from '../../utils';
  * @typeParam T - A specific non-relational abstract domain extending `NonRelationalValueAbstractDomain` and operating on lattice elements.
  */
 export class NonRelationalValueStateAbstractDomain<T extends NonRelationalValueAbstractDomain<Lattice<LatticeElement>>>
-implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Variable>, Lattice<LatticeElement>>> {
+implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Variable, Lattice<LatticeElement>>> {
 
 	/**
 	 * The name of the abstract domain.
@@ -24,7 +24,7 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 	/**
 	 * The lattice associated with the abstract domain, representing abstract states.
 	 */
-	readonly lattice: NonRelationValueAbstractState<Set<Variable>, Lattice<LatticeElement>>;
+	readonly lattice: NonRelationValueAbstractState<Variable, Lattice<LatticeElement>>;
 
 	/**
 	 * The underlying non-relational value abstract domain.
@@ -36,6 +36,8 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 	 */
 	readonly bottom: BottomNonRelationalValueAbstractEnviroment = BottomNonRelationalValueAbstractEnviroment.getInstance();
 
+	readonly top: TopNonRelationalValueAbstractEnviroment<Variable, LatticeElement>;
+
 	/**
 	 * Constructs an instance of the non-relational value state abstract domain.
 	 *
@@ -43,7 +45,8 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 	 */
 	public constructor(nonRelationalValueAbstractDomain: T) {
 		this.nonRelationalValueAbstractDomain = nonRelationalValueAbstractDomain;
-		this.lattice = new NonRelationValueAbstractState(new Set<Variable>(), nonRelationalValueAbstractDomain.lattice);
+		this.lattice = new NonRelationValueAbstractState(nonRelationalValueAbstractDomain.lattice);
+		this.top = new TopNonRelationalValueAbstractEnviroment('top env', this.lattice.top());
 	}
 
 	/**
@@ -64,7 +67,9 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 
 		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
 
-		for(const value of this.lattice.setId) {
+		const keys : Variable[] = Array.from(new Set([...lhs.getVariables() , ...rhs.getVariables()])); 
+
+		for(const value of keys) {
 			const lhsHasKey = lhs.hasVariable(value);
 			const rhsHasKey = rhs.hasVariable(value);
 
@@ -105,8 +110,9 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 		}
 
 		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const keys : Variable[] = Array.from(new Set([...lhs.getVariables() , ...rhs.getVariables()])); 
 
-		for(const value of this.lattice.setId) {
+		for(const value of keys) {
 			const lhsHasKey = lhs.hasVariable(value);
 			const rhsHasKey = rhs.hasVariable(value);
 
@@ -136,7 +142,9 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 
 		const concreteObject: { [key: string]: string } = {};
 
-		for(const value of this.lattice.setId) {
+		const keys : Variable[] = abstractElement.getVariables(); 
+
+		for(const value of keys) {
 			if(abstractElement.hasVariable(value)) {
 				const key = value.getId();
 				const concreteValue = this.nonRelationalValueAbstractDomain.getConcrete(
@@ -199,8 +207,9 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 		}
 
 		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const keys : Variable[] = Array.from(new Set([...lhs.getVariables() , ...rhs.getVariables()])); 
 
-		for(const value of this.lattice.setId) {
+		for(const value of keys) {
 			const lhsHasKey = lhs.hasVariable(value);
 			const rhsHasKey = rhs.hasVariable(value);
 
@@ -214,17 +223,6 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Set<Va
 		}
 
 		return newEnv;
-	}
-
-	get top(): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
-
-		const topEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('TopNonRelationalValueAbstractEnviroment');
-
-		for(const value of this.lattice.setId) {
-			topEnv.updateValue(value, this.nonRelationalValueAbstractDomain.top);
-		}
-
-		return topEnv;
 	}
 
 	isBottom(lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>): boolean {

@@ -19,7 +19,7 @@ export class Func<A, B> implements Functional<A, B> {
 	}
 
 	isEqual(other: Func<A, B>): boolean {
-		if(this.f.size !== other.f.size) {
+		if(!(other instanceof ConstantFunc) && this.f.size !== other.f.size) {
 			return false;
 		}
 
@@ -78,8 +78,15 @@ export class ConstantFunc<A, B> extends Func<A, B> {
 		super(name);
 		this.value = value;
 	}
-	isEqual(_other: Func<unknown, unknown>): boolean {
-		throw new Error('Method not implemented.');
+	isEqual(other: Func<unknown, unknown>): boolean {
+		
+		for(const [key, value] of this.f.entries()) {
+			if(!other.f.has(key) || other.f.get(key) !== value) {
+				return false;
+			}
+		}
+		return true;
+
 	}
 	getName(): string {
 		throw new Error('Method not implemented.');

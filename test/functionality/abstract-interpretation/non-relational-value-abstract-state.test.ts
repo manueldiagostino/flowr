@@ -11,11 +11,8 @@ describe('NonRelationValueAbstractState test', () => {
 	const varY : Variable = new Variable('y');
 	const varZ : Variable = new Variable('z');
 
-	// Create a set of variables
-	const variables: Set<Variable> = new Set([varX, varY, varZ]);
-
 	// Create the NonRelationValueAbstractState instance
-	const nonRelationValueAbstractState : NonRelationValueAbstractState<Set<Variable>, SignLattice> = new NonRelationValueAbstractState(variables, SignLattice.getInstance());
+	const nonRelationValueAbstractState : NonRelationValueAbstractState<Variable, SignLattice> = new NonRelationValueAbstractState(SignLattice.getInstance());
 
 	describe('when comparing two abstract states using lessOrEqual (\u2264)', () => {
 

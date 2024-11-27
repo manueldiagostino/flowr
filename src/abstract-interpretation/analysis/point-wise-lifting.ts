@@ -8,7 +8,7 @@ import type { Identifier } from './identifier';
  * It defines a framework for creating and manipulating lattice-based functions where the domain is a set of identifiers,
  * and the values of the lattice are applied to these identifiers.
  * 
- * This class implements lattice operations for `Func<Identifier, LatticeElement>`, including:
+ * This class implements lattice operations for `Func<A, LatticeElement>`, including:
  * - Less-than-or-equal comparison (`lessOrEqual`)
  * - Least upper bound (join) (`lub`)
  * - Greatest lower bound (meet) (`glb`)
@@ -22,12 +22,7 @@ import type { Identifier } from './identifier';
  */
 
 
-export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Lattice<LatticeElement>> implements Lattice<Func<Identifier, LatticeElement>> {
-
-	/**
-	 * The set of identifiers that the lattice functions will operate on
-	 */
-	readonly setId: A;
+export abstract class PointWiseLifting<A extends Identifier, B extends Lattice<LatticeElement>> implements Lattice<Func<A, LatticeElement>> {
 
 	/**
 	 * The lattice structure that provides the algebraic operations for the lattice elements
@@ -37,12 +32,12 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
 	/**
 	 * The constant top function, representing the greatest element in the lattice for all identifiers
 	 */
-	public readonly topFunc: ConstantFunc<Identifier, LatticeElement>;
+	public readonly topFunc: ConstantFunc<A, LatticeElement>;
 
 	/**
 	 * The constant bottom function, representing the least element in the lattice for all identifiers
 	 */ 
-	private readonly bottomFunc: ConstantFunc<Identifier, LatticeElement>;
+	private readonly bottomFunc: ConstantFunc<A, LatticeElement>;
 
 	/**
    * Constructor for creating a PointWiseLifting instance.
@@ -51,12 +46,11 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * @param setId - The set of identifiers to operate on.
    * @param lattice - The lattice structure used for the lattice operations.
    */
-	constructor(setId: A, lattice: B) {
-		this.setId = setId;
+	constructor(lattice: B) {
 		this.lattice = lattice;
 		// Initialize the constant top and bottom functions for the lattice
-		this.topFunc = new ConstantFunc<Identifier, LatticeElement>('PWTop', lattice.top());
-		this.bottomFunc = new ConstantFunc<Identifier, LatticeElement>('PWBottom', lattice.bottom());
+		this.topFunc = new ConstantFunc<A, LatticeElement>('PWTop', lattice.top());
+		this.bottomFunc = new ConstantFunc<A, LatticeElement>('PWBottom', lattice.bottom());
 	}
 
 	/**
@@ -67,8 +61,11 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * @param rhs - The right-hand side function to compare.
    * @returns `true` if `lhs` is less than or equal to `rhs` pointwise, `false` otherwise.
    */
-	lessOrEqual(lhs: Func<Identifier, LatticeElement>, rhs: Func<Identifier, LatticeElement>): boolean {
-		for(const value of this.setId) {
+	lessOrEqual(lhs: Func<A, LatticeElement>, rhs: Func<A, LatticeElement>): boolean {
+
+		const keys : A[] = lhs.getElements(); 
+
+		for(const value of keys) {
 			const lhsHasKey = lhs.hasKey(value);
 			const rhsHasKey = rhs.hasKey(value);
 
@@ -93,10 +90,12 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * @param rhs - The second lattice function.
    * @returns A new function representing the least upper bound of `lhs` and `rhs`.
    */
-	lub(lhs: Func<Identifier, LatticeElement>, rhs: Func<Identifier, LatticeElement>): Func<Identifier, LatticeElement> {
-		const newFunc = new Func<Identifier, LatticeElement>('func');
+	lub(lhs: Func<A, LatticeElement>, rhs: Func<A, LatticeElement>): Func<A, LatticeElement> {
+		
+		const newFunc = new Func<A, LatticeElement>('func');
+		const keys : A[] = Array.from(new Set([...lhs.getElements() , ...rhs.getElements()])); 
 
-		for(const value of this.setId) {
+		for(const value of keys) {
 			const lhsHasKey = lhs.hasKey(value);
 			const rhsHasKey = rhs.hasKey(value);
 
@@ -121,10 +120,11 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * @param rhs - The second lattice function.
    * @returns A new function representing the greatest lower bound of `lhs` and `rhs`.
    */
-	glb(lhs: Func<Identifier, LatticeElement>, rhs: Func<Identifier, LatticeElement>): Func<Identifier, LatticeElement> {
-		const newFunc = new Func<Identifier, LatticeElement>('func');
+	glb(lhs: Func<A, LatticeElement>, rhs: Func<A, LatticeElement>): Func<A, LatticeElement> {
+		const newFunc = new Func<A, LatticeElement>('func');
+		const keys : A[] = Array.from(new Set([...lhs.getElements() , ...rhs.getElements()])); 
 
-		for(const value of this.setId) {
+		for(const value of keys) {
 			const lhsHasKey = lhs.hasKey(value);
 			const rhsHasKey = rhs.hasKey(value);
 
@@ -146,7 +146,7 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * 
    * @returns The bottom function.
    */
-	bottom(): ConstantFunc<Identifier, LatticeElement> {
+	bottom(): ConstantFunc<A, LatticeElement> {
 		return this.bottomFunc;
 	}
 
@@ -155,7 +155,7 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * 
    * @returns The top function.
    */
-	top(): ConstantFunc<Identifier, LatticeElement> {
+	top(): ConstantFunc<A, LatticeElement> {
 		return this.topFunc;
 	}
 
@@ -165,7 +165,7 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * @param lhs - The function to check.
    * @returns `true` if the function is the bottom function, `false` otherwise.
    */
-	isBottom(lhs: Func<Identifier, LatticeElement>): boolean {
+	isBottom(lhs: Func<A, LatticeElement>): boolean {
 		return lhs.name === this.bottomFunc.name;
 	}
 
@@ -175,23 +175,7 @@ export abstract class PointWiseLifting<A extends Set<Identifier>, B extends Latt
    * @param lhs - The function to check.
    * @returns `true` if the function is the top function, `false` otherwise.
    */
-	isTop(lhs: Func<Identifier, LatticeElement>): boolean {
+	isTop(lhs: Func<A, LatticeElement>): boolean {
 		return lhs.name === this.topFunc.name;
-	}
-
-	/**
-   * Adds an identifier to the set of identifiers.
-   * If the identifier already exists, an error is thrown.
-   * 
-   * @param identifier - The identifier to add to the set.
-   * @throws Error if the identifier is already in the set.
-   */
-	addIdentifier(identifier: Identifier): void {
-		for(const existingIdentifier of this.setId) {
-			if(existingIdentifier.equals(identifier)) {
-				throw new Error(`Identifier ${identifier.getId()} is already in the set.`);
-			}
-		}
-		this.setId.add(identifier);
 	}
 }

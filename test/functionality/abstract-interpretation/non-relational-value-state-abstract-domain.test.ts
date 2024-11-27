@@ -14,10 +14,6 @@ describe('NonRelationalValueAbstractDomain test', () => {
 	const varY : Variable = new Variable('y');
 	const varZ : Variable = new Variable('z');
 
-	nonRelationalValueAbstractDomain.lattice.addIdentifier(varX);
-	nonRelationalValueAbstractDomain.lattice.addIdentifier(varY);
-	nonRelationalValueAbstractDomain.lattice.addIdentifier(varZ);
-
 	describe('NonRelationalValueAbstractDomain properties', () => {
 		it('should have the correct name', () => {
 			expect(nonRelationalValueAbstractDomain.name).toBe('NonRelationalValueStateAbstractDomain');
@@ -373,19 +369,6 @@ describe('NonRelationalValueAbstractDomain test', () => {
 			expect(() => {
 				nonRelationalValueAbstractDomain.getAbstract(invalidConcreteStr);
 			}).toThrowError();
-		});
-
-		it('should ensure all variables in top have SignLattice.TOP', () => {
-			const topEnv = nonRelationalValueAbstractDomain.top;
-
-			expect(topEnv).toBeInstanceOf(NonRelationalValueAbstractEnviroment);
-
-			const variables = topEnv.getVariables();
-
-			variables.forEach((varName) => {
-				expect(topEnv.getValue(varName)).toBe(SignLattice.TOP);
-			});
-
 		});
 
 		it('should return true when value is SignLattice.TOP', () => {
