@@ -1,10 +1,12 @@
 import type { LatticeElement } from '../../lattice-element';
-import type { AbstractElement, NonRelationalValueAbstractDomain } from './abstract-domain';
+import type { NonRelationalValueAbstractDomain } from './abstract-domain';
 import type { Lattice } from '../../lattice';
 import { NonRelationalValueAbstractState } from './non-relational-value-abstract-state';
 import { Variable } from '../../variable';
 import { BottomNonRelationalValueAbstractEnviroment, NonRelationalValueAbstractEnviroment, TopNonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
 import { EmptySet } from '../../utils';
+
+export type StateLatticeElement = NonRelationalValueAbstractEnviroment<Variable, LatticeElement>;
 
 /**
  * Represents a non-relational abstract domain designed to operate on abstract states and environments.
@@ -225,20 +227,27 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 		return newEnv;
 	}
 
-	isBottom(lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>): boolean {
+	isBottom(lhs: StateLatticeElement): boolean {
 		return lhs === this.bottom;
 	}
 
-	narrowing(_lhs: AbstractElement, _rhs: AbstractElement): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+	narrowing(_lhs: StateLatticeElement, _rhs: StateLatticeElement): StateLatticeElement {
 		throw new Error('Method not implemented.');
 	}
 
-	evalBinaryOp(_operator: string, _lhs: AbstractElement, _rhs: AbstractElement): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+	evalBinaryOp(_operator: string, _lhs: StateLatticeElement, _rhs: StateLatticeElement): StateLatticeElement {
 		throw new Error('Method not implemented.');
 	}
 
-	evalUnaryOp(_operator: string, _operand: AbstractElement): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
-		throw new Error('Method not implemented.');
-	}
+	evalUnaryOp(_operator: string, _operand: StateLatticeElement): StateLatticeElement {
+		
+		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const keys : Variable[] = _operand.getVariables();
 
+		for(const value of keys) {
+			newEnv.updateValue(value, this.nonRelationalValueAbstractDomain.evalUnaryOp(_operator, _operand.getValue(value)));
+		}
+
+		return newEnv;
+	}
 }
