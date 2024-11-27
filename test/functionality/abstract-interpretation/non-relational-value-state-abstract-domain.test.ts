@@ -5,7 +5,7 @@ import { SignLattice } from '../../../src/abstract-interpretation/analysis/nonre
 import { BottomNonRelationalValueAbstractEnviroment, NonRelationalValueAbstractEnviroment } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relational-value-abstract-enviroment';
 import { Sign } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-domain';
 import { NonRelationalValueStateAbstractDomain } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relational-value-state-abstract-domain';
-import { NonRelationValueAbstractState } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relation-value-abstract-state';
+import { NonRelationalValueAbstractState } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relational-value-abstract-state';
 describe('NonRelationalValueAbstractDomain test', () => {
 
 	const nonRelationalValueAbstractDomain : NonRelationalValueStateAbstractDomain<Sign> = new NonRelationalValueStateAbstractDomain(Sign.getInstance());
@@ -20,7 +20,7 @@ describe('NonRelationalValueAbstractDomain test', () => {
 		});
 
 		it('should return the correct lattice', () => {
-			expect(nonRelationalValueAbstractDomain.lattice).toBeInstanceOf(NonRelationValueAbstractState);
+			expect(nonRelationalValueAbstractDomain.lattice).toBeInstanceOf(NonRelationalValueAbstractState);
 		});
 
 		it('should return the correct top and bottom elements', () => {

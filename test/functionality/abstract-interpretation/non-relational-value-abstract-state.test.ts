@@ -1,18 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { NonRelationValueAbstractState } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relation-value-abstract-state';
+import { NonRelationalValueAbstractState } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relational-value-abstract-state';
 import { Variable } from '../../../src/abstract-interpretation/analysis/variable';
 import type { SignLatticeElement } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
 import { SignLattice } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
 import { Func } from '../../../src/abstract-interpretation/analysis/function';
 
-describe('NonRelationValueAbstractState test', () => {
+describe('NonRelationalValueAbstractState test', () => {
 
 	const varX : Variable = new Variable('x');
 	const varY : Variable = new Variable('y');
 	const varZ : Variable = new Variable('z');
 
-	// Create the NonRelationValueAbstractState instance
-	const nonRelationValueAbstractState : NonRelationValueAbstractState<Variable, SignLattice> = new NonRelationValueAbstractState(SignLattice.getInstance());
+	// Create the NonRelationalValueAbstractState instance
+	const nonRelationValueAbstractState : NonRelationalValueAbstractState<Variable, SignLattice> = new NonRelationalValueAbstractState(SignLattice.getInstance());
 
 	describe('when comparing two abstract states using lessOrEqual (\u2264)', () => {
 

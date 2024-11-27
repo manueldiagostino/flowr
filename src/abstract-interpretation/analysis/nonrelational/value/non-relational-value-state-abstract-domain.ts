@@ -1,7 +1,7 @@
 import type { LatticeElement } from '../../lattice-element';
 import type { AbstractElement, NonRelationalValueAbstractDomain } from './abstract-domain';
 import type { Lattice } from '../../lattice';
-import { NonRelationValueAbstractState } from './non-relation-value-abstract-state';
+import { NonRelationalValueAbstractState } from './non-relational-value-abstract-state';
 import { Variable } from '../../variable';
 import { BottomNonRelationalValueAbstractEnviroment, NonRelationalValueAbstractEnviroment, TopNonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
 import { EmptySet } from '../../utils';
@@ -14,7 +14,7 @@ import { EmptySet } from '../../utils';
  * @typeParam T - A specific non-relational abstract domain extending `NonRelationalValueAbstractDomain` and operating on lattice elements.
  */
 export class NonRelationalValueStateAbstractDomain<T extends NonRelationalValueAbstractDomain<Lattice<LatticeElement>>>
-implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Variable, Lattice<LatticeElement>>> {
+implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Variable, Lattice<LatticeElement>>> {
 
 	/**
 	 * The name of the abstract domain.
@@ -24,7 +24,7 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Variab
 	/**
 	 * The lattice associated with the abstract domain, representing abstract states.
 	 */
-	readonly lattice: NonRelationValueAbstractState<Variable, Lattice<LatticeElement>>;
+	readonly lattice: NonRelationalValueAbstractState<Variable, Lattice<LatticeElement>>;
 
 	/**
 	 * The underlying non-relational value abstract domain.
@@ -45,7 +45,7 @@ implements NonRelationalValueAbstractDomain<NonRelationValueAbstractState<Variab
 	 */
 	public constructor(nonRelationalValueAbstractDomain: T) {
 		this.nonRelationalValueAbstractDomain = nonRelationalValueAbstractDomain;
-		this.lattice = new NonRelationValueAbstractState(nonRelationalValueAbstractDomain.lattice);
+		this.lattice = new NonRelationalValueAbstractState(nonRelationalValueAbstractDomain.lattice);
 		this.top = new TopNonRelationalValueAbstractEnviroment('top env', this.lattice.top());
 	}
 
