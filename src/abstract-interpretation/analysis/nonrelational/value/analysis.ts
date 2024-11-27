@@ -8,19 +8,19 @@ import type { RBinaryOp } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-
 import type { RExpressionList } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-expression-list';
 import type { RUnaryOp } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import type { RSymbol } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
-import { NonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
+import { NonRelationalValueAbstractEnvironment } from './non-relational-value-abstract-environment';
 import type { Variable } from '../../variable';
 import type { SourceRange } from '../../../../util/range';
 import type { NonRelationalValueStateAbstractDomain } from './non-relational-value-state-abstract-domain';
 import type { RIfThenElse } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-if-then-else';
 
 type AbstractElement = LatticeElement;
-type AbstractEnvironment = NonRelationalValueAbstractEnviroment<Variable, AbstractElement>;
+type AbstractEnvironment = NonRelationalValueAbstractEnvironment<Variable, AbstractElement>;
 
 export class ReturnElement {
 	id?:                  string;
 	abstractElement?:     AbstractElement;
-	abstractEnvironment?: NonRelationalValueAbstractEnviroment<Variable, AbstractElement>;
+	abstractEnvironment?: NonRelationalValueAbstractEnvironment<Variable, AbstractElement>;
 
 
 	constructor() {
@@ -43,7 +43,7 @@ export class NonRelationalValueAnalysis<
 		topRet.abstractElement = domain.top;
 		super(topRet);
 		this.domain = domain;
-		this.environment = new NonRelationalValueAbstractEnviroment('NonRelationalValueAnalysisEnvironment');
+		this.environment = new NonRelationalValueAbstractEnvironment('NonRelationalValueAnalysisEnvironment', this.domain.top);
 		this.invariants = new Map();
 		this.stateDomain = state;
 	}

@@ -3,10 +3,10 @@ import type { NonRelationalValueAbstractDomain } from './abstract-domain';
 import type { Lattice } from '../../lattice';
 import { NonRelationalValueAbstractState } from './non-relational-value-abstract-state';
 import { Variable } from '../../variable';
-import { BottomNonRelationalValueAbstractEnviroment, NonRelationalValueAbstractEnviroment, TopNonRelationalValueAbstractEnviroment } from './non-relational-value-abstract-enviroment';
+import { BottomNonRelationalValueAbstractEnvironment, NonRelationalValueAbstractEnvironment, TopNonRelationalValueAbstractEnvironment } from './non-relational-value-abstract-environment';
 import { EmptySet } from '../../utils';
 
-export type StateLatticeElement = NonRelationalValueAbstractEnviroment<Variable, LatticeElement>;
+export type StateLatticeElement = NonRelationalValueAbstractEnvironment<Variable, LatticeElement>;
 
 /**
  * Represents a non-relational abstract domain designed to operate on abstract states and environments.
@@ -36,9 +36,9 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	/**
 	 * The "bottom" environment of the abstract domain, representing the least defined state.
 	 */
-	readonly bottom: BottomNonRelationalValueAbstractEnviroment = BottomNonRelationalValueAbstractEnviroment.getInstance();
+	readonly bottom: BottomNonRelationalValueAbstractEnvironment;
 
-	readonly top: TopNonRelationalValueAbstractEnviroment<Variable, LatticeElement>;
+	readonly top: TopNonRelationalValueAbstractEnvironment<Variable, LatticeElement>;
 
 	/**
 	 * Constructs an instance of the non-relational value state abstract domain.
@@ -48,7 +48,8 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	public constructor(nonRelationalValueAbstractDomain: T) {
 		this.nonRelationalValueAbstractDomain = nonRelationalValueAbstractDomain;
 		this.lattice = new NonRelationalValueAbstractState(nonRelationalValueAbstractDomain.lattice);
-		this.top = new TopNonRelationalValueAbstractEnviroment('top env', this.lattice.top());
+		this.bottom = BottomNonRelationalValueAbstractEnvironment.getInstance(this.nonRelationalValueAbstractDomain.top);
+		this.top = new TopNonRelationalValueAbstractEnvironment('top env', this.lattice.top());
 	}
 
 	/**
@@ -59,15 +60,15 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	 * @returns The intersection of `lhs` and `rhs`.
 	 */
 	intersection(
-		lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>,
-		rhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>
-	): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+		lhs: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>,
+		rhs: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>
+	): NonRelationalValueAbstractEnvironment<Variable, LatticeElement> {
 
 		if(this.isBottom(lhs) || this.isBottom(rhs)) {
 			return this.bottom;
 		}
 
-		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const newEnv = new NonRelationalValueAbstractEnvironment<Variable, LatticeElement>('NonRelationalValueAbstractEnvironment', this.top);
 
 		const keys : Variable[] = Array.from(new Set([...lhs.getVariables() , ...rhs.getVariables()])); 
 
@@ -99,9 +100,9 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	 * @returns The union of `lhs` and `rhs`.
 	 */
 	union(
-		lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>,
-		rhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>
-	): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+		lhs: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>,
+		rhs: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>
+	): NonRelationalValueAbstractEnvironment<Variable, LatticeElement> {
 
 		if(this.isBottom(lhs)) {
 			return rhs;
@@ -111,7 +112,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 			return lhs;
 		}
 
-		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const newEnv = new NonRelationalValueAbstractEnvironment<Variable, LatticeElement>('NonRelationalValueAbstractEnvironment', this.top);
 		const keys : Variable[] = Array.from(new Set([...lhs.getVariables() , ...rhs.getVariables()])); 
 
 		for(const value of keys) {
@@ -136,7 +137,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	 * @param abstractElement - The abstract environment to be converted.
 	 * @returns A string representing the concrete state of the environment.
 	 */
-	getConcrete(abstractElement: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>): string {
+	getConcrete(abstractElement: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>): string {
 
 		if(this.isBottom(abstractElement)) {
 			return EmptySet.getInstance().toString();
@@ -165,7 +166,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	 * @param concreteElement - The concrete state to be converted.
 	 * @returns A new abstract environment representing the concrete state.
 	 */
-	getAbstract(concreteElement: string): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+	getAbstract(concreteElement: string): NonRelationalValueAbstractEnvironment<Variable, LatticeElement> {
 
 		if(concreteElement === EmptySet.getInstance().toString()) {
 			return this.bottom;
@@ -174,7 +175,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 		const parsedObject: Record<string, string> = JSON.parse(concreteElement) as Record<string, string>;
 
 
-		const abstractEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const abstractEnv = new NonRelationalValueAbstractEnvironment<Variable, LatticeElement>('NonRelationalValueAbstractEnvironment', this.top);
 
 		for(const key in parsedObject) {
 			if(Object.prototype.hasOwnProperty.call(parsedObject, key)) {
@@ -196,9 +197,9 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 	 * @returns The result of the widening operation.
 	 */
 	widening(
-		lhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>,
-		rhs: NonRelationalValueAbstractEnviroment<Variable, LatticeElement>
-	): NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
+		lhs: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>,
+		rhs: NonRelationalValueAbstractEnvironment<Variable, LatticeElement>
+	): NonRelationalValueAbstractEnvironment<Variable, LatticeElement> {
 
 		if(this.isBottom(lhs)) {
 			return rhs;
@@ -208,7 +209,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 			return lhs;
 		}
 
-		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const newEnv = new NonRelationalValueAbstractEnvironment<Variable, LatticeElement>('NonRelationalValueAbstractEnvironment', this.top);
 		const keys : Variable[] = Array.from(new Set([...lhs.getVariables() , ...rhs.getVariables()])); 
 
 		for(const value of keys) {
@@ -241,7 +242,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 
 	evalUnaryOp(_operator: string, _operand: StateLatticeElement): StateLatticeElement {
 		
-		const newEnv = new NonRelationalValueAbstractEnviroment<Variable, LatticeElement>('NonRelationalValueAbstractEnviroment');
+		const newEnv = new NonRelationalValueAbstractEnvironment<Variable, LatticeElement>('NonRelationalValueAbstractEnvironment', this.top);
 		const keys : Variable[] = _operand.getVariables();
 
 		for(const value of keys) {

@@ -1,12 +1,12 @@
-import { NonRelationalValueAbstractEnviroment } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relational-value-abstract-enviroment';
+import { NonRelationalValueAbstractEnvironment } from '../../../src/abstract-interpretation/analysis/nonrelational/value/non-relational-value-abstract-environment';
 import { Variable } from '../../../src/abstract-interpretation/analysis/variable';
 import type { SignLatticeElement } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
 import { SignLattice } from '../../../src/abstract-interpretation/analysis/nonrelational/value/sign/sign-lattice';
 import { describe, it, expect } from 'vitest';
 
-describe('NonRelationalValueAbstractEnviroment', () => {
+describe('NonRelationalValueAbstractEnvironment', () => {
 
-	const env: NonRelationalValueAbstractEnviroment<Variable, SignLatticeElement> = new NonRelationalValueAbstractEnviroment('env');
+	const env: NonRelationalValueAbstractEnvironment<Variable, SignLatticeElement> = new NonRelationalValueAbstractEnvironment('env', SignLattice.getInstance().top());
 	const varX: Variable = new Variable('x');
 	const varY: Variable = new Variable('y');
 
@@ -61,9 +61,9 @@ describe('NonRelationalValueAbstractEnviroment', () => {
 
 });
 
-describe('NonRelationalValueAbstractEnviroment - Variable Overwriting', () => {
+describe('NonRelationalValueAbstractEnvironment - Variable Overwriting', () => {
 
-	const env: NonRelationalValueAbstractEnviroment<Variable, SignLatticeElement> = new NonRelationalValueAbstractEnviroment('env');
+	const env: NonRelationalValueAbstractEnvironment<Variable, SignLatticeElement> = new NonRelationalValueAbstractEnvironment('env', SignLattice.getInstance().top());
 	const varX: Variable = new Variable('x');
 	const varY: Variable = new Variable('y');
 

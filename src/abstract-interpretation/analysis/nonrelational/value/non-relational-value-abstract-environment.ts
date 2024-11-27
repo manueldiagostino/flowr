@@ -1,10 +1,10 @@
-import { ConstEnviroment, Enviroment } from '../../enviroment';
+import { ConstEnvironment, Environment } from '../../environment';
 import type { LatticeElement } from '../../lattice-element';
 import { Variable } from '../../variable';
 
 /**
- * The `NonRelationalValueAbstractEnviroment` class represents an abstract environment for managing 
- * non-relational abstract values during the analysis. It extends the generic `Enviroment` class and 
+ * The `NonRelationalValueAbstractEnvironment` class represents an abstract environment for managing 
+ * non-relational abstract values during the analysis. It extends the generic `Environment` class and 
  * provides additional functionalities tailored for variables and their associated lattice elements.
  *
  * This class allows the storage, retrieval, and manipulation of variables and their corresponding 
@@ -14,7 +14,7 @@ import { Variable } from '../../variable';
  * @typeParam V - The type of the variables managed by the environment. Must extend `Variable`.
  * @typeParam L - The type of the lattice elements associated with the variables. Must extend `LatticeElement`.
  */
-export class NonRelationalValueAbstractEnviroment<V extends Variable, L extends LatticeElement> extends Enviroment<string, L> {
+export class NonRelationalValueAbstractEnvironment<V extends Variable, L extends LatticeElement> extends Environment<string, L> {
 
 	/**
      * Checks if the given variable exists in the environment.
@@ -98,10 +98,10 @@ export class NonRelationalValueAbstractEnviroment<V extends Variable, L extends 
 	/**
      * Creates a deep copy of the current environment.
      *
-     * @returns A new instance of `NonRelationalValueAbstractEnviroment` with the same elements.
+     * @returns A new instance of `NonRelationalValueAbstractEnvironment` with the same elements.
      */
-	clone(): NonRelationalValueAbstractEnviroment<V, L> {
-		const newEnv = new NonRelationalValueAbstractEnviroment<V, L>(this.getName());
+	clone(): NonRelationalValueAbstractEnvironment<V, L> {
+		const newEnv = new NonRelationalValueAbstractEnvironment<V, L>(this.getName(), this.top);
 		for(const [key, value] of this.f.entries()) {
 			newEnv.updateElement(key, value);
 		}
@@ -109,7 +109,7 @@ export class NonRelationalValueAbstractEnviroment<V extends Variable, L extends 
 	}
 }
 
-export class TopNonRelationalValueAbstractEnviroment<V extends Variable, L extends LatticeElement> extends ConstEnviroment<string, L> {
+export class TopNonRelationalValueAbstractEnvironment<V extends Variable, L extends LatticeElement> extends ConstEnvironment<string, L> {
 
 	getValue(_variable: V): L {
 		return this.value;
@@ -117,21 +117,21 @@ export class TopNonRelationalValueAbstractEnviroment<V extends Variable, L exten
 
 }
 
-export class BottomNonRelationalValueAbstractEnviroment extends NonRelationalValueAbstractEnviroment<Variable, LatticeElement> {
-	private static instance: BottomNonRelationalValueAbstractEnviroment;
+export class BottomNonRelationalValueAbstractEnvironment extends NonRelationalValueAbstractEnvironment<Variable, LatticeElement> {
+	private static instance: BottomNonRelationalValueAbstractEnvironment;
 
-	private constructor() {
-		super('BottomNonRelationalValueAbstractEnviroment'); 
+	private constructor(top : LatticeElement) {
+		super('BottomNonRelationalValueAbstractEnvironment', top); 
 	}
 
-	static getInstance(): BottomNonRelationalValueAbstractEnviroment {
-		if(!BottomNonRelationalValueAbstractEnviroment.instance) {
-			BottomNonRelationalValueAbstractEnviroment.instance = new BottomNonRelationalValueAbstractEnviroment();
+	static getInstance(top : LatticeElement): BottomNonRelationalValueAbstractEnvironment {
+		if(!BottomNonRelationalValueAbstractEnvironment.instance) {
+			BottomNonRelationalValueAbstractEnvironment.instance = new BottomNonRelationalValueAbstractEnvironment(top);
 		}
-		return BottomNonRelationalValueAbstractEnviroment.instance;
+		return BottomNonRelationalValueAbstractEnvironment.instance;
 	}
 
 	toString(): string {
-		return 'BOTTOM_NON_RELATIONAL_VALUE_ABSTRACT_ENVIROMENT';
+		return 'BOTTOM_NON_RELATIONAL_VALUE_ABSTRACT_ENVIRONMENT';
 	}
 }
