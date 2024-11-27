@@ -12,6 +12,7 @@ import { NonRelationalValueAbstractEnviroment } from './non-relational-value-abs
 import type { Variable } from '../../variable';
 import { ProgramPoint } from '../../program-point';
 import type { SourceRange } from '../../../../util/range';
+import type { NonRelationalValueStateAbstractDomain } from './non-relational-value-state-abstract-domain';
 
 type AbstractElement = LatticeElement;
 type NonRelationalValueAbstractEnviromentType = NonRelationalValueAbstractEnviroment<Variable, AbstractElement>;
@@ -29,21 +30,25 @@ export class ReturnElement {
 	}
 }
 
-export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbstractDomain<Lattice<AbstractElement>>> extends DefaultNormalizedAstFold<ReturnElement> {
+export abstract class NonRelationalValueAnalysis<
+	T extends NonRelationalValueAbstractDomain<Lattice<AbstractElement>>,
+	S extends NonRelationalValueStateAbstractDomain<T>> extends DefaultNormalizedAstFold<ReturnElement> {
 	private domain:      T;
 	private environment: NonRelationalValueAbstractEnviromentType;
-	private invariants:  Map<ProgramPoint, NonRelationalValueAbstractEnviromentType>;
+	private invariants:  Map<ProgramPoint, string>;
+	private stateDomain: S;
 
-	constructor(domain: T) {
+	constructor(domain: T, state: S) {
 		const topRet = new ReturnElement();
 		topRet.abstractElement = domain.top;
 		super(topRet);
 		this.domain = domain;
 		this.environment = new NonRelationalValueAbstractEnviroment('NonRelationalValueAnalysisEnvironment');
 		this.invariants = new Map();
+		this.stateDomain = state;
 	}
 
-	getInvariants(): Map<ProgramPoint, NonRelationalValueAbstractEnviromentType> {
+	getInvariants(): Map<ProgramPoint, string> {
 		return this.invariants;
 	}
 
@@ -51,13 +56,7 @@ export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbs
 		return JSON.stringify(
 			Array.from(this.invariants.entries()).map(([programPoint, environment]) => ({
 				programPoint: programPoint.toString(),
-				environment:  {
-					name: environment.name,
-					f:    Array.from(environment.f.entries()).map(([key, value]) => ({
-						// eslint-disable-next-line @typescript-eslint/no-base-to-string
-						[key]: value.toString(),
-					})),
-				},
+				environment:  environment
 			})),
 			null,
 			2
@@ -66,9 +65,11 @@ export abstract class NonRelationalValueAnalysis<T extends NonRelationalValueAbs
 
 	updateInvariants(source: SourceRange|undefined, value: ReturnElement): void {
 		if(source && value.abstractEnvironment) {
+			// console.debug(value.abstractEnvironment);
+
 			this.invariants.set(
 				new ProgramPoint(source),
-				value.abstractEnvironment
+				this.stateDomain.getConcrete(value.abstractEnvironment)
 			);
 		}
 	}
