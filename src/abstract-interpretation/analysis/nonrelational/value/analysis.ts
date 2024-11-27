@@ -204,7 +204,6 @@ export class NonRelationalValueAnalysis<
 
 		this.updateInvariants(thenAnalysis.invariants);
 
-		console.debug(conditionResult.abstractEnvironment);
 		const negConditionResult = this.stateDomain.evalUnaryOp('!', conditionResult.abstractEnvironment);
 		if(!negConditionResult) {
 			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse negConditionResult undefined');
