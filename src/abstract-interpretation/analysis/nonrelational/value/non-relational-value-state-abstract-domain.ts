@@ -78,12 +78,7 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 
 			if(lhsHasKey && rhsHasKey) {
 				newEnv.updateValue(value, this.nonRelationalValueAbstractDomain.intersection(lhs.getValue(value), rhs.getValue(value)));
-			} else if(lhsHasKey) {
-				newEnv.updateValue(value, lhs.getValue(value));
-			} else if(rhsHasKey) {
-				newEnv.updateValue(value, rhs.getValue(value));
 			}
-
 		}
 
 		return Array.from(newEnv.getVariables()).every(
@@ -250,5 +245,9 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 		}
 
 		return newEnv;
+	}
+
+	assume(condition: StateLatticeElement, operand: StateLatticeElement): StateLatticeElement {
+		return this.intersection(condition, operand);
 	}
 }
