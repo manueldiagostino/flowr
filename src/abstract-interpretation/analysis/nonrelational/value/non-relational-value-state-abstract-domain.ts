@@ -1,5 +1,5 @@
 import type { LatticeElement } from '../../lattice-element';
-import type { NonRelationalValueAbstractDomain } from './abstract-domain';
+import type { AbstractElement, NonRelationalValueAbstractDomain } from './abstract-domain';
 import type { Lattice } from '../../lattice';
 import { NonRelationalValueAbstractState } from './non-relational-value-abstract-state';
 import { Variable } from '../../variable';
@@ -245,6 +245,10 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 		}
 
 		return newEnv;
+	}
+
+	evalCondition(_operand: AbstractElement): boolean {
+		throw new Error('Method not implemented.');
 	}
 
 	assume(condition: StateLatticeElement, operand: StateLatticeElement): StateLatticeElement {

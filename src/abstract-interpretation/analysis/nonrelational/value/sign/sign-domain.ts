@@ -247,6 +247,18 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice> {
 		throw new Error(`Sign::evalDivOp unhandled case <${lhs.toString()},${rhs.toString()}>`);
 	}
 
+	evalAndOp(lhs: SignLatticeElement, rhs: SignLatticeElement): SignLatticeElement {
+		if(lhs.isEqual(rhs)){
+			return lhs;
+		} else if(lhs.isEqual(SignLattice.ZERO) || rhs.isEqual(SignLattice.ZERO)) {
+			return SignLattice.ZERO;
+		} else if(lhs.isEqual(SignLattice.BOTTOM) || rhs.isEqual(SignLattice.BOTTOM)) {
+			return SignLattice.BOTTOM;
+		}
+
+		return SignLattice.TOP;
+	}
+
 	/**
 	 * Evaluates a binary operator between two abstract elements.
 	 * 
@@ -268,22 +280,43 @@ export class Sign implements NonRelationalValueAbstractDomain<SignLattice> {
 				return this.evalMulOp(lhs, rhs);
 			case '/':
 				return this.evalDivOp(lhs, rhs);
+			case '&&':
+				return this.evalAndOp(lhs, rhs);
+			case '||':
 			default:
 				throw new Error(`Sign::evalBinaryOp unhandled operator <${operator}>`);
 		}
 	}
 
 	evalUnaryOp(operator: string, operand: AbstractElement): AbstractElement {
-		if(operator === '-') {
-			if(operand.isEqual(SignLattice.TOP) || operand.isEqual(SignLattice.BOTTOM) || operand.isEqual(SignLattice.ZERO)) {
-				return operand;
-			} else if(operand.isEqual(SignLattice.LEQ0)) {
-				return SignLattice.GEQ0;
-			} else {
-				return SignLattice.LEQ0;
-			}
+		switch(operator) {
+			case '-':
+				if(operand.isEqual(SignLattice.TOP) || operand.isEqual(SignLattice.BOTTOM) || operand.isEqual(SignLattice.ZERO)) {
+					return operand;
+				} else if(operand.isEqual(SignLattice.LEQ0)) {
+					return SignLattice.GEQ0;
+				} else {
+					return SignLattice.LEQ0;
+				}
+			case '!': // logical `NOT`
+				if(operand.isEqual(SignLattice.ZERO)) {
+					return SignLattice.TOP;
+				} else if(operand.isEqual(SignLattice.BOTTOM)) {
+					return operand;
+				} else {
+					return SignLattice.ZERO;
+				}
+			default:
+				break;
 		}
+
 		return operand;
 	}
 
+	evalCondition(operand: AbstractElement): boolean {
+		if(operand.isEqual(SignLattice.ZERO) || operand.isEqual(SignLattice.BOTTOM)) {
+			return false;
+		}
+		return true;
+	}
 }

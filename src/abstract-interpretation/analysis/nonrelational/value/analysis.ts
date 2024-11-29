@@ -20,7 +20,7 @@ type AbstractEnvironment = NonRelationalValueAbstractEnvironment<Variable, Abstr
 export class ReturnElement {
 	id?:                  string;
 	abstractElement?:     AbstractElement;
-	abstractEnvironment?: NonRelationalValueAbstractEnvironment<Variable, AbstractElement>;
+	abstractEnvironment?: AbstractEnvironment;
 
 
 	constructor() {
@@ -65,6 +65,18 @@ export class NonRelationalValueAnalysis<
 		);
 	}
 
+	updateInvariantFromEnvironment(source: SourceRange|undefined, value: AbstractEnvironment): void {
+		if(source && value) {
+			// console.debug(value.abstractEnvironment);
+
+			this.invariants.set(
+				source,
+				this.stateDomain.getConcrete(value)
+			);
+		}
+	}
+
+
 	updateInvariant(source: SourceRange|undefined, value: ReturnElement): void {
 		if(source && value.abstractEnvironment) {
 			// console.debug(value.abstractEnvironment);
@@ -103,8 +115,7 @@ export class NonRelationalValueAnalysis<
 	foldRNumber(node: RNumber<NoInfo>): ReturnElement {
 		const result: ReturnElement = new ReturnElement();
 		result.abstractElement = this.domain.getAbstract(node.content.num.toString());
-		result.abstractEnvironment = this.environment;
-
+		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
 		return result;
 	}
 
@@ -112,13 +123,25 @@ export class NonRelationalValueAnalysis<
 		const result: ReturnElement = new ReturnElement();
 		result.id = node.lexeme;
 
+		if(node.lexeme === 'true'){
+			result.abstractElement = this.domain.top;
+			result.abstractEnvironment = this.environment;
+			return result;
+		} else if(node.lexeme === 'false') {
+			result.abstractElement = this.domain.bottom;
+			result.abstractEnvironment = this.stateDomain.bottom;
+			return result;
+		}
+
+		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
 		if(this.environment.hasKey(node.lexeme)){
 			result.abstractElement = this.environment.apply(node.lexeme);
+			result.abstractEnvironment.updateValueFromName(node.lexeme, result.abstractElement);
 		} else {
 			result.abstractElement = this.domain.top;
+			result.abstractEnvironment.updateValueFromName(node.lexeme, this.domain.top);
 		}
-		result.abstractEnvironment = this.environment;
-		
+
 		return result;
 	}
 
@@ -132,13 +155,12 @@ export class NonRelationalValueAnalysis<
 				break;
 			case '!':
 				result.abstractElement = this.domain.evalUnaryOp(unaryOp.operator, operand.abstractElement as AbstractElement);
-				result.abstractEnvironment = this.environment;
 				break;
 			default:
 				break;
 		}
 
-		this.updateInvariant(unaryOp.info.fullRange, result);
+		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
 		return result;
 	}
 
@@ -153,41 +175,69 @@ export class NonRelationalValueAnalysis<
 			case '*':
 			case '/':
 				result.abstractElement = this.domain.evalBinaryOp(binaryOp.operator, lhs.abstractElement as AbstractElement, rhs.abstractElement as AbstractElement);
-
+				console.debug('lhs.abstractEnvironment');
+				console.debug(lhs.abstractEnvironment);
+				console.debug('rhs.abstractEnvironment');
+				console.debug(rhs.abstractEnvironment);
 				if(lhs.abstractEnvironment && rhs.abstractEnvironment) {
-					this.environment = this.stateDomain.union(lhs.abstractEnvironment as AbstractEnvironment, rhs.abstractEnvironment as AbstractEnvironment);
+					this.environment = this.stateDomain.union(lhs.abstractEnvironment, rhs.abstractEnvironment);
 				} else if(lhs.abstractEnvironment) {
-					this.environment = this.stateDomain.union(lhs.abstractEnvironment as AbstractEnvironment, this.environment);
+					this.environment = this.stateDomain.union(lhs.abstractEnvironment, this.environment);
 				} else if(rhs.abstractEnvironment) {
-					this.environment = this.stateDomain.union(rhs.abstractEnvironment as AbstractEnvironment, this.environment);
+					this.environment = this.stateDomain.union(rhs.abstractEnvironment, this.environment);
 				}
-				
-				result.abstractEnvironment = this.environment;
+				console.debug(this.environment);
 				break;
 			case '<-':
 				result = this.evalLeftAssignment(lhs.id as string, rhs.abstractElement as AbstractElement);
-				this.updateInvariant(binaryOp.info.fullRange, result);
+				this.environment.updateValueFromName(lhs.id as string, rhs.abstractElement as AbstractElement);
+				this.updateInvariantFromEnvironment(binaryOp.info.fullRange, this.environment);
 				break;
 			case '&&': // `AND2` case
-				result.abstractEnvironment = this.stateDomain.intersection(lhs.abstractEnvironment as AbstractEnvironment, rhs.abstractEnvironment as AbstractEnvironment);
+				if(!lhs.abstractElement){
+					throw new Error('evalBinaryOp::&& lhs.abstractElement is undefined');
+				}
+				if(this.domain.evalCondition(lhs.abstractElement)) {
+					lhs.abstractEnvironment = this.environment.clone();
+				} else {
+					lhs.abstractEnvironment = this.stateDomain.bottom;
+				}
+
+
+				if(!rhs.abstractElement){
+					throw new Error('evalBinaryOp::&& rhs.abstractElement is undefined');
+				}
+				if(this.domain.evalCondition(rhs.abstractElement)) {
+					rhs.abstractEnvironment = this.environment.clone();
+				} else {
+					rhs.abstractEnvironment = this.stateDomain.bottom;
+				}
+
+				result.abstractEnvironment = this.stateDomain.intersection(rhs.abstractEnvironment, lhs.abstractEnvironment);
+				console.debug('result of intersection:');
+				console.debug(result.abstractEnvironment);
+				result.abstractElement = this.domain.evalBinaryOp(binaryOp.operator, rhs.abstractElement, lhs.abstractElement);
 				break;
 			case '||': // `OR2` case
-				result.abstractEnvironment = this.stateDomain.union(lhs.abstractEnvironment as AbstractEnvironment, rhs.abstractEnvironment as AbstractEnvironment);
-				break;
 			default:
 				throw new Error(`NonRelationalValueAnalysis::foldRBinaryOp ${binaryOp.operator} not handled`);
 		}
-
+		
+		// console.debug(`${binaryOp.info.fullLexeme}`);
+		// console.debug('result');
+		// console.debug(result);
+		// console.debug('this.environment');
+		// console.debug(this.environment);
 		return result;
 	}
 
 	evalLeftAssignment(id: string, value: AbstractElement): ReturnElement {
-		this.environment.updateValueFromName(id, value);
 
 		const result: ReturnElement = new ReturnElement();
 		result.id = id;
 		result.abstractElement = value;
-		result.abstractEnvironment = this.environment.clone();
+		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
+		result.abstractEnvironment.updateValueFromName(id, value);
 
 		return result;
 	}
@@ -198,35 +248,55 @@ export class NonRelationalValueAnalysis<
 			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse conditionResult::abstractEnvironment undefined');
 		}
 
+		console.debug('condition.assume:');
+		console.debug(conditionResult.abstractEnvironment);
+
 		const thenAnalysis = new NonRelationalValueAnalysis<T,S>(this.domain, this.stateDomain);
-		thenAnalysis.environment = conditionResult.abstractEnvironment?.clone();
+		thenAnalysis.environment = this.assume(conditionResult.abstractEnvironment, this.environment);
+		console.debug('thenAnalysis.environment:');
+		console.debug(thenAnalysis.environment);
 		const _thenResult = thenAnalysis.fold(ite.then);
 
 		this.updateInvariants(thenAnalysis.invariants);
 
-		const negConditionResult = this.stateDomain.evalUnaryOp('!', conditionResult.abstractEnvironment);
-		if(!negConditionResult) {
+		const negConditionAssume = this.stateDomain.evalUnaryOp('!', conditionResult.abstractEnvironment);
+		if(!negConditionAssume) {
 			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse negConditionResult undefined');
 		}
+		console.debug('negConditionAssume:');
+		console.debug(negConditionAssume);
 		
 		const result = new ReturnElement();
 
 		if(ite.otherwise) {
 			const otherwiseAnalysis = new NonRelationalValueAnalysis<T,S>(this.domain, this.stateDomain);
-			otherwiseAnalysis.environment = negConditionResult.clone();
+
+			otherwiseAnalysis.environment = this.assume(negConditionAssume, this.environment);
+			console.debug('otherwiseAnalysis.environment:');
+			console.debug(otherwiseAnalysis.environment);
+
 			const _otherwiseResult = otherwiseAnalysis.fold(ite.otherwise);
 
 			this.updateInvariants(otherwiseAnalysis.invariants);
 
 			result.abstractEnvironment = this.stateDomain.union(thenAnalysis.environment, otherwiseAnalysis.environment);
+			console.debug('result of then union otherwise:');
+			console.debug(result.abstractEnvironment);
 		} else {
 			result.abstractEnvironment = this.stateDomain.union(thenAnalysis.environment, this.environment);
+			console.debug('result of then union this.environment:');
+			console.debug(result.abstractEnvironment);
 		}
 
-		this.environment = this.stateDomain.union(this.environment, result.abstractEnvironment);
-		result.abstractEnvironment = this.environment;
+		console.debug('result of if-then-else:');
+		console.debug(result.abstractEnvironment);
+		this.environment = result.abstractEnvironment;
 
 		this.updateInvariant(ite.info.fullRange, result);
 		return result;
+	}
+
+	assume(condition: AbstractEnvironment, environment: AbstractEnvironment): AbstractEnvironment {
+		return this.stateDomain.assume(condition, environment);
 	}
 }

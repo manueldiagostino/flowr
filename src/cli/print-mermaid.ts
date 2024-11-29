@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 
 import { processCommandLineArgs } from './common/script';
 import { guard } from '../util/assert';
@@ -8,7 +11,7 @@ import * as fs from 'fs';
 import { normalizedAstToMermaid } from '../util/mermaid/ast';
 
 
-export interface AbsIntCliOptions {
+export interface PrintMermaidCliOptions {
 	verbose:         boolean;
 	help:            boolean;
 	input:           string | undefined;
@@ -17,35 +20,42 @@ export interface AbsIntCliOptions {
 	stats:           boolean;
 	domain:          string;
 }
-const options = processCommandLineArgs<AbsIntCliOptions>('abs-int', ['domain', 'input'], {
+const options = processCommandLineArgs<PrintMermaidCliOptions>('abs-int', ['output', 'input'], {
 	subtitle: 'Perform Abstract Interpretation Analysis',
 	examples: [
-		'{bold -d} {italic "sign"} {bold -i} {italic test/testfiles/example.R}',
-		'{bold -d} {italic "sign"} {bold -i} {italic "example.R"} {bold --stats}',
-		'{bold -d} {italic "sign"} {bold -r} {italic "a <- 3\\\\nb <- 4\\\\nprint(a)"}',
-		'{bold --help}',
+		'{bold -i} {italic "test/testfiles/example.R"} {bold -o} {italic "tmp/output.mmd"}',
+		'{bold -i} {italic "example.R"} {bold -o} {italic "output.mmd"} {bold --stats}',
 	],
 });
 
 async function getAbsInt() {
+
 	guard(options.input !== undefined, 'The input must be specified');
-	guard(options.domain !== undefined, 'An abstract domain must be specified');
+	guard(options.output !== undefined, 'An output must be specified');
+	
 	const shell = new RShell();
 	try {
 		const pipeline = new PipelineExecutor(DEFAULT_ABSINT_PIPELINE, {
 			shell,
-			domain:  options.domain,
+			domain:  'sign',
 			request: options['input-is-text']
 				? { request: 'text', content: options.input }
 				: { request: 'file', content: options.input },
 		});
+
 		const result = await pipeline.allRemainingSteps();
 		const normalizedAST = result.normalize.ast;
 		const mermaidCode = normalizedAstToMermaid(normalizedAST);
 
-		const mermaidFilePath = './normalizedAST.mmd';
+		const mermaidFilePath = options.output;
 
-		// Scrivi il codice Mermaid in un file
+		// Creare la directory se non esiste
+		// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-call
+		const dir = require('path').dirname(mermaidFilePath);
+		if(!fs.existsSync(dir)) {
+			fs.mkdirSync(dir, { recursive: true });
+		}
+
 		fs.writeFileSync(mermaidFilePath, mermaidCode, 'utf8');
 		console.log(`Mermaid diagram exported to ${mermaidFilePath}`);
 		// console.log(JSON.stringify(normalizedAST, null, 2));

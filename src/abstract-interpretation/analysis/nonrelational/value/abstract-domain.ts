@@ -108,4 +108,6 @@ export interface NonRelationalValueAbstractDomain<T extends Lattice<AbstractElem
  * @returns The result of applying the operator to operand.
  */
 	evalUnaryOp(operator: string, operand: AbstractElement): AbstractElement;
+
+	evalCondition(operand: AbstractElement): boolean;
 }
