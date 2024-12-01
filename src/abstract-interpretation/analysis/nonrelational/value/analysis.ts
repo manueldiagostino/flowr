@@ -2,7 +2,7 @@ import type { NonRelationalValueAbstractDomain } from './abstract-domain';
 import type { Lattice } from '../../lattice';
 import type { LatticeElement } from '../../lattice-element';
 import { DefaultNormalizedAstFold } from '../../../normalized-ast-fold';
-import type { NoInfo } from '../../../../r-bridge/lang-4.x/ast/model/model';
+import type { NoInfo, RNode } from '../../../../r-bridge/lang-4.x/ast/model/model';
 import type { RNumber } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import type { RBinaryOp } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
 import type { RExpressionList } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-expression-list';
@@ -13,6 +13,7 @@ import type { Variable } from '../../variable';
 import type { SourceRange } from '../../../../util/range';
 import type { NonRelationalValueStateAbstractDomain } from './non-relational-value-state-abstract-domain';
 import type { RIfThenElse } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-if-then-else';
+import type { RWhileLoop } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-while-loop';
 
 type AbstractElement = LatticeElement;
 type AbstractEnvironment = NonRelationalValueAbstractEnvironment<Variable, AbstractElement>;
@@ -115,7 +116,6 @@ export class NonRelationalValueAnalysis<
 	foldRNumber(node: RNumber<NoInfo>): ReturnElement {
 		const result: ReturnElement = new ReturnElement();
 		result.abstractElement = this.domain.getAbstract(node.content.num.toString());
-		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
 		return result;
 	}
 
@@ -136,10 +136,8 @@ export class NonRelationalValueAnalysis<
 		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
 		if(this.environment.hasKey(node.lexeme)){
 			result.abstractElement = this.environment.apply(node.lexeme);
-			result.abstractEnvironment.updateValueFromName(node.lexeme, result.abstractElement);
 		} else {
 			result.abstractElement = this.domain.top;
-			result.abstractEnvironment.updateValueFromName(node.lexeme, this.domain.top);
 		}
 
 		return result;
@@ -160,7 +158,22 @@ export class NonRelationalValueAnalysis<
 				break;
 		}
 
-		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
+		return result;
+	}
+
+	evalLeftAssignment(id: string, value: AbstractElement, fullRange?: SourceRange): ReturnElement {
+
+		const result: ReturnElement = new ReturnElement();
+		result.id = id;
+		result.abstractElement = value;
+
+		if(!fullRange){
+			throw new Error('NonRelationalValueAnalysis::evalLeftAssignment fullRange is undefined');
+		}
+
+		this.environment.updateValueFromName(id, value);
+		this.updateInvariantFromEnvironment(fullRange, this.environment);
+
 		return result;
 	}
 
@@ -175,128 +188,93 @@ export class NonRelationalValueAnalysis<
 			case '*':
 			case '/':
 				result.abstractElement = this.domain.evalBinaryOp(binaryOp.operator, lhs.abstractElement as AbstractElement, rhs.abstractElement as AbstractElement);
-				console.debug('lhs.abstractEnvironment');
-				console.debug(lhs.abstractEnvironment);
-				console.debug('rhs.abstractEnvironment');
-				console.debug(rhs.abstractEnvironment);
-				if(lhs.abstractEnvironment && rhs.abstractEnvironment) {
-					this.environment = this.stateDomain.union(lhs.abstractEnvironment, rhs.abstractEnvironment);
-				} else if(lhs.abstractEnvironment) {
-					this.environment = this.stateDomain.union(lhs.abstractEnvironment, this.environment);
-				} else if(rhs.abstractEnvironment) {
-					this.environment = this.stateDomain.union(rhs.abstractEnvironment, this.environment);
-				}
-				console.debug(this.environment);
 				break;
 			case '<-':
-				result = this.evalLeftAssignment(lhs.id as string, rhs.abstractElement as AbstractElement);
-				this.environment.updateValueFromName(lhs.id as string, rhs.abstractElement as AbstractElement);
-				this.updateInvariantFromEnvironment(binaryOp.info.fullRange, this.environment);
+				result = this.evalLeftAssignment(lhs.id as string, rhs.abstractElement as AbstractElement, binaryOp.info.fullRange);
 				break;
-			case '&&': // `AND2` case
-				if(!lhs.abstractElement){
-					throw new Error('evalBinaryOp::&& lhs.abstractElement is undefined');
-				}
-				if(this.domain.evalCondition(lhs.abstractElement)) {
-					lhs.abstractEnvironment = this.environment.clone();
-				} else {
-					lhs.abstractEnvironment = this.stateDomain.bottom;
-				}
-
-
-				if(!rhs.abstractElement){
-					throw new Error('evalBinaryOp::&& rhs.abstractElement is undefined');
-				}
-				if(this.domain.evalCondition(rhs.abstractElement)) {
-					rhs.abstractEnvironment = this.environment.clone();
-				} else {
-					rhs.abstractEnvironment = this.stateDomain.bottom;
-				}
-
-				result.abstractEnvironment = this.stateDomain.intersection(rhs.abstractEnvironment, lhs.abstractEnvironment);
-				console.debug('result of intersection:');
-				console.debug(result.abstractEnvironment);
-				result.abstractElement = this.domain.evalBinaryOp(binaryOp.operator, rhs.abstractElement, lhs.abstractElement);
+			case '&&':
+			case '||':
+				result.abstractElement = this.domain.top;
 				break;
-			case '||': // `OR2` case
 			default:
 				throw new Error(`NonRelationalValueAnalysis::foldRBinaryOp ${binaryOp.operator} not handled`);
 		}
-		
-		// console.debug(`${binaryOp.info.fullLexeme}`);
-		// console.debug('result');
-		// console.debug(result);
-		// console.debug('this.environment');
-		// console.debug(this.environment);
-		return result;
-	}
-
-	evalLeftAssignment(id: string, value: AbstractElement): ReturnElement {
-
-		const result: ReturnElement = new ReturnElement();
-		result.id = id;
-		result.abstractElement = value;
-		result.abstractEnvironment = new NonRelationalValueAbstractEnvironment('', this.domain.top);
-		result.abstractEnvironment.updateValueFromName(id, value);
-
 		return result;
 	}
 
 	foldRIfThenElse(ite: RIfThenElse<NoInfo>): ReturnElement {
 		const conditionResult = this.fold(ite.condition);
-		if(!conditionResult.abstractEnvironment) {
-			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse conditionResult::abstractEnvironment undefined');
+		if(!conditionResult.abstractElement) {
+			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse conditionResult.abstractElement undefined');
 		}
 
-		console.debug('condition.assume:');
-		console.debug(conditionResult.abstractEnvironment);
+		const preEnvironment = this.environment.clone();
 
 		const thenAnalysis = new NonRelationalValueAnalysis<T,S>(this.domain, this.stateDomain);
-		thenAnalysis.environment = this.assume(conditionResult.abstractEnvironment, this.environment);
-		console.debug('thenAnalysis.environment:');
-		console.debug(thenAnalysis.environment);
+		thenAnalysis.environment = this.assume(ite.condition, preEnvironment);
 		const _thenResult = thenAnalysis.fold(ite.then);
-
 		this.updateInvariants(thenAnalysis.invariants);
 
-		const negConditionAssume = this.stateDomain.evalUnaryOp('!', conditionResult.abstractEnvironment);
-		if(!negConditionAssume) {
-			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse negConditionResult undefined');
-		}
-		console.debug('negConditionAssume:');
-		console.debug(negConditionAssume);
-		
 		const result = new ReturnElement();
-
 		if(ite.otherwise) {
 			const otherwiseAnalysis = new NonRelationalValueAnalysis<T,S>(this.domain, this.stateDomain);
-
-			otherwiseAnalysis.environment = this.assume(negConditionAssume, this.environment);
-			console.debug('otherwiseAnalysis.environment:');
-			console.debug(otherwiseAnalysis.environment);
-
+			otherwiseAnalysis.environment = this.assumeNot(ite.condition, preEnvironment);
 			const _otherwiseResult = otherwiseAnalysis.fold(ite.otherwise);
-
 			this.updateInvariants(otherwiseAnalysis.invariants);
 
 			result.abstractEnvironment = this.stateDomain.union(thenAnalysis.environment, otherwiseAnalysis.environment);
-			console.debug('result of then union otherwise:');
-			console.debug(result.abstractEnvironment);
+			// console.debug('result of \'then\' union \'otherwise\':');
+			// console.debug(result.abstractEnvironment);
 		} else {
-			result.abstractEnvironment = this.stateDomain.union(thenAnalysis.environment, this.environment);
-			console.debug('result of then union this.environment:');
-			console.debug(result.abstractEnvironment);
+			result.abstractEnvironment = thenAnalysis.environment;
+			// console.debug('result of \'then\'');
+			// console.debug(result.abstractEnvironment);
 		}
 
-		console.debug('result of if-then-else:');
-		console.debug(result.abstractEnvironment);
+		// console.debug('result of if-then-else:');
+		// console.debug(result.abstractEnvironment);
 		this.environment = result.abstractEnvironment;
 
-		this.updateInvariant(ite.info.fullRange, result);
+		this.updateInvariantFromEnvironment(ite.info.fullRange, this.environment);
 		return result;
 	}
 
-	assume(condition: AbstractEnvironment, environment: AbstractEnvironment): AbstractEnvironment {
+	foldRWhileLoop(loop: RWhileLoop<NoInfo>): ReturnElement {
+		const conditionResult = this.fold(loop.condition);
+		if(!conditionResult.abstractElement) {
+			throw new Error('NonRelationalValueAnalysis::foldRIfThenElse conditionResult.abstractElement undefined');
+		}
+
+		const preEnvironment = this.environment.clone();
+		let argEnvironment = this.environment.clone();
+		const result = new ReturnElement();
+		result.abstractEnvironment = argEnvironment;
+
+		do{
+			argEnvironment = result.abstractEnvironment;
+			console.debug('argEnvironment');
+			console.debug(argEnvironment);
+
+			const bodyAnalysis = new NonRelationalValueAnalysis<T,S>(this.domain, this.stateDomain);
+			bodyAnalysis.environment = this.assume(loop.condition, argEnvironment);
+			const _bodyResult = bodyAnalysis.fold(loop.body);
+			
+
+			result.abstractEnvironment = this.stateDomain.widening(argEnvironment, this.stateDomain.union(preEnvironment, bodyAnalysis.environment));
+
+			console.debug('resEnvironment');
+			console.debug(result.abstractEnvironment);
+		} while(!argEnvironment.isEqual(result.abstractEnvironment));
+
+		this.environment = this.assumeNot(loop.condition, result.abstractEnvironment);
+		this.updateInvariantFromEnvironment(loop.info.fullRange, this.environment);
+		return result;
+	}
+
+	assume(condition: RNode, environment: AbstractEnvironment): AbstractEnvironment {
+		return this.stateDomain.assume(condition, environment);
+	}
+	assumeNot(condition: RNode, environment: AbstractEnvironment): AbstractEnvironment {
 		return this.stateDomain.assume(condition, environment);
 	}
 }

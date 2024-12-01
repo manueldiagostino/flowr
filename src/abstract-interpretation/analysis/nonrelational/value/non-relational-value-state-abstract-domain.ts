@@ -5,6 +5,7 @@ import { NonRelationalValueAbstractState } from './non-relational-value-abstract
 import { Variable } from '../../variable';
 import { BottomNonRelationalValueAbstractEnvironment, NonRelationalValueAbstractEnvironment, TopNonRelationalValueAbstractEnvironment } from './non-relational-value-abstract-environment';
 import { EmptySet } from '../../utils';
+import type { RNode } from '../../../../r-bridge/lang-4.x/ast/model/model';
 
 export type StateLatticeElement = NonRelationalValueAbstractEnvironment<Variable, LatticeElement>;
 
@@ -251,7 +252,11 @@ implements NonRelationalValueAbstractDomain<NonRelationalValueAbstractState<Vari
 		throw new Error('Method not implemented.');
 	}
 
-	assume(condition: StateLatticeElement, operand: StateLatticeElement): StateLatticeElement {
-		return this.intersection(condition, operand);
+	assume(_condition: RNode, operand: StateLatticeElement): StateLatticeElement {
+		return operand.clone();
+	}
+
+	assumeNot(_condition: RNode, operand: StateLatticeElement): StateLatticeElement {
+		return operand.clone();
 	}
 }
