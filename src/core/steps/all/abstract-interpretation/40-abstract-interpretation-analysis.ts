@@ -14,8 +14,8 @@ function processor(results: { normalize?: NormalizedAst }, input : Partial<AbsIn
 }
 
 export const ABSINT_ANALYSIS = {
-	name:              'abstract-interpretation',
-	humanReadableName: 'abstract-interpretation',
+	name:              'abstract_interpretation',
+	humanReadableName: 'abstract_interpretation',
 	description:       'Abstract interpretation analysis',
 	processor,
 	executed:          PipelineStepStage.OncePerRequest,
@@ -24,4 +24,4 @@ export const ABSINT_ANALYSIS = {
 		[StepOutputFormat.Internal]: internalPrinter,
 	},
 	requiredInput: undefined as unknown as AbsInteRequiredInput
-} as const satisfies DeepReadonly<IPipelineStep<'abstract-interpretation', typeof processor>>;
+} as const satisfies DeepReadonly<IPipelineStep<'abstract_interpretation', typeof processor>>;

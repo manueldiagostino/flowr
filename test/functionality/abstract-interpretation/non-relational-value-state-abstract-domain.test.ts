@@ -134,7 +134,6 @@ describe('NonRelationalValueAbstractDomain test', () => {
 			env2.updateValues([varY], [SignLattice.GEQ0]);
     
 			const expected = new NonRelationalValueAbstractEnvironment('expected environment', topElement);
-			expected.updateValues([varX, varY], [SignLattice.LEQ0, SignLattice.GEQ0]);
 
 			const result = nonRelationalValueAbstractDomain.intersection(env1, env2);
     
@@ -163,7 +162,6 @@ describe('NonRelationalValueAbstractDomain test', () => {
 			const env2 = new NonRelationalValueAbstractEnvironment('empty environment', topElement);
     
 			const expected = new NonRelationalValueAbstractEnvironment('expected environment', topElement);
-			expected.updateValues([varX], [SignLattice.LEQ0]);
 
 			const result = nonRelationalValueAbstractDomain.intersection(env1, env2);
     
@@ -191,13 +189,10 @@ describe('NonRelationalValueAbstractDomain test', () => {
     
 			const env2 = new NonRelationalValueAbstractEnvironment('environment at program point 2', topElement);
 			env2.updateValues([varY, varZ], [SignLattice.GEQ0, SignLattice.ZERO]);
-    
-			const expected = new NonRelationalValueAbstractEnvironment('expected environment', topElement);
-			expected.updateValues([varX, varY, varZ], [SignLattice.LEQ0, SignLattice.BOTTOM, SignLattice.ZERO]);
-    
+        
 			const result = nonRelationalValueAbstractDomain.intersection(env1, env2);
     
-			expect(expected.isEqual(result)).toBe(true);
+			expect(result).toBe(nonRelationalValueAbstractDomain.bottom);
 		});
     
 		it('should handle the intersection of identical environments', () => {

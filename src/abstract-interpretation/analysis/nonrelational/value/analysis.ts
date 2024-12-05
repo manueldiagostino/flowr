@@ -14,6 +14,7 @@ import type { SourceRange } from '../../../../util/range';
 import type { NonRelationalValueStateAbstractDomain } from './non-relational-value-state-abstract-domain';
 import type { RIfThenElse } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-if-then-else';
 import type { RWhileLoop } from '../../../../r-bridge/lang-4.x/ast/model/nodes/r-while-loop';
+import type { AbstractInterpretationResults } from '../../../execute-abs-int';
 
 type AbstractElement = LatticeElement;
 type AbstractEnvironment = NonRelationalValueAbstractEnvironment<Variable, AbstractElement>;
@@ -47,6 +48,15 @@ export class NonRelationalValueAnalysis<
 		this.environment = new NonRelationalValueAbstractEnvironment('NonRelationalValueAnalysisEnvironment', this.domain.top);
 		this.invariants = new Map();
 		this.stateDomain = state;
+	}
+
+	getResults(): AbstractInterpretationResults {
+		const points = Array.from(this.invariants.entries()).map(([programPoint, environment]) => ({
+			programPoint: programPoint.toString(),
+			environment:  JSON.parse(environment) as Record<string, string>,
+		}));
+	
+		return { points };
 	}
 
 	getInvariants(): Map<SourceRange, string> {
@@ -194,6 +204,11 @@ export class NonRelationalValueAnalysis<
 				break;
 			case '&&':
 			case '||':
+			case '>':
+			case '>=':
+			case '<':
+			case '<=':
+			case '==':
 				result.abstractElement = this.domain.top;
 				break;
 			default:
@@ -252,8 +267,6 @@ export class NonRelationalValueAnalysis<
 
 		do{
 			argEnvironment = result.abstractEnvironment;
-			console.debug('argEnvironment');
-			console.debug(argEnvironment);
 
 			const bodyAnalysis = new NonRelationalValueAnalysis<T,S>(this.domain, this.stateDomain);
 			bodyAnalysis.environment = this.assume(loop.condition, argEnvironment);
@@ -262,8 +275,6 @@ export class NonRelationalValueAnalysis<
 
 			result.abstractEnvironment = this.stateDomain.widening(argEnvironment, this.stateDomain.union(preEnvironment, bodyAnalysis.environment));
 
-			console.debug('resEnvironment');
-			console.debug(result.abstractEnvironment);
 		} while(!argEnvironment.isEqual(result.abstractEnvironment));
 
 		this.environment = this.assumeNot(loop.condition, result.abstractEnvironment);
