@@ -9,7 +9,7 @@ import { type SatisfiableDomain, NumericalComparator } from './satisfiable-domai
 export const IntervalTop: IntervalValue = [-Infinity, +Infinity];
 
 /** The type of the actual values of the interval domain as tuple of the lower and upper bound */
-type IntervalValue = readonly [lower: number, upper: number];
+export type IntervalValue = readonly [lower: number, upper: number];
 /** The type of the Top element of the interval domain as interval [-∞, +∞] */
 type IntervalTop = typeof IntervalTop;
 /** The type of the Bottom element of the interval domain as {@link Bottom} symbol */
