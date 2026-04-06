@@ -202,7 +202,9 @@ export class VectorAttrDomain<Value extends VectorAttrLift = VectorAttrLift>
 		return this.isValue() && this.value.must.size === VectorAttrs.length;
 	}
 
-	public equals(other: this): boolean {
+	public equals(other: VectorAttrDomain): boolean;
+	public equals(other: this): boolean;
+	public equals(other: this | VectorAttrDomain): boolean {
 		if(this.value === other.value) {
 			return true;
 		}
@@ -219,7 +221,9 @@ export class VectorAttrDomain<Value extends VectorAttrLift = VectorAttrLift>
 	 * - Larger must set = more definite information = lower in lattice
 	 * - Larger may set = more possible information = higher in lattice
 	 */
-	public leq(other: this): boolean {
+	public leq(other: VectorAttrDomain): boolean;
+	public leq(other: this): boolean;
+	public leq(other: this | VectorAttrDomain): boolean {
 		if(this.value === Bottom) {
 			return true;
 		}
@@ -235,8 +239,9 @@ export class VectorAttrDomain<Value extends VectorAttrLift = VectorAttrLift>
 	 * Join (LUB): (must₁ ∩ must₂, may₁ ∪ may₂)
 	 */
 	public join(other: VectorAttrLift): this;
+	public join(other: VectorAttrDomain): this;
 	public join(other: this): this;
-	public join(other: this | VectorAttrLift): this {
+	public join(other: this | VectorAttrLift | VectorAttrDomain): this {
 		const otherValue = other instanceof VectorAttrDomain ? other.value : other;
 
 		if(this.value === Bottom) {
@@ -254,8 +259,9 @@ export class VectorAttrDomain<Value extends VectorAttrLift = VectorAttrLift>
 	 * Meet (GLB): (must₁ ∪ must₂, may₁ ∩ may₂)
 	 */
 	public meet(other: VectorAttrLift): this;
+	public meet(other: VectorAttrDomain): this;
 	public meet(other: this): this;
-	public meet(other: this | VectorAttrLift): this {
+	public meet(other: this | VectorAttrLift | VectorAttrDomain): this {
 		const otherValue = other instanceof VectorAttrDomain ? other.value : other;
 
 		if(this.value === Bottom || otherValue === Bottom) {
@@ -274,14 +280,18 @@ export class VectorAttrDomain<Value extends VectorAttrLift = VectorAttrLift>
 	/**
 	 * Widening is the same as join for this finite lattice.
 	 */
-	public widen(other: this): this {
+	public widen(other: VectorAttrDomain): this;
+	public widen(other: this): this;
+	public widen(other: this | VectorAttrDomain): this {
 		return this.join(other);
 	}
 
 	/**
 	 * Narrowing is the same as meet for this finite lattice.
 	 */
-	public narrow(other: this): this {
+	public narrow(other: VectorAttrDomain): this;
+	public narrow(other: this): this;
+	public narrow(other: this | VectorAttrDomain): this {
 		return this.meet(other);
 	}
 

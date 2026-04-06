@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unified-signatures */
 import { IntervalDomain, type IntervalValue } from './interval-domain';
 import { Bottom, Top } from './lattice';
 
@@ -63,7 +64,9 @@ export class StrictlyPosIntervalDomain<Value extends StrictlyPosIntervalLift = S
 		return StrictlyPosIntervalDomain.bottom();
 	}
 
-	public widen(other: this): this {
+	public widen(other: StrictlyPosIntervalDomain): this;
+	public widen(other: this): this;
+	public widen(other: this | StrictlyPosIntervalDomain): this {
 		if(this.value === Bottom) {
 			return this.create(other.value);
 		} else if(other.value === Bottom) {
@@ -76,7 +79,9 @@ export class StrictlyPosIntervalDomain<Value extends StrictlyPosIntervalLift = S
 		}
 	}
 
-	public narrow(other: this): this {
+	public narrow(other: StrictlyPosIntervalDomain): this;
+	public narrow(other: this): this;
+	public narrow(other: this | StrictlyPosIntervalDomain): this {
 		if(this.value === Bottom || other.value === Bottom) {
 			return this.bottom();
 		} else if(Math.max(this.value[0], other.value[0]) > Math.min(this.value[1], other.value[1])) {
