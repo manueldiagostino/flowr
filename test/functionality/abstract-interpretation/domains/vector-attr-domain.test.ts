@@ -49,14 +49,14 @@ describe('Vector Attribute Domain', () => {
 		});
 		assertAbstractDomain(create, { must: [] as VectorAttr[], may: AllAttrs }, Bottom, {
 			equal:    false, leq:      false, join:     { must: [] as VectorAttr[], may: AllAttrs }, meet:     Bottom, widen:    { must: [] as VectorAttr[], may: AllAttrs },
-			narrow:   Bottom, concrete: Top
+			narrow:   Bottom, concrete: undefined
 		});
 	});
 
 	describe('Top Interactions', () => {
 		assertAbstractDomain(create, { must: [] as VectorAttr[], may: AllAttrs }, { must: [] as VectorAttr[], may: [] as VectorAttr[] }, {
 			equal:    false, leq:      false, join:     { must: [] as VectorAttr[], may: AllAttrs }, meet:     { must: [] as VectorAttr[], may: [] as VectorAttr[] },
-			widen:    { must: [] as VectorAttr[], may: AllAttrs }, narrow:   { must: [] as VectorAttr[], may: [] as VectorAttr[] }, concrete: Top
+			widen:    { must: [] as VectorAttr[], may: AllAttrs }, narrow:   { must: [] as VectorAttr[], may: [] as VectorAttr[] }, concrete: undefined
 		});
 		assertAbstractDomain(create, { must: AllAttrs, may: AllAttrs }, { must: [] as VectorAttr[], may: AllAttrs }, {
 			equal:    false, leq:      true, join:     { must: [] as VectorAttr[], may: AllAttrs }, meet:     { must: AllAttrs, may: AllAttrs },
@@ -65,7 +65,7 @@ describe('Vector Attribute Domain', () => {
 		});
 		assertAbstractDomain(create, { must: [] as VectorAttr[], may: AllAttrs }, { must: AllAttrs, may: AllAttrs }, {
 			equal:    false, leq:      false, join:     { must: [] as VectorAttr[], may: AllAttrs }, meet:     { must: AllAttrs, may: AllAttrs },
-			widen:    { must: [] as VectorAttr[], may: AllAttrs }, narrow:   { must: AllAttrs, may: AllAttrs }, concrete: Top
+			widen:    { must: [] as VectorAttr[], may: AllAttrs }, narrow:   { must: AllAttrs, may: AllAttrs }, concrete: undefined
 		});
 	});
 
@@ -163,7 +163,7 @@ describe('Vector Attribute Domain', () => {
 		assertAbstractDomain(create, { must: [] as VectorAttr[], may: AllAttrs }, { must: [] as VectorAttr[], may: AllAttrs }, {
 			equal:    true, leq:      true, join:     { must: [] as VectorAttr[], may: AllAttrs }, meet:     { must: [] as VectorAttr[], may: AllAttrs },
 			widen:    { must: [] as VectorAttr[], may: AllAttrs }, narrow:   { must: [] as VectorAttr[], may: AllAttrs },
-			concrete: Top
+			concrete: undefined
 		});
 	});
 
