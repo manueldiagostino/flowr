@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unified-signatures */
 import type {
 	AnyAbstractDomain,
 	ConcreteDomain,
@@ -89,7 +90,9 @@ export class KnownInitialPositionsDomain<
 			>;
 	}
 
-	public equals(other: this): boolean {
+	public equals(other: KnownInitialPositionsDomain<Domain>): boolean;
+	public equals(other: this): boolean;
+	public equals(other: this | KnownInitialPositionsDomain<Domain>): boolean {
 		if(this.value === other.value) {
 			return true;
 		}
@@ -107,7 +110,9 @@ export class KnownInitialPositionsDomain<
 		return thisValue.every((elem, i) => elem.equals(otherValue[i]));
 	}
 
-	public leq(other: this): boolean {
+	public leq(other: KnownInitialPositionsDomain<Domain>): boolean;
+	public leq(other: this): boolean;
+	public leq(other: this | KnownInitialPositionsDomain<Domain>): boolean {
 		if(this.equals(other)) {
 			return true;
 		}
@@ -125,7 +130,9 @@ export class KnownInitialPositionsDomain<
 		return thisValue.every((elem, i) => elem.leq(otherValue[i]));
 	}
 
-	public join(other: this): this {
+	public join(other: KnownInitialPositionsDomain<Domain>): this;
+	public join(other: this): this;
+	public join(other: this | KnownInitialPositionsDomain<Domain>): this {
 		if(this.isBottom()) {
 			return this.create(other.value);
 		}
@@ -153,7 +160,9 @@ export class KnownInitialPositionsDomain<
 		return this.create(common);
 	}
 
-	public meet(other: this): this {
+	public meet(other: KnownInitialPositionsDomain<Domain>): this;
+	public meet(other: this): this;
+	public meet(other: this | KnownInitialPositionsDomain<Domain>): this {
 		if(this.isBottom() || other.isBottom()) {
 			return this.bottom();
 		}
@@ -173,7 +182,9 @@ export class KnownInitialPositionsDomain<
 		return this.create(result);
 	}
 
-	public widen(other: this): this {
+	public widen(other: KnownInitialPositionsDomain<Domain>): this;
+	public widen(other: this): this;
+	public widen(other: this | KnownInitialPositionsDomain<Domain>): this {
 		if(this.isBottom()) {
 			return this.create(other.value);
 		}
@@ -193,7 +204,9 @@ export class KnownInitialPositionsDomain<
 		return this.create(result);
 	}
 
-	public narrow(other: this): this {
+	public narrow(other: KnownInitialPositionsDomain<Domain>): this;
+	public narrow(other: this): this;
+	public narrow(other: this | KnownInitialPositionsDomain<Domain>): this {
 		return this.meet(other);
 	}
 
