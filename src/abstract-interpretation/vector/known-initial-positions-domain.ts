@@ -6,7 +6,8 @@ import type {
 import { AbstractDomain } from '../domains/abstract-domain';
 import { Top, Bottom, BottomSymbol } from '../domains/lattice';
 
-type KnownInitialPositionsValue<Domain extends AnyAbstractDomain> = readonly Domain[];
+type KnownInitialPositionsValue<Domain extends AnyAbstractDomain> =
+	readonly Domain[];
 type KnownInitialPositionsTop = readonly [];
 type KnownInitialPositionsBottom = typeof Bottom;
 type KnownInitialPositionsLift<Domain extends AnyAbstractDomain> =
@@ -23,7 +24,8 @@ export type DomainFactory<Domain extends AnyAbstractDomain> = (
 
 export class KnownInitialPositionsDomain<
 	Domain extends AnyAbstractDomain,
-	Value extends KnownInitialPositionsLift<Domain> = KnownInitialPositionsLift<Domain>,
+	Value extends KnownInitialPositionsLift<Domain> =
+		KnownInitialPositionsLift<Domain>,
 > extends AbstractDomain<
 		readonly ConcreteDomain<Domain>[],
 		KnownInitialPositionsValue<Domain>,
