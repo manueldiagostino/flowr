@@ -214,7 +214,7 @@ export class KnownInitialPositionsDomain<
 
 	// Not computable
 	public concretize(
-		limit: number,
+		_limit: number,
 	): ReadonlySet<readonly ConcreteDomain<Domain>[]> | typeof Top {
 		if(this.isTop()) {
 			return Top;

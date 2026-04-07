@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/unified-signatures */
+
 import type { AnyAbstractDomain, ConcreteDomain } from '../domains/abstract-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { ProductDomain } from '../domains/product-domain';
@@ -19,25 +19,25 @@ export type { DomainFactory } from './known-initial-positions-domain';
  *
  * Invariants maintained by reduce():
  * 1. values.length ≤ length.upper (if length.upper is finite)
- * 2. If length.lower > values.length, positions [values.length, length.lower-1] are Bottom
+ * 2. If length.lower \> values.length, positions [values.length, length.lower-1] are Bottom
  * 3. If values array grows beyond a threshold, excess elements are joined into summary
  * @template Domain - The abstract domain for individual vector elements
  */
 export type VectorProduct<Domain extends AnyAbstractDomain> = {
 	/** The possible range of vector lengths as [min, max] interval */
-	length: PosIntervalDomain;
+	length:  PosIntervalDomain;
 	/** Known abstract values for positions 0 to values.length-1 (the prefix) */
-	values: KnownInitialPositionsDomain<Domain>;
+	values:  KnownInitialPositionsDomain<Domain>;
 	/** Abstract value summarizing all positions from values.length onwards */
 	summary: Domain;
 };
 
 /**
- * Maximum number of elements to track in the known prefix.
- * Beyond this threshold, elements are joined into the summary.
- * This prevents unbounded growth during fixpoint iteration.
+ * Safety limit for the maximum number of elements to track in the known prefix.
+ * This is a fallback to prevent extreme memory usage in pathological cases.
+ * Under normal operation, widening should control prefix growth.
  */
-const MAX_KNOWN_PREFIX_LENGTH = 20;
+const SafetyMaxPrefixLength = 1000;
 
 /**
  * The vector abstract domain as a reduced product of length, known prefix values, and summary.
@@ -94,8 +94,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	): VectorDomain<Domain> {
 		const summaryTop = factory(Top as ReadonlySet<ConcreteDomain<Domain>> | typeof Top);
 		return new VectorDomain({
-			length: PosIntervalDomain.top(),
-			values: KnownInitialPositionsDomain.top(factory),
+			length:  PosIntervalDomain.top(),
+			values:  KnownInitialPositionsDomain.top(factory),
 			summary: summaryTop
 		}, factory);
 	}
@@ -110,8 +110,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const bottomDomain = KnownInitialPositionsDomain.bottom<Domain>(factory);
 		const summaryBottom = bottomDomain.create(Bottom) as unknown as Domain;
 		return new VectorDomain({
-			length: PosIntervalDomain.bottom(),
-			values: bottomDomain,
+			length:  PosIntervalDomain.bottom(),
+			values:  bottomDomain,
 			summary: summaryBottom
 		}, factory);
 	}
@@ -125,7 +125,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 *    the values array cannot exceed that bound. Excess elements are
 	 *    joined into the summary.
 	 *
-	 * 2. **Prefix-Summary Gap**: If length.lower > values.length, the positions
+	 * 2. **Prefix-Summary Gap**: If length.lower \> values.length, the positions
 	 *    [values.length, length.lower-1] conceptually contain Bottom (no values possible).
 	 *
 	 * 3. **Size Limit**: The values array is limited to MAX_KNOWN_PREFIX_LENGTH elements
@@ -137,21 +137,22 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * @returns The reduced value with maintained invariants
 	 */
 	protected reduce(value: VectorProduct<Domain>): VectorProduct<Domain> {
-		if (value.length.isBottom() || value.values.isBottom()) {
+		if(value.length.isBottom() || value.values.isBottom()) {
 			return value;
 		}
 
-		let { length, values, summary } = value;
+		const { length } = value;
+		let { values, summary } = value;
 		let modified = false;
 
-		if (length.isValue()) {
+		if(length.isValue()) {
 			const upperBound = length.value[1];
 
-			if (Number.isFinite(upperBound) && values.isValue()) {
+			if(Number.isFinite(upperBound) && values.isValue()) {
 				const valuesArray = values.value as readonly Domain[];
 
-				if (valuesArray.length > upperBound) {
-					for (let i = upperBound; i < valuesArray.length; i++) {
+				if(valuesArray.length > upperBound) {
+					for(let i = upperBound; i < valuesArray.length; i++) {
 						summary = summary.join(valuesArray[i]);
 					}
 					values = values.create(valuesArray.slice(0, upperBound));
@@ -159,25 +160,80 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 				}
 
 				const lowerBound = length.value[0];
-				if (lowerBound === upperBound && valuesArray.length === upperBound) {
+				if(lowerBound === upperBound && valuesArray.length === upperBound) {
 					summary = summary.bottom();
 					modified = true;
 				}
 			}
 		}
 
-		if (values.isValue()) {
+		if(values.isValue()) {
 			const valuesArray = values.value as readonly Domain[];
 
-			if (valuesArray.length > MAX_KNOWN_PREFIX_LENGTH) {
-				for (let i = MAX_KNOWN_PREFIX_LENGTH; i < valuesArray.length; i++) {
+			if(valuesArray.length > SafetyMaxPrefixLength) {
+				for(let i = SafetyMaxPrefixLength; i < valuesArray.length; i++) {
 					summary = summary.join(valuesArray[i]);
 				}
-				values = values.create(valuesArray.slice(0, MAX_KNOWN_PREFIX_LENGTH));
+				values = values.create(valuesArray.slice(0, SafetyMaxPrefixLength));
 				modified = true;
 			}
 		}
 
 		return modified ? { length, values, summary } : value;
+	}
+
+	/**
+	 * Widening operator for VectorDomain following array segmentation analysis.
+	 * Unlike the default ProductDomain.widen(), this implementation handles
+	 * the prefix/summary split by collapsing excess positions into the summary
+	 * when vector lengths differ, ensuring termination without a hardcoded limit.
+	 * @param other - The other vector domain to widen with
+	 * @returns The widened vector domain
+	 */
+	public widen(other: this): this {
+		if(this.isBottom()) {
+			return this.create(other.value);
+		}
+		if(other.isBottom()) {
+			return this.create(this.value);
+		}
+
+		const newLength = this.length.widen(other.length);
+		let newSummary = this.summary.widen(other.summary);
+		let newValues: KnownInitialPositionsDomain<Domain>;
+
+		if(this.values.isTop() || other.values.isTop()) {
+			newValues = KnownInitialPositionsDomain.top(this.factory);
+		} else if(this.values.isBottom()) {
+			newValues = other.values;
+		} else if(other.values.isBottom()) {
+			newValues = this.values;
+		} else {
+			const thisArr = this.values.value as readonly Domain[];
+			const otherArr = other.values.value as readonly Domain[];
+
+			const commonLen = Math.min(thisArr.length, otherArr.length);
+
+			const commonPrefix: Domain[] = [];
+			for(let i = 0; i < commonLen; i++) {
+				commonPrefix.push(thisArr[i].widen(otherArr[i]));
+			}
+
+			for(let i = commonLen; i < thisArr.length; i++) {
+				newSummary = newSummary.join(thisArr[i]);
+			}
+
+			for(let i = commonLen; i < otherArr.length; i++) {
+				newSummary = newSummary.join(otherArr[i]);
+			}
+
+			newValues = this.values.create(commonPrefix);
+		}
+
+		return this.create({
+			length:  newLength,
+			values:  newValues,
+			summary: newSummary
+		});
 	}
 }
