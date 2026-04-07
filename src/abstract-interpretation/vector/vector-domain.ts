@@ -128,7 +128,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * 2. **Prefix-Summary Gap**: If length.lower \> values.length, the positions
 	 *    [values.length, length.lower-1] conceptually contain Bottom (no values possible).
 	 *
-	 * 3. **Size Limit**: The values array is limited to MAX_KNOWN_PREFIX_LENGTH elements
+	 * 3. **Size Limit**: The values array is limited to `SafetyMaxPrefixLength` elements
 	 *    to ensure termination. Excess elements are joined into the summary.
 	 *
 	 * 4. **Summary Propagation**: When the length upper bound is finite and equals
