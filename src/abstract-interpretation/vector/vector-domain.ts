@@ -4,18 +4,17 @@ import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { ProductDomain } from '../domains/product-domain';
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
+import { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { Bottom, Top } from '../domains/lattice';
 
 export type { DomainFactory } from './known-initial-positions-domain';
 
 /**
  * The abstract product representing the abstraction of an R vector.
- * Following the array segmentation analysis from abstract interpretation literature
- * (e.g., Gopan, Reps, Sagiv 2005 - A Framework for Numeric Analysis of Array Operations),
- * a vector is abstracted as:
  * - length: the possible range of vector lengths [min, max]
- * - values: a sequence of abstract values for the known prefix (positions 0 to k-1)
+ * - values: a sequence of abstract values for the known positions (positions 0 to k-1)
  * - summary: a single abstract value summarizing ALL positions from k onwards (if any)
+ * - attributes: abstraction of the R vector attributes (names, dim, class, other)
  *
  * Invariants maintained by reduce():
  * 1. values.length ≤ length.upper (if length.upper is finite)
@@ -25,27 +24,24 @@ export type { DomainFactory } from './known-initial-positions-domain';
  */
 export type VectorProduct<Domain extends AnyAbstractDomain> = {
 	/** The possible range of vector lengths as [min, max] interval */
-	length:  PosIntervalDomain;
-	/** Known abstract values for positions 0 to values.length-1 (the prefix) */
-	values:  KnownInitialPositionsDomain<Domain>;
+	length:     PosIntervalDomain;
+	/** Known abstract values for positions 0 to values.length-1 */
+	values:     KnownInitialPositionsDomain<Domain>;
 	/** Abstract value summarizing all positions from values.length onwards */
-	summary: Domain;
+	summary:    Domain;
+	/** Abstraction of R vector attributes (names, dim, class, other) */
+	attributes: VectorAttrDomain;
 };
 
 /**
- * Safety limit for the maximum number of elements to track in the known prefix.
+ * Safety limit for the maximum number of elements to track in the known positions.
  * This is a fallback to prevent extreme memory usage in pathological cases.
- * Under normal operation, widening should control prefix growth.
+ * Under normal operation, widening should control growth of known positions.
  */
-const SafetyMaxPrefixLength = 1000;
+const SafetyMaxKnownLength = 1000;
 
 /**
- * The vector abstract domain as a reduced product of length, known prefix values, and summary.
- *
- * This domain abstracts an R vector by:
- * - Tracking the possible length range
- * - Keeping precise abstract values for an initial segment (prefix)
- * - Using a summary value for all remaining positions
+ * The vector abstract domain as a reduced product of length, known positions, and summary.
  *
  * The lattice structure follows the component-wise ordering with reduction
  * to maintain consistency between components.
@@ -72,37 +68,45 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
-	 * The current abstract values for the known prefix.
+	 * The current abstract values for the known positions.
 	 */
 	public get values(): VectorProduct<Domain>['values'] {
 		return this.value.values;
 	}
 
 	/**
-	 * The summary abstract value for all positions beyond the known prefix.
+	 * The summary abstract value for all positions beyond the known positions.
 	 */
 	public get summary(): VectorProduct<Domain>['summary'] {
 		return this.value.summary;
 	}
 
 	/**
+	 * The attribute abstraction representing the set of attributes the vector may possess.
+	 */
+	public get attributes(): VectorProduct<Domain>['attributes'] {
+		return this.value.attributes;
+	}
+
+	/**
 	 * Creates the top element of the vector domain.
-	 * Represents any possible vector: unknown length, empty prefix, summary is top.
+	 * Represents any possible vector: unknown length, empty content, summary is top, attributes is top.
 	 */
 	public static top<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
 		const summaryTop = factory(Top as ReadonlySet<ConcreteDomain<Domain>> | typeof Top);
 		return new VectorDomain({
-			length:  PosIntervalDomain.top(),
-			values:  KnownInitialPositionsDomain.top(factory),
-			summary: summaryTop
+			length:     PosIntervalDomain.top(),
+			values:     KnownInitialPositionsDomain.top(factory),
+			summary:    summaryTop,
+			attributes: VectorAttrDomain.top()
 		}, factory);
 	}
 
 	/**
 	 * Creates the bottom element of the vector domain.
-	 * Represents no possible vector: bottom length, bottom prefix, bottom summary.
+	 * Represents no possible vector: bottom length, bottom known positions, bottom summary, bottom attributes.
 	 */
 	public static bottom<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>
@@ -110,9 +114,10 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const bottomDomain = KnownInitialPositionsDomain.bottom<Domain>(factory);
 		const summaryBottom = bottomDomain.create(Bottom) as unknown as Domain;
 		return new VectorDomain({
-			length:  PosIntervalDomain.bottom(),
-			values:  bottomDomain,
-			summary: summaryBottom
+			length:     PosIntervalDomain.bottom(),
+			values:     bottomDomain,
+			summary:    summaryBottom,
+			attributes: VectorAttrDomain.bottom()
 		}, factory);
 	}
 
@@ -121,18 +126,18 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 *
 	 * Following the paper's array segmentation analysis, this enforces:
 	 *
-	 * 1. **Length-Prefix Consistency**: If length has a finite upper bound,
+	 * 1. **Length-Content Consistency**: If length has a finite upper bound,
 	 *    the values array cannot exceed that bound. Excess elements are
 	 *    joined into the summary.
 	 *
-	 * 2. **Prefix-Summary Gap**: If length.lower \> values.length, the positions
+	 * 2. **Known-Summary Gap**: If length.lower \> values.length, the positions
 	 *    [values.length, length.lower-1] conceptually contain Bottom (no values possible).
 	 *
-	 * 3. **Size Limit**: The values array is limited to `SafetyMaxPrefixLength` elements
+	 * 3. **Size Limit**: The values array is limited to `SafetyMaxKnownLength` elements
 	 *    to ensure termination. Excess elements are joined into the summary.
 	 *
 	 * 4. **Summary Propagation**: When the length upper bound is finite and equals
-	 *    the values length, the summary should be Bottom (no elements beyond prefix).
+	 *    the values length, the summary should be Bottom (no elements beyond known positions).
 	 * @param value - The product value to reduce
 	 * @returns The reduced value with maintained invariants
 	 */
@@ -141,7 +146,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			return value;
 		}
 
-		const { length } = value;
+		const { length, attributes } = value;
 		let { values, summary } = value;
 		let modified = false;
 
@@ -170,22 +175,22 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		if(values.isValue()) {
 			const valuesArray = values.value as readonly Domain[];
 
-			if(valuesArray.length > SafetyMaxPrefixLength) {
-				for(let i = SafetyMaxPrefixLength; i < valuesArray.length; i++) {
+			if(valuesArray.length > SafetyMaxKnownLength) {
+				for(let i = SafetyMaxKnownLength; i < valuesArray.length; i++) {
 					summary = summary.join(valuesArray[i]);
 				}
-				values = values.create(valuesArray.slice(0, SafetyMaxPrefixLength));
+				values = values.create(valuesArray.slice(0, SafetyMaxKnownLength));
 				modified = true;
 			}
 		}
 
-		return modified ? { length, values, summary } : value;
+		return modified ? { length, values, summary, attributes } : value;
 	}
 
 	/**
-	 * Widening operator for VectorDomain following array segmentation analysis.
+	 * Widening operator for VectorDomain.
 	 * Unlike the default ProductDomain.widen(), this implementation handles
-	 * the prefix/summary split by collapsing excess positions into the summary
+	 * the known/summary split by collapsing excess positions into the summary
 	 * when vector lengths differ, ensuring termination without a hardcoded limit.
 	 * @param other - The other vector domain to widen with
 	 * @returns The widened vector domain
@@ -202,6 +207,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 
 		const newLength = this.length.widen(other.length);
 		let newSummary = this.summary.widen(other.summary);
+		const newAttributes = this.attributes.join(other.attributes);
 		let newValues: KnownInitialPositionsDomain<Domain>;
 
 		if(this.values.isTop() || other.values.isTop()) {
@@ -216,9 +222,9 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 
 			const commonLen = Math.min(thisArr.length, otherArr.length);
 
-			const commonPrefix: Domain[] = [];
+			const commonKnown: Domain[] = [];
 			for(let i = 0; i < commonLen; i++) {
-				commonPrefix.push(thisArr[i].widen(otherArr[i]));
+				commonKnown.push(thisArr[i].widen(otherArr[i]));
 			}
 
 			for(let i = commonLen; i < thisArr.length; i++) {
@@ -229,13 +235,14 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 				newSummary = newSummary.join(otherArr[i]);
 			}
 
-			newValues = this.values.create(commonPrefix);
+			newValues = this.values.create(commonKnown);
 		}
 
 		return this.create({
-			length:  newLength,
-			values:  newValues,
-			summary: newSummary
+			length:     newLength,
+			values:     newValues,
+			summary:    newSummary,
+			attributes: newAttributes
 		});
 	}
 }
