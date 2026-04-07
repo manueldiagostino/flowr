@@ -1,4 +1,4 @@
-
+/* eslint-disable @typescript-eslint/unified-signatures */
 import type { AnyAbstractDomain, ConcreteDomain } from '../domains/abstract-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { ProductDomain } from '../domains/product-domain';
@@ -190,7 +190,9 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * @param other - The other vector domain to widen with
 	 * @returns The widened vector domain
 	 */
-	public widen(other: this): this {
+	public widen(other: VectorDomain<Domain>): this;
+	public widen(other: this): this;
+	public widen(other: this | VectorDomain<Domain>): this {
 		if(this.isBottom()) {
 			return this.create(other.value);
 		}
