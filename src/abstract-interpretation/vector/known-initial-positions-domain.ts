@@ -4,7 +4,7 @@ import type {
 	ConcreteDomain,
 } from '../domains/abstract-domain';
 import { AbstractDomain } from '../domains/abstract-domain';
-import { Top, Bottom, BottomSymbol } from '../domains/lattice';
+import { Top, Bottom, BottomSymbol, NA } from '../domains/lattice';
 
 type KnownInitialPositionsValue<Domain extends AnyAbstractDomain> =
 	readonly Domain[];
@@ -17,22 +17,23 @@ type KnownInitialPositionsLift<Domain extends AnyAbstractDomain> =
 
 /**
  * Factory function to create domain values from a set of concrete values.
+ * Supports concrete values, Top (all values), or NA (Not Available).
  */
 export type DomainFactory<Domain extends AnyAbstractDomain> = (
-	concrete: ReadonlySet<ConcreteDomain<Domain>> | typeof Top,
+	concrete: ReadonlySet<ConcreteDomain<Domain>> | typeof Top | typeof NA,
 ) => Domain;
 
 export class KnownInitialPositionsDomain<
 	Domain extends AnyAbstractDomain,
 	Value extends KnownInitialPositionsLift<Domain> =
-		KnownInitialPositionsLift<Domain>,
+	KnownInitialPositionsLift<Domain>,
 > extends AbstractDomain<
-		readonly ConcreteDomain<Domain>[],
-		KnownInitialPositionsValue<Domain>,
-		KnownInitialPositionsTop,
-		KnownInitialPositionsBottom,
-		Value
-	> {
+	readonly ConcreteDomain<Domain>[],
+	KnownInitialPositionsValue<Domain>,
+	KnownInitialPositionsTop,
+	KnownInitialPositionsBottom,
+	Value
+> {
 	private readonly factory: DomainFactory<Domain>;
 
 	constructor(value: Value, factory: DomainFactory<Domain>) {
@@ -95,18 +96,18 @@ export class KnownInitialPositionsDomain<
 	public equals(other: KnownInitialPositionsDomain<Domain>): boolean;
 	public equals(other: this): boolean;
 	public equals(other: this | KnownInitialPositionsDomain<Domain>): boolean {
-		if(this.value === other.value) {
+		if (this.value === other.value) {
 			return true;
 		}
-		if(this.isBottom() || other.isBottom()) {
+		if (this.isBottom() || other.isBottom()) {
 			return false;
 		}
-		if(this.isTop() || other.isTop()) {
+		if (this.isTop() || other.isTop()) {
 			return false;
 		}
 		const thisValue = this.value as KnownInitialPositionsValue<Domain>;
 		const otherValue = other.value as KnownInitialPositionsValue<Domain>;
-		if(thisValue.length !== otherValue.length) {
+		if (thisValue.length !== otherValue.length) {
 			return false;
 		}
 		return thisValue.every((elem, i) => elem.equals(otherValue[i]));
@@ -115,18 +116,18 @@ export class KnownInitialPositionsDomain<
 	public leq(other: KnownInitialPositionsDomain<Domain>): boolean;
 	public leq(other: this): boolean;
 	public leq(other: this | KnownInitialPositionsDomain<Domain>): boolean {
-		if(this.equals(other)) {
+		if (this.equals(other)) {
 			return true;
 		}
-		if(this.isBottom() || other.isTop()) {
+		if (this.isBottom() || other.isTop()) {
 			return true;
 		}
-		if(other.isBottom() || this.isTop()) {
+		if (other.isBottom() || this.isTop()) {
 			return false;
 		}
 		const thisValue = this.value as KnownInitialPositionsValue<Domain>;
 		const otherValue = other.value as KnownInitialPositionsValue<Domain>;
-		if(thisValue.length > otherValue.length) {
+		if (thisValue.length > otherValue.length) {
 			return false;
 		}
 		return thisValue.every((elem, i) => elem.leq(otherValue[i]));
@@ -135,28 +136,28 @@ export class KnownInitialPositionsDomain<
 	public join(other: KnownInitialPositionsDomain<Domain>): this;
 	public join(other: this): this;
 	public join(other: this | KnownInitialPositionsDomain<Domain>): this {
-		if(this.isBottom()) {
+		if (this.isBottom()) {
 			return this.create(other.value);
 		}
-		if(other.isBottom()) {
+		if (other.isBottom()) {
 			return this.create(this.value);
 		}
-		if(this.isTop()) {
+		if (this.isTop()) {
 			return this.create(this.value);
 		}
-		if(other.isTop()) {
+		if (other.isTop()) {
 			return this.create(other.value);
 		}
 		const thisValue = this.value as KnownInitialPositionsValue<Domain>;
 		const otherValue = other.value as KnownInitialPositionsValue<Domain>;
 		const m = Math.min(thisValue.length, otherValue.length);
 		const common = [];
-		for(let i = 0; i < m; i++) {
+		for (let i = 0; i < m; i++) {
 			common.push(thisValue[i].join(otherValue[i]));
 		}
-		if(thisValue.length > otherValue.length) {
+		if (thisValue.length > otherValue.length) {
 			return this.create([...common, ...thisValue.slice(m)]);
-		} else if(otherValue.length > thisValue.length) {
+		} else if (otherValue.length > thisValue.length) {
 			return this.create([...common, ...otherValue.slice(m)]);
 		}
 		return this.create(common);
@@ -165,20 +166,20 @@ export class KnownInitialPositionsDomain<
 	public meet(other: KnownInitialPositionsDomain<Domain>): this;
 	public meet(other: this): this;
 	public meet(other: this | KnownInitialPositionsDomain<Domain>): this {
-		if(this.isBottom() || other.isBottom()) {
+		if (this.isBottom() || other.isBottom()) {
 			return this.bottom();
 		}
-		if(this.isTop()) {
+		if (this.isTop()) {
 			return this.create(other.value);
 		}
-		if(other.isTop()) {
+		if (other.isTop()) {
 			return this.create(this.value);
 		}
 		const thisValue = this.value as KnownInitialPositionsValue<Domain>;
 		const otherValue = other.value as KnownInitialPositionsValue<Domain>;
 		const m = Math.min(thisValue.length, otherValue.length);
 		const result = [];
-		for(let i = 0; i < m; i++) {
+		for (let i = 0; i < m; i++) {
 			result.push(thisValue[i].meet(otherValue[i]));
 		}
 		return this.create(result);
@@ -187,20 +188,20 @@ export class KnownInitialPositionsDomain<
 	public widen(other: KnownInitialPositionsDomain<Domain>): this;
 	public widen(other: this): this;
 	public widen(other: this | KnownInitialPositionsDomain<Domain>): this {
-		if(this.isBottom()) {
+		if (this.isBottom()) {
 			return this.create(other.value);
 		}
-		if(other.isBottom()) {
+		if (other.isBottom()) {
 			return this.create(this.value);
 		}
-		if(this.isTop() || other.isTop()) {
+		if (this.isTop() || other.isTop()) {
 			return this.top();
 		}
 		const thisValue = this.value as KnownInitialPositionsValue<Domain>;
 		const otherValue = other.value as KnownInitialPositionsValue<Domain>;
 		const m = Math.min(thisValue.length, otherValue.length);
 		const result = [];
-		for(let i = 0; i < m; i++) {
+		for (let i = 0; i < m; i++) {
 			result.push(thisValue[i].widen(otherValue[i]));
 		}
 		return this.create(result);
@@ -216,10 +217,10 @@ export class KnownInitialPositionsDomain<
 	public concretize(
 		_limit: number,
 	): ReadonlySet<readonly ConcreteDomain<Domain>[]> | typeof Top {
-		if(this.isTop()) {
+		if (this.isTop()) {
 			return Top;
 		}
-		if(this.isBottom()) {
+		if (this.isBottom()) {
 			return new Set();
 		}
 		return Top;
@@ -228,30 +229,30 @@ export class KnownInitialPositionsDomain<
 	public abstract(
 		concrete: ReadonlySet<readonly ConcreteDomain<Domain>[]> | typeof Top,
 	): this {
-		if(concrete === Top) {
+		if (concrete === Top) {
 			return this.top();
 		}
-		if(concrete.size === 0) {
+		if (concrete.size === 0) {
 			return this.bottom();
 		}
 		const arrays = [...concrete];
-		if(arrays.length === 1) {
+		if (arrays.length === 1) {
 			// Single array: abstract each element individually
 			const result = arrays[0].map((elem) => this.factory(new Set([elem])));
 			return this.create(result as KnownInitialPositionsValue<Domain>);
 		}
 
 		let maxLen = arrays[0].length;
-		for(let i = 1; i < arrays.length; i++) {
-			if(arrays[i].length > maxLen) {
+		for (let i = 1; i < arrays.length; i++) {
+			if (arrays[i].length > maxLen) {
 				maxLen = arrays[i].length;
 			}
 		}
 		const result = [];
-		for(let i = 0; i < maxLen; i++) {
+		for (let i = 0; i < maxLen; i++) {
 			const valuesAtPos = new Set<ConcreteDomain<Domain>>();
-			for(const arr of arrays) {
-				if(i < arr.length) {
+			for (const arr of arrays) {
+				if (i < arr.length) {
 					valuesAtPos.add(arr[i]);
 				}
 			}
@@ -262,14 +263,14 @@ export class KnownInitialPositionsDomain<
 	}
 
 	public toJson(): unknown {
-		if(this.value === Bottom) {
+		if (this.value === Bottom) {
 			return this.value.description;
 		}
 		return this.value.map((entry) => entry.toJson());
 	}
 
 	public toString(): string {
-		if(this.value === Bottom) {
+		if (this.value === Bottom) {
 			return BottomSymbol;
 		}
 		return '[' + this.value.map((value) => value.toString()).join(', ') + ']';

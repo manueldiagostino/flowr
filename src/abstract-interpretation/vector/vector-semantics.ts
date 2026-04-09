@@ -8,12 +8,35 @@ import { ConstraintType } from '../data-frame/semantics';
 export { ConstraintType };
 
 /**
+ * Interface for a single vector operation.
+ * This matches the pattern used in DataFrame shape inference.
+ */
+export interface VectorOperation<Name extends VectorOperationName = VectorOperationName> {
+	/** The type of the abstract vector operation (see {@link VectorOperationName}) */
+	operation: Name;
+	/** The ID of the vector operand of the operation (may be `undefined`) */
+	operand: string | undefined;
+	/** The optional constraint type to overwrite the default type of the operation (see {@link ConstraintType}) */
+	type?: ConstraintType;
+	/** Additional arguments for the operation (depends on the operation type) */
+	[key: string]: unknown;
+}
+
+/**
+ * A sequence of vector operations returned by mappers.
+ * Each operation is applied in sequence, with the result of one becoming the operand of the next.
+ */
+export type VectorOperations = VectorOperation[] | undefined;
+
+/**
  * Mapper for defining the abstract vector operations and mapping them to semantics applier functions,
  * including information about the type of the resulting constraints that are inferred by the operation.
+ * Each entry maps an operation name to its applier function and resulting constraint type.
  */
 const VectorSemanticsMapper = {
 	'setAttr': { apply: applySetAttrSemantics, type: ConstraintType.OperandModification },
 	'recycle': { apply: applyRecycleSemantics, type: ConstraintType.ResultPostcondition },
+	'concatenate': { apply: applyConcatenateSemantics, type: ConstraintType.ResultPostcondition },
 	'selectPositive': { apply: applySelectPositiveSemantics, type: ConstraintType.OperandPrecondition },
 	'selectNegative': { apply: applySelectNegativeSemantics, type: ConstraintType.OperandPrecondition },
 	'selectLogical': { apply: applySelectLogicalSemantics, type: ConstraintType.OperandPrecondition },
@@ -78,10 +101,6 @@ export function applyVectorSemantics<Name extends VectorOperationName>(
 export function getConstraintType(operation: VectorOperationName): ConstraintType {
 	return VectorSemanticsMapper[operation].type;
 }
-
-/* ============================================================================
- * Phase 1: Foundation Operations (Paper Section 4.4 - 4.5)
- * ============================================================================ */
 
 /**
  * Sets attributes on a vector.
@@ -260,7 +279,7 @@ export function adjustForZeros(
 	let definiteZeros = 0; // |{i : γ(pᵢ) = {0}}|
 	let possibleZeros = 0; // |{i : 0 ∈ γ(pᵢ)}|
 
-	if (values.isValue()) {
+	if (values.isValue() && Array.isArray(values.value)) {
 		const knownPositionValues = values.value as readonly IntervalDomain[];
 		for (const val of knownPositionValues) {
 			if (val.isValue()) {
@@ -286,7 +305,7 @@ export function adjustForZeros(
 	// Build modified known positions using Propagate
 	const newKnownPositionValues: PosIntervalDomain[] = [];
 
-	if (values.isValue()) {
+	if (values.isValue() && Array.isArray(values.value)) {
 		const knownPositionValues = values.value as readonly PosIntervalDomain[];
 
 		for (let i = 0; i < knownPositionValues.length; i++) {
@@ -339,12 +358,16 @@ function applyRecycleSemantics<Domain extends AnyAbstractDomain>(
 		return value.bottom();
 	}
 
+	// Join the summaries to propagate NA information
+	// If either vector has NA, the combined result should have NA
+	const combinedSummary = value.summary.join(other.summary);
+
 	// If either is top, the aligned length is top
 	if (len1.isTop() || len2.isTop()) {
 		return value.create({
 			length: len1.top(),
 			values: value.values.top(),
-			summary: value.summary.top(),
+			summary: combinedSummary,
 			attributes: value.attributes.join(other.attributes)
 		});
 	}
@@ -353,7 +376,7 @@ function applyRecycleSemantics<Domain extends AnyAbstractDomain>(
 		return value.create({
 			length: len1.top(),
 			values: value.values.top(),
-			summary: value.summary.top(),
+			summary: combinedSummary,
 			attributes: value.attributes.join(other.attributes)
 		});
 	}
@@ -372,7 +395,7 @@ function applyRecycleSemantics<Domain extends AnyAbstractDomain>(
 		return value.create({
 			length: len1.top(),
 			values: value.values.top(),
-			summary: value.summary.top(),
+			summary: combinedSummary,
 			attributes: value.attributes.join(other.attributes)
 		});
 	}
@@ -380,17 +403,131 @@ function applyRecycleSemantics<Domain extends AnyAbstractDomain>(
 	// Compatible recycling: use the longer length
 	const recycledLength = len1.create([newLower, newUpper]);
 
+	// Join the values domains to combine element information
+	const combinedValues = value.values.join(other.values);
+
 	return value.create({
 		length: recycledLength,
-		values: value.values,
-		summary: value.summary,
+		values: combinedValues,
+		summary: combinedSummary,
 		attributes: value.attributes.join(other.attributes)
 	});
 }
 
-/* ============================================================================
- * Phase 2: Selection Operations (Paper Section 4.9)
- * ============================================================================ */
+/**
+ * Concatenates two vectors using a slicing-based algorithm.
+ * For c(v1, v2), this creates a new vector with length = len(v1) + len(v2)
+ * and values computed using position-wise LUB for uncertain lengths.
+ *
+ * When lengths are uncertain (non-singleton intervals), the algorithm:
+ * 1. Starts with maximum concatenation (when first vector has max length)
+ * 2. Slides second vector leftward through the uncertainty window
+ * 3. Joins overlapping values at each position
+ *
+ * Complexity: O((u1 - l1) * |v2|) where [l1, u1] is the length interval of the first vector
+ * and |v2| is the number of known positions in the second vector.
+ *
+ * @param value - The first abstract vector
+ * @param other - The second abstract vector (may be undefined for single-element c())
+ * @returns A new vector with concatenated length and values
+ */
+function applyConcatenateSemantics<Domain extends AnyAbstractDomain>(
+	value: VectorDomain<Domain>,
+	{ other }: { other: VectorDomain<Domain> | undefined }
+): VectorDomain<Domain> {
+	// If other is undefined, return the value as-is (single-element c())
+	if (other === undefined) {
+		return value;
+	}
+
+	const len1 = value.length;
+	const len2 = other.length;
+
+	// If either is bottom, result is bottom
+	if (len1.isBottom() || len2.isBottom()) {
+		return value.bottom();
+	}
+
+	// If either is top, the result is top
+	if (len1.isTop() || len2.isTop()) {
+		return value.top();
+	}
+
+	if (!len1.isValue() || !len2.isValue()) {
+		return value.top();
+	}
+
+	const [l1, u1] = len1.value;
+	const [l2, u2] = len2.value;
+
+	// Concatenated length is the sum of the two lengths
+	const newLower = l1 + l2;
+	const newUpper = u1 + u2;
+	const concatenatedLength = len1.create([newLower, newUpper]);
+
+	// Concatenate known positions
+	let concatenatedValues: typeof value.values;
+
+	// Edge case: if one vector is empty (length [0, 0]), return the other's values
+	if (l1 === 0 && u1 === 0) {
+		concatenatedValues = other.values;
+	} else if (l2 === 0 && u2 === 0) {
+		concatenatedValues = value.values;
+	} else if (value.values.isBottom() || other.values.isBottom()) {
+		concatenatedValues = value.values.bottom();
+	} else if (value.values.isTop() || other.values.isTop()) {
+		concatenatedValues = value.values.top();
+	} else if (value.values.isValue() && other.values.isValue()) {
+		const values1 = value.values.value as readonly Domain[];
+		const values2 = other.values.value as readonly Domain[];
+
+		// Check if both lengths are certain (singleton intervals)
+		const certain1 = l1 === u1;
+		const certain2 = l2 === u2;
+
+		if (certain1 && certain2) {
+			// Simple concatenation for certain lengths
+			const concatenated = [...values1, ...values2];
+			concatenatedValues = value.values.create(concatenated);
+		} else {
+			// Slicing algorithm for uncertain lengths
+			// The known values arrays should already be expanded to match upper bounds
+			// values1.length === u1, values2.length === u2
+
+			// Start with max concatenation (when first vector has max length u1)
+			const result: Domain[] = [...values1, ...values2];
+
+			// Slide values2 leftward through the uncertainty window [l1, u1)
+			// When first vector has length len_a, values2 starts at position len_a
+			// We slide from u1-1 down to l1
+			for (let len_a = u1 - 1; len_a >= l1; len_a--) {
+				const v2_start = len_a; // values2 starts here when first vector has length len_a
+
+				// Join values2 at their new positions
+				for (let i = 0; i < values2.length; i++) {
+					const pos = v2_start + i;
+					if (pos < result.length) {
+						result[pos] = result[pos].join(values2[i]);
+					}
+				}
+			}
+
+			concatenatedValues = value.values.create(result);
+		}
+	} else {
+		concatenatedValues = value.values.top();
+	}
+
+	// Join summaries to propagate NA information
+	const combinedSummary = value.summary.join(other.summary);
+
+	return value.create({
+		length: concatenatedLength,
+		values: concatenatedValues,
+		summary: combinedSummary,
+		attributes: value.attributes.join(other.attributes)
+	});
+}
 
 /**
  * Helper: Access abstract value at position j from vector.
@@ -526,7 +663,7 @@ function applySelectPositiveSemantics<Domain extends AnyAbstractDomain>(
 	// Build result known positions from adjusted selector
 	const resultKnownPositions: Domain[] = [];
 
-	if (adjustedSelector.values.isValue()) {
+	if (adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
 		const selectorValues = adjustedSelector.values.value as readonly PosIntervalDomain[];
 
 		for (const idx of selectorValues) {
@@ -792,10 +929,6 @@ function applySelectLogicalSemantics<Domain extends AnyAbstractDomain>(
 		attributes: value.attributes
 	});
 }
-
-/* ============================================================================
- * Phase 3: Update Operations (Paper Section 4.8)
- * ============================================================================ */
 
 /**
  * Initializes a known positions array with a specific pattern.

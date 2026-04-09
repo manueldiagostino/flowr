@@ -4,11 +4,11 @@ import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain, type VectorAttr } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import type { Top } from '../../../../src/abstract-interpretation/domains/lattice';
+import type { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 
 describe('Vector Domain', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top): IntervalDomain => {
-		return IntervalDomain.abstract(concrete);
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+		return IntervalDomain.abstract(concrete as ReadonlySet<number> | typeof Top);
 	};
 
 	const mkVector = (

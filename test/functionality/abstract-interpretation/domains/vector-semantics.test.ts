@@ -4,7 +4,7 @@ import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { Top } from '../../../../src/abstract-interpretation/domains/lattice';
+import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import {
 	applyVectorSemantics,
 	getConstraintType,
@@ -16,8 +16,8 @@ import {
 } from '../../../../src/abstract-interpretation/vector/vector-semantics';
 
 describe('Vector Semantics', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top): IntervalDomain => {
-		return IntervalDomain.abstract(concrete);
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+		return IntervalDomain.abstract(concrete as ReadonlySet<number> | typeof Top);
 	};
 
 	const mkVector = (
@@ -208,10 +208,17 @@ describe('Vector Semantics', () => {
 	});
 
 	describe('Phase 1: adjustForZeros helper', () => {
-		const intervalFactory = (concrete: ReadonlySet<number> | typeof Top): IntervalDomain => {
-			if(concrete === Top) return IntervalDomain.top();
+		const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+			if(concrete === Top) {
+				return IntervalDomain.top();
+			}
+			if(concrete === NA) {
+				return IntervalDomain.bottom();
+			}
 			const arr = [...concrete] as number[];
-			if(arr.length === 0) return IntervalDomain.bottom();
+			if(arr.length === 0) {
+				return IntervalDomain.bottom();
+			}
 			return new IntervalDomain([Math.min(...arr), Math.max(...arr)]);
 		};
 
@@ -585,6 +592,163 @@ describe('Vector Semantics', () => {
 
 			// No positions selected for update
 			assert.ok(result.length.isValue() || result.length.isTop());
+		});
+	});
+
+	describe('concatenation', () => {
+		/**
+		 * BUG: The current applyConcatenateSemantics naively concatenates values as
+		 * `[...values1, ...values2]`. This is WRONG when vectors have uncertain lengths.
+		 *
+		 * Example of the bug:
+		 * - a: length [1,4], known values [[1,1],[2,2],[3,3],[4,4]]
+		 * - b: length [1,3], known values [[10,10],[20,20],[30,30]]
+		 *
+		 * Current behavior: values = [[1,1],[2,2],[3,3],[4,4],[10,10],[20,20],[30,30]]
+		 *                    position 4 gets [10,10] (WRONG!)
+		 *
+		 * Correct behavior: Position-wise LUB:
+		 * - Pos 0: [1,1] (always from a)
+		 * - Pos 1: [2,2] ⊔ [10,10] = [2,10] (from a if len>=2, from b if len=1)
+		 * - Pos 2: [3,3] ⊔ [20,20] = [3,20] (from a if len>=3, from b if len<=2)
+		 * - Pos 3: [4,4] ⊔ [30,30] = [4,30] (from a if len=4, from b if len<=3)
+		 * - Pos 4+: summary ⊔ [20,30] ⊔ [30,30] or just summary
+		 */
+
+		test('uncertain length concatenation uses position-wise LUB', () => {
+			// a: length [1,4], values [[1,1],[2,2],[3,3],[4,4]]
+			const a = mkVector([1, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]);
+			// b: length [1,3], values [[10,10],[20,20],[30,30]]
+			const b = mkVector([1, 3], [[10, 10], [20, 20], [30, 30]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			// The result length should be [2, 7] (1+1 to 4+3)
+			assert.strictEqual(result.length.toString(), '[2, 7]');
+
+			// With the slicing algorithm, position-wise LUB is computed:
+			// Position 0: [1,1] (always from a)
+			// Position 1: [2,2] ⊔ [10,10] = [2,10] (from a if len>=2, from b if len=1)
+			// Position 2: [3,3] ⊔ [10,10] ⊔ [20,20] = [3,20]
+			// Position 3: [4,4] ⊔ [10,10] ⊔ [20,20] ⊔ [30,30] = [4,30]
+			// Position 4: [10,10] ⊔ [20,20] ⊔ [30,30] = [10,30]
+			// Position 5: [20,20] ⊔ [30,30] = [20,30]
+			// Position 6: [30,30]
+			assert.strictEqual(result.values.isValue(), true);
+			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 10], [3, 20], [4, 30], [10, 30], [20, 30], [30, 30]]');
+		});
+
+		test('certain (singleton) lengths should still work correctly', () => {
+			// When both lengths are certain singletons, simple concatenation is correct
+			const a = mkVector([2, 2], [[1, 1], [2, 2]]);
+			const b = mkVector([3, 3], [[10, 10], [20, 20], [30, 30]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			// Length should be [5, 5]
+			assert.strictEqual(result.length.toString(), '[5, 5]');
+
+			// With certain lengths, concatenation should work and produce concrete values
+			assert.strictEqual(result.values.isValue(), true);
+			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2], [10, 10], [20, 20], [30, 30]]');
+		});
+
+		test('empty first vector returns second vector values', () => {
+			const a = mkVector([0, 0], []);
+			const b = mkVector([2, 2], [[1, 1], [2, 2]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			assert.strictEqual(result.length.toString(), '[2, 2]');
+			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2]]');
+		});
+
+		test('empty second vector returns first vector values', () => {
+			const a = mkVector([3, 3], [[1, 1], [2, 2], [3, 3]]);
+			const b = mkVector([0, 0], []);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			assert.strictEqual(result.length.toString(), '[3, 3]');
+			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
+		});
+
+		test('vectors with uncertain length use position-wise LUB', () => {
+			// a: length [2,5], all 5 positions are [1,1]
+			const a = mkVector([2, 5], [[1, 1], [1, 1], [1, 1], [1, 1], [1, 1]]);
+			// b: length [1,2], all 2 positions are [10,10]
+			const b = mkVector([1, 2], [[10, 10], [10, 10]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			// Result length should be [3, 7]
+			assert.strictEqual(result.length.toString(), '[3, 7]');
+
+			// With slicing algorithm:
+			// Max concat (a.len=5): [[1,1], [1,1], [1,1], [1,1], [1,1], [10,10], [10,10]]
+			// Slide b left from pos 4 to 2:
+			// - At len_a=4: join positions 4,5 with b[0],b[1] = [1,1]⊔[10,10]=[1,10]
+			// - At len_a=3: join positions 3,4 with b[0],b[1] = [1,1]⊔[10,10]=[1,10] 
+			// - At len_a=2: join positions 2,3 with b[0],b[1] = [1,1]⊔[10,10]=[1,10]
+			// Result: [[1,1], [1,1], [1,10], [1,10], [1,10], [10,10], [10,10]]
+			assert.strictEqual(result.values.isValue(), true);
+			assert.strictEqual(result.values.toString(), '[[1, 1], [1, 1], [1, 10], [1, 10], [1, 10], [10, 10], [10, 10]]');
+		});
+
+		test('bottom first operand returns bottom', () => {
+			const a = VectorDomain.bottom(intervalFactory);
+			const b = mkVector([2, 2], [[1, 1], [2, 2]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			assert.strictEqual(result.isBottom(), true);
+		});
+
+		test('bottom second operand returns bottom', () => {
+			const a = mkVector([3, 3], [[1, 1], [2, 2], [3, 3]]);
+			const b = VectorDomain.bottom(intervalFactory);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			assert.strictEqual(result.isBottom(), true);
+		});
+
+		test('top first operand returns top', () => {
+			const a = VectorDomain.top(intervalFactory);
+			const b = mkVector([2, 2], [[1, 1], [2, 2]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			assert.strictEqual(result.isTop(), true);
+		});
+
+		test('top second operand returns top', () => {
+			const a = mkVector([3, 3], [[1, 1], [2, 2], [3, 3]]);
+			const b = VectorDomain.top(intervalFactory);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			assert.strictEqual(result.isTop(), true);
+		});
+
+		test('uncertain length overlap uses position-wise LUB', () => {
+			// a: length [1,2], both positions are [5,5]
+			// b: length [1,2], both positions are [10,10]
+			const a = mkVector([1, 2], [[5, 5], [5, 5]]);
+			const b = mkVector([1, 2], [[10, 10], [10, 10]]);
+
+			const result = applyVectorSemantics('concatenate', a, { other: b });
+
+			// Length should be [2, 4]
+			assert.strictEqual(result.length.toString(), '[2, 4]');
+
+			// With slicing algorithm:
+			// Max concat (a.len=2): [[5,5], [5,5], [10,10], [10,10]]
+			// Slide b left from pos 1 to 1:
+			// - At len_a=1: join positions 1,2 with b[0],b[1] = [5,5]⊔[10,10]=[5,10]
+			// Result: [[5,5], [5,10], [10,10], [10,10]]
+			assert.strictEqual(result.values.isValue(), true);
+			assert.strictEqual(result.values.toString(), '[[5, 5], [5, 10], [10, 10], [10, 10]]');
 		});
 	});
 

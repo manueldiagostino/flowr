@@ -11,6 +11,12 @@ export const Bottom = Symbol('bottom');
 export const BottomSymbol = '⊥';
 
 /**
+ * The NA symbol to represent the Not Available value in R.
+ */
+export const NA = Symbol('na');
+export const NASymbol = 'NA';
+
+/**
  * A complete lattice with a partially ordered set, join operator (LUB), meet operator (GLB), top element, and bottom element (e.g. for abstract domains).
  * @template Value - Type of a lattice element representing a value (may exclude `Top` and `Bot`)
  * @template Top   - Type of the Top element (greatest element) of the complete lattice

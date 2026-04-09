@@ -2,10 +2,11 @@ import { assert, test, describe } from 'vitest';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom, Top } from '../../../../src/abstract-interpretation/domains/lattice';
+import type { NA } from '../../../../src/abstract-interpretation/domains/lattice';
 
 describe('Sequence Prefix Domain', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top): IntervalDomain => {
-		return IntervalDomain.abstract(concrete);
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+		return IntervalDomain.abstract(concrete as ReadonlySet<number> | typeof Top);
 	};
 
 	const mkBottom = () => KnownInitialPositionsDomain.bottom<IntervalDomain>(intervalFactory);
