@@ -19,6 +19,7 @@ import {
 	createFilteredSelector
 } from './vector-semantics';
 import { NA } from '../domains/lattice';
+import type { IntervalDomain } from '../domains/interval-domain';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { type ValueToDomainConverter, buildVectorFromLiteral } from './resolve-vector-args';
@@ -697,7 +698,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			case 'select':
 				return this.applySelect(
 					value,
-					args.selector as VectorDomain<PosIntervalDomain> | VectorDomain<Domain>,
+					args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
 					args.naValue as Domain,
 					args.selectorType as SelectorType | undefined
 				);
@@ -873,7 +874,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applySelect(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<PosIntervalDomain> | VectorDomain<Domain>,
+		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
 		naValue: Domain,
 		selectorType?: SelectorType
 	): VectorDomain<Domain> {
@@ -889,22 +890,23 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return this.applySelectLogical(value, selector as VectorDomain<Domain>, naValue);
 		}
 
-		const numericSelector = selector as VectorDomain<PosIntervalDomain>;
+		const numericSelector = selector as VectorDomain<IntervalDomain>;
 
 		if(!numericSelector.values.isValue() || !Array.isArray(numericSelector.values.value)) {
-			return this.applySelectPositive(value, numericSelector, naValue);
+			// Cannot enumerate selector values, apply positive selection conservatively
+			return this.applySelectPositive(value, numericSelector as unknown as VectorDomain<PosIntervalDomain>, naValue);
 		}
 
-		const selectorValues = numericSelector.values.value as readonly PosIntervalDomain[];
-		const positivePositions: PosIntervalDomain[] = [];
-		const negativePositions: PosIntervalDomain[] = [];
+		const selectorValues = numericSelector.values.value as readonly IntervalDomain[];
+		const positivePositions: IntervalDomain[] = [];
+		const negativePositions: IntervalDomain[] = [];
 
 		for(const pos of selectorValues) {
 			if(pos.isBottom()) {
 				continue;
 			}
 
-			const classification = classifyPosition(pos);
+			const classification = classifyPosition(pos as PosIntervalDomain);
 
 			switch(classification) {
 				case 'positive':
@@ -914,12 +916,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					negativePositions.push(pos);
 					break;
 				case 'ambiguous': {
-					const { positive, negative } = splitAmbiguousPosition(pos);
+					const { positive, negative } = splitAmbiguousPosition(pos as PosIntervalDomain);
 					if(!positive.isBottom()) {
-						positivePositions.push(positive);
+						positivePositions.push(positive as IntervalDomain);
 					}
 					if(!negative.isBottom()) {
-						negativePositions.push(negative);
+						negativePositions.push(negative as IntervalDomain);
 					}
 					break;
 				}
@@ -928,8 +930,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 		}
 
-		const posSelector = createFilteredSelector(numericSelector, positivePositions);
-		const negSelector = createFilteredSelector(numericSelector, negativePositions);
+		const posSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, positivePositions as unknown as PosIntervalDomain[]);
+		const negSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, negativePositions as unknown as PosIntervalDomain[]);
 
 		let result = value.bottom();
 
