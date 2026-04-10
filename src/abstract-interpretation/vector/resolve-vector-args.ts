@@ -20,7 +20,7 @@ import { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
  * This function must be provided by the caller based on the specific domain being used.
  * @template Domain - The abstract domain type
  * @param value - The primitive value to convert
- * @returns A set of concrete domain values, or undefined if conversion fails
+ * @returns A set of concrete domain values, or undefined to indicate NA
  */
 export type ValueToDomainConverter<Domain extends AnyAbstractDomain> = (
 	value: string | number | boolean
@@ -73,12 +73,9 @@ export function resolveIdToVectorValue<Domain extends AnyAbstractDomain>(
 		return undefined;
 	}
 
-	const domainValueSets: ReadonlySet<ConcreteDomain<Domain>>[] = [];
+	const domainValueSets: (ReadonlySet<ConcreteDomain<Domain>> | undefined)[] = [];
 	for(const val of unwrappedArray) {
 		const domainValues = valueToDomain(val);
-		if(domainValues === undefined) {
-			return undefined;
-		}
 		domainValueSets.push(domainValues);
 	}
 
@@ -124,12 +121,12 @@ export function resolveIdToVectorLength(
 /**
  * Builds a VectorDomain from an array of domain value sets.
  * @template Domain - The abstract domain type for vector elements
- * @param domainValueSets - Array of sets of concrete domain values
+ * @param domainValueSets - Array of sets of concrete domain values (or undefined for NA)
  * @param factory - The domain factory for creating element domain values
  * @returns A VectorDomain with the specified values
  */
 export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
-	domainValueSets: ReadonlySet<ConcreteDomain<Domain>>[],
+	domainValueSets: (ReadonlySet<ConcreteDomain<Domain>> | undefined)[],
 	factory: DomainFactory<Domain>
 ): VectorDomain<Domain> {
 	if(domainValueSets.length === 0) {
@@ -191,10 +188,6 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 	}
 
 	const domainValues = valueToDomain(primitiveValue);
-	if(domainValues === undefined) {
-		return undefined;
-	}
-
 	return buildVectorFromDomainValues([domainValues], factory);
 }
 

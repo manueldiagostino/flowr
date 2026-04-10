@@ -7,7 +7,10 @@ import { VectorAttrDomain, type VectorAttr } from '../../../../src/abstract-inte
 import type { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 
 describe('Vector Domain', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+		if(concrete === undefined) {
+			return IntervalDomain.bottom();
+		}
 		return IntervalDomain.abstract(concrete as ReadonlySet<number> | typeof Top);
 	};
 

@@ -17,8 +17,8 @@ import type { RShell } from '../../../../src/r-bridge/shell';
 
 const defaultAbsintConfig: FlowrConfig = FlowrConfig.setInConfig(FlowrConfig.default(), 'solver.evalStrings', false);
 
-const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
-	if(concrete === NA) {
+const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+	if(concrete === NA || concrete === undefined) {
 		return IntervalDomain.bottom();
 	}
 	return IntervalDomain.abstract(concrete);

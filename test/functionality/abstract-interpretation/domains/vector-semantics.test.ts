@@ -16,7 +16,10 @@ import {
 } from '../../../../src/abstract-interpretation/vector/vector-semantics';
 
 describe('Vector Semantics', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+		if(concrete === undefined) {
+			return IntervalDomain.bottom();
+		}
 		return IntervalDomain.abstract(concrete as ReadonlySet<number> | typeof Top);
 	};
 
@@ -208,11 +211,11 @@ describe('Vector Semantics', () => {
 	});
 
 	describe('Phase 1: adjustForZeros helper', () => {
-		const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA): IntervalDomain => {
+		const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
 			if(concrete === Top) {
 				return IntervalDomain.top();
 			}
-			if(concrete === NA) {
+			if(concrete === NA || concrete === undefined) {
 				return IntervalDomain.bottom();
 			}
 			const arr = [...concrete] as number[];

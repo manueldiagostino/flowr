@@ -9,7 +9,7 @@ describe('NAAwareDomain', () => {
 		if(concrete === Top) {
 			return IntervalDomain.top();
 		}
-		if(concrete === NA) {
+		if(concrete === NA || concrete === undefined) {
 			return IntervalDomain.bottom();
 		}
 		return IntervalDomain.abstract(concrete);

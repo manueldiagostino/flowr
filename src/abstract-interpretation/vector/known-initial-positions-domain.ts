@@ -17,10 +17,10 @@ type KnownInitialPositionsLift<Domain extends AnyAbstractDomain> =
 
 /**
  * Factory function to create domain values from a set of concrete values.
- * Supports concrete values, Top (all values), or NA (Not Available).
+ * Supports concrete values, Top (all values), NA (Not Available), or undefined (NA when converter returns undefined).
  */
 export type DomainFactory<Domain extends AnyAbstractDomain> = (
-	concrete: ReadonlySet<ConcreteDomain<Domain>> | typeof Top | typeof NA,
+	concrete: ReadonlySet<ConcreteDomain<Domain>> | typeof Top | typeof NA | undefined,
 ) => Domain;
 
 export class KnownInitialPositionsDomain<
