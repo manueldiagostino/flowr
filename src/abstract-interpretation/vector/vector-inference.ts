@@ -13,7 +13,10 @@ import {
 	initKnownPositions,
 	updateKnownPositions,
 	generateCyclicKnownPositions,
-	accessPosition
+	accessPosition,
+	classifyPosition,
+	splitAmbiguousPosition,
+	createFilteredSelector
 } from './vector-semantics';
 import { NA } from '../domains/lattice';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';
@@ -39,7 +42,7 @@ type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
 
 type SelectorType = 'positive' | 'negative' | 'logical';
 
-type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'selectPositive' | 'selectNegative' | 'selectLogical' | 'updatePositive' | 'updateNegative' | 'updateLogical' | 'unknown';
+type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'updatePositive' | 'updateNegative' | 'updateLogical' | 'unknown';
 
 interface VectorOperation<Name extends VectorOperationName = VectorOperationName> {
 	operation:     Name;
@@ -232,23 +235,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
-	 * Maps a selector type to the corresponding abstract vector access operation name.
-	 * @param selectorType - The detected selector type
-	 * @returns The corresponding select operation name
-	 */
-	private selectorTypeToAccessOperation(selectorType: SelectorType): Extract<VectorOperationName, 'selectPositive' | 'selectNegative' | 'selectLogical'> {
-		switch(selectorType) {
-			case 'negative':
-				return 'selectNegative';
-			case 'logical':
-				return 'selectLogical';
-			case 'positive':
-			default:
-				return 'selectPositive';
-		}
-	}
-
-	/**
 	 * Maps a selector type to the corresponding abstract vector update operation name.
 	 * @param selectorType - The detected selector type
 	 * @returns The corresponding update operation name
@@ -383,14 +369,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selectorArg = args[0];
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 
-			// Detect selector type from AST
 			const selectorType = this.detectSelectorType(selectorArg);
-			const operation = this.selectorTypeToAccessOperation(selectorType);
 
 			return [{
-				operation,
-				operand:  operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-				selector: selector !== undefined ? String(selector) : undefined
+				operation: 'select',
+				operand:      operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+				selector:     selector !== undefined ? String(selector) : undefined,
+				selectorType
 			}];
 		}
 
@@ -677,9 +662,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: Domain
 	): Record<string, unknown> {
 		const operationsNeedingNaValue = new Set([
-			'selectPositive',
-			'selectNegative',
-			'selectLogical',
+			'select',
 			'updatePositive',
 			'updateNegative',
 			'updateLogical'
@@ -711,12 +694,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return this.applyRecycle(value, args.other as VectorDomain<Domain>);
 			case 'concatenate':
 				return this.applyConcatenate(value, args.other as VectorDomain<Domain> | undefined);
-			case 'selectPositive':
-				return this.applySelect(value, args.selector as VectorDomain<PosIntervalDomain>, args.naValue as Domain, 'positive');
-			case 'selectNegative':
-				return this.applySelect(value, args.selector as VectorDomain<PosIntervalDomain>, args.naValue as Domain, 'negative');
-			case 'selectLogical':
-				return this.applySelect(value, args.selector as VectorDomain<Domain>, args.naValue as Domain, 'logical');
+			case 'select':
+				return this.applySelect(
+					value,
+					args.selector as VectorDomain<PosIntervalDomain> | VectorDomain<Domain>,
+					args.naValue as Domain,
+					args.selectorType as SelectorType | undefined
+				);
 			case 'updatePositive':
 				return this.applyUpdate(value, args.selector as VectorDomain<PosIntervalDomain>, args.values as VectorDomain<Domain>, args.naValue as Domain, 'positive');
 			case 'updateNegative':
@@ -880,29 +864,86 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 	/**
 	 * Applies the select operation to choose elements from a vector based on a selector.
-	 * Dispatches to the appropriate selector-type-specific method.
+	 * Uses abstract filtering for numeric selectors and AST-based detection for logical selectors.
 	 * @param value - The source VectorDomain to select from
 	 * @param selector - The selector VectorDomain (interval or value domain)
 	 * @param naValue - The NA value for out-of-bounds access
-	 * @param selectorType - The type of selector (positive, negative, or logical)
+	 * @param selectorType - Optional selector type from AST detection (used for logical detection)
 	 * @returns The resulting VectorDomain after selection
 	 */
 	private applySelect(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<PosIntervalDomain> | VectorDomain<Domain>,
 		naValue: Domain,
-		selectorType: SelectorType
+		selectorType?: SelectorType
 	): VectorDomain<Domain> {
 		if(value.isBottom() || selector.isBottom()) {
 			return value.bottom();
 		}
-		if(selectorType === 'positive') {
-			return this.applySelectPositive(value, selector as VectorDomain<PosIntervalDomain>, naValue);
+
+		if(selector.isTop()) {
+			return value.top();
 		}
-		if(selectorType === 'negative') {
-			return this.applySelectNegative(value, selector as VectorDomain<PosIntervalDomain>, naValue);
+
+		if(selectorType === 'logical') {
+			return this.applySelectLogical(value, selector as VectorDomain<Domain>, naValue);
 		}
-		return this.applySelectLogical(value, selector as VectorDomain<Domain>, naValue);
+
+		const numericSelector = selector as VectorDomain<PosIntervalDomain>;
+
+		if(!numericSelector.values.isValue() || !Array.isArray(numericSelector.values.value)) {
+			return this.applySelectPositive(value, numericSelector, naValue);
+		}
+
+		const selectorValues = numericSelector.values.value as readonly PosIntervalDomain[];
+		const positivePositions: PosIntervalDomain[] = [];
+		const negativePositions: PosIntervalDomain[] = [];
+
+		for(const pos of selectorValues) {
+			if(pos.isBottom()) {
+				continue;
+			}
+
+			const classification = classifyPosition(pos);
+
+			switch(classification) {
+				case 'positive':
+					positivePositions.push(pos);
+					break;
+				case 'negative':
+					negativePositions.push(pos);
+					break;
+				case 'ambiguous': {
+					const { positive, negative } = splitAmbiguousPosition(pos);
+					if(!positive.isBottom()) {
+						positivePositions.push(positive);
+					}
+					if(!negative.isBottom()) {
+						negativePositions.push(negative);
+					}
+					break;
+				}
+				case 'bottom':
+					break;
+			}
+		}
+
+		const posSelector = createFilteredSelector(numericSelector, positivePositions);
+		const negSelector = createFilteredSelector(numericSelector, negativePositions);
+
+		let result = value.bottom();
+
+		if(!posSelector.isBottom()) {
+			const resultPos = this.applySelectPositive(value, posSelector, naValue);
+			result = result.join(resultPos);
+		}
+
+		if(!negSelector.isBottom()) {
+			const resultNeg = this.applySelectNegative(value, negSelector, naValue);
+			result = result.join(resultNeg);
+		}
+
+		return result;
 	}
 
 	/**

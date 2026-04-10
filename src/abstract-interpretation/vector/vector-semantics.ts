@@ -482,3 +482,123 @@ export function countZerosInIntervalVector(
 
 	return selector.length.create([definiteZeros, possibleZeros]);
 }
+
+/**
+ * Classification of an abstract position interval by its sign.
+ * Used for abstract filtering in vector selection (paper section 4.7).
+ */
+export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bottom';
+
+/**
+ * Classifies an abstract position interval by its sign.
+ * Per paper section 4.7: positions are filtered into positive (≥ 0) and negative (≤ 0) sets.
+ *
+ * @param position - The PosIntervalDomain to classify
+ * @returns The classification: 'positive' if definitely > 0, 'negative' if definitely < 0,
+ *          'ambiguous' if spans 0 or includes 0, 'bottom' if Bottom
+ */
+export function classifyPosition(position: PosIntervalDomain): PositionClassification {
+	if(position.isBottom()) {
+		return 'bottom';
+	}
+	if(position.isTop()) {
+		// [0, +Infinity] - spans both sides
+		return 'ambiguous';
+	}
+	if(!position.isValue()) {
+		return 'ambiguous';
+	}
+
+	const [lower, upper] = position.value;
+
+	if(lower > 0) {
+		// Definitely positive (strictly greater than 0)
+		return 'positive';
+	}
+	if(upper < 0) {
+		// Definitely negative (strictly less than 0)
+		return 'negative';
+	}
+	// Spans 0 or includes 0: [lower ≤ 0 ≤ upper]
+	return 'ambiguous';
+}
+
+/**
+ * Result of splitting an ambiguous position into positive and negative parts.
+ */
+export interface SplitPosition {
+	/** The positive part (≥ 0), or Bottom if no positive values */
+	positive: PosIntervalDomain;
+	/** The negative part (≤ 0), or Bottom if no negative values */
+	negative: PosIntervalDomain;
+}
+
+/**
+ * Splits an ambiguous position (one that spans or includes 0) into positive and negative parts.
+ * Per paper section 4.7: ambiguous positions contribute to both positive and negative filters.
+ *
+ * Examples:
+ * - [-2, 3] → positive: [0, 3], negative: [-2, 0]
+ * - [0, 5] → positive: [0, 5], negative: [0, 0] (just zero)
+ * - [-5, 0] → positive: [0, 0], negative: [-5, 0]
+ * - [1, 5] → positive: [1, 5], negative: Bottom (no negative values)
+ * - [-5, -1] → positive: Bottom, negative: [-5, -1]
+ *
+ * @param position - The position to split (must not be Bottom)
+ * @returns Object with positive and negative parts
+ */
+export function splitAmbiguousPosition(position: PosIntervalDomain): SplitPosition {
+	const bottom = position.bottom();
+
+	if(position.isBottom()) {
+		return { positive: bottom, negative: bottom };
+	}
+	if(!position.isValue()) {
+		// Top or other non-specific value - return as-is for both
+		return { positive: position, negative: position };
+	}
+
+	const [lower, upper] = position.value;
+
+	// Positive part: [max(lower, 0), upper] if upper >= 0
+	let positive: PosIntervalDomain;
+	if(upper >= 0) {
+		positive = position.create([Math.max(lower, 0), upper]);
+	} else {
+		positive = bottom;
+	}
+
+	// Negative part: [lower, min(upper, 0)] if lower <= 0
+	let negative: PosIntervalDomain;
+	if(lower <= 0) {
+		negative = position.create([lower, Math.min(upper, 0)]);
+	} else {
+		negative = bottom;
+	}
+
+	return { positive, negative };
+}
+
+/**
+ * Creates a new selector VectorDomain with filtered/split positions.
+ * Used in abstract filtering to build positive and negative filtered selectors.
+ *
+ * @param selector - The original selector VectorDomain
+ * @param positions - The new positions array (already filtered and split)
+ * @returns A new VectorDomain with the given positions
+ */
+export function createFilteredSelector<Domain extends AnyAbstractDomain>(
+	selector: VectorDomain<PosIntervalDomain>,
+	positions: readonly PosIntervalDomain[]
+): VectorDomain<PosIntervalDomain> {
+	if(positions.length === 0) {
+		return selector.bottom();
+	}
+
+	return selector.create({
+		length: selector.length,
+		values: selector.values.create(positions),
+		summary: selector.summary,
+		attributes: selector.attributes
+	});
+}
