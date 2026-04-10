@@ -72,6 +72,40 @@ export function squash<Domain extends AnyAbstractDomain>(
 }
 
 /**
+ * Squashes (joins) all values in a vector's known positions and summary, except those in the excluded set.
+ * Per paper section 4.6: SquashedExcept(([l, u], prefix, s, a), E) = ⊔_{i=1, i∉E}^{|prefix|} pᵢ ⊔ s
+ * This joins all known positions (except excluded indices) with the summary to get a single abstract value.
+ * @param value - The abstract vector
+ * @param excludedIndices - Set of 1-based indices to exclude from the join
+ * @returns The joined abstract value representing all non-excluded elements
+ */
+export function squashedExcept<Domain extends AnyAbstractDomain>(
+	value: VectorDomain<Domain>,
+	excludedIndices: ReadonlySet<number>
+): Domain {
+	if(value.isBottom()) {
+		return value.summary.bottom();
+	}
+	if(value.isTop()) {
+		return value.summary.top();
+	}
+
+	let result = value.summary;
+
+	if(value.values.isValue()) {
+		const valuesArray = value.values.value as readonly Domain[];
+		for(let i = 0; i < valuesArray.length; i++) {
+			// Paper uses 1-based indexing, so we check i+1 against excluded indices
+			if(!excludedIndices.has(i + 1)) {
+				result = result.join(valuesArray[i]);
+			}
+		}
+	}
+
+	return result;
+}
+
+/**
  * Propagates values forward through positions containing zero.
  * Per paper Section 4.8: Propagate : V_Itv^* × V_Itv × N → V_Itv
  * The counter k tracks pending zeros to absorb.
@@ -114,8 +148,8 @@ export function propagate(
 
 	// Non-zero value
 	if(k > 0) {
-		// Decrement counter and continue
-		return propagate(rest, summary, k - 1);
+		// Decrement counter and continue, joining with first (per paper L411)
+		return first.join(propagate(rest, summary, k - 1).value);
 	}
 
 	// k = 0, return this value

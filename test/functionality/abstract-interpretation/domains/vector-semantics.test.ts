@@ -9,6 +9,7 @@ import {
 	card,
 	isEnumerable,
 	squash,
+	squashedExcept,
 	adjustForZeros,
 	initKnownPositions,
 	updateKnownPositions,
@@ -159,6 +160,43 @@ describe('Vector Semantics', () => {
 		});
 	});
 
+	describe('Phase 1: squashedExcept helper', () => {
+		test('squashedExcept of bottom vector returns bottom summary', () => {
+			const bottom = VectorDomain.bottom(intervalFactory);
+			const result = squashedExcept(bottom, new Set([1]));
+			assert.strictEqual(result.isBottom(), true);
+		});
+
+		test('squashedExcept of top vector returns top summary', () => {
+			const top = VectorDomain.top(intervalFactory);
+			const result = squashedExcept(top, new Set([1]));
+			assert.strictEqual(result.isTop(), true);
+		});
+
+		test('squashedExcept joins all prefix values with summary except excluded indices', () => {
+			const vector = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], [5, 10]);
+			// Exclude index 2 (1-based), so we join [1,1], [3,3], and [5,10]
+			const result = squashedExcept(vector, new Set([2]));
+
+			assert.strictEqual(result.toString(), '[1, 10]');
+		});
+
+		test('squashedExcept with no exclusions matches squash', () => {
+			const vector = mkVector([0, 3], [[1, 1], [2, 2]], [5, 10]);
+			const result = squashedExcept(vector, new Set());
+			const squashed = squash(vector);
+
+			assert.strictEqual(result.equals(squashed), true);
+		});
+
+		test('squashedExcept excluding all prefix values returns only summary', () => {
+			const vector = mkVector([0, 2], [[1, 1], [2, 2]], [5, 10]);
+			const result = squashedExcept(vector, new Set([1, 2]));
+
+			assert.strictEqual(result.toString(), '[5, 10]');
+		});
+	});
+
 	describe('Phase 1: adjustForZeros helper', () => {
 		const intervalFactory2 = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
 			if(concrete === Top) {
@@ -252,6 +290,39 @@ describe('Vector Semantics', () => {
 			const result = propagate(positions, summary, 0);
 			// May contain zero, joins with propagated rest
 			assert.ok(result.isValue());
+		});
+
+		test('propagate with k>0 joins first with propagated rest (paper L411)', () => {
+			// Case: 0 ∉ γ(c₁) and k > 0  →  c₁ ⊔ Propagate(rest, s, k-1)
+			const positions = [new IntervalDomain([3, 3]), new IntervalDomain([5, 5])];
+			const summary = new IntervalDomain([10, 10]);
+			// k=1 means one pending zero to absorb
+			// First is [3,3], non-zero with k>0, so we join [3,3] with propagate(rest, summary, 0)
+			// propagate(rest=[5,5], summary=[10,10], k=0) returns [5,5] (k=0 case)
+			// Result: [3,3] ⊔ [5,5] = [3, 5]
+			const result = propagate(positions, summary, 1);
+			assert.strictEqual(result.toString(), '[3, 5]');
+		});
+
+		test('propagate with k=0 returns first value unchanged (paper L414)', () => {
+			// Case: 0 ∉ γ(c₁) and k = 0  →  c₁
+			const positions = [new IntervalDomain([3, 3]), new IntervalDomain([5, 5])];
+			const summary = new IntervalDomain([10, 10]);
+			// k=0, first is [3,3], non-zero, so we return [3,3] directly
+			const result = propagate(positions, summary, 0);
+			assert.strictEqual(result.toString(), '[3, 3]');
+		});
+
+		test('propagate with possible zero joins first with propagated (paper L409-410)', () => {
+			// Case: 0 ∈ γ(c₁) and γ(c₁) ≠ {0}  →  c₁ ⊔ Propagate(rest, s, k)
+			const positions = [new IntervalDomain([0, 2]), new IntervalDomain([5, 5])];
+			const summary = new IntervalDomain([10, 10]);
+			// First is [0,2], contains 0 but not exactly {0}, k=0
+			// Result: [0,2] ⊔ propagate([5,5], [10,10], 0)
+			// propagate([5,5], [10,10], 0) returns [5,5] (k=0 case)
+			// Result: [0,2] ⊔ [5,5] = [0, 5]
+			const result = propagate(positions, summary, 0);
+			assert.strictEqual(result.toString(), '[0, 5]');
 		});
 	});
 
