@@ -2,129 +2,9 @@ import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorDomain } from './vector-domain';
-import type { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { ConstraintType } from '../data-frame/semantics';
 
 export { ConstraintType };
-
-/**
- * Interface for a single vector operation.
- * This matches the pattern used in DataFrame shape inference.
- */
-export interface VectorOperation<Name extends VectorOperationName = VectorOperationName> {
-	/** The type of the abstract vector operation (see {@link VectorOperationName}) */
-	operation: Name;
-	/** The ID of the vector operand of the operation (may be `undefined`) */
-	operand: string | undefined;
-	/** The optional constraint type to overwrite the default type of the operation (see {@link ConstraintType}) */
-	type?: ConstraintType;
-	/** Additional arguments for the operation (depends on the operation type) */
-	[key: string]: unknown;
-}
-
-/**
- * A sequence of vector operations returned by mappers.
- * Each operation is applied in sequence, with the result of one becoming the operand of the next.
- */
-export type VectorOperations = VectorOperation[] | undefined;
-
-/**
- * Mapper for defining the abstract vector operations and mapping them to semantics applier functions,
- * including information about the type of the resulting constraints that are inferred by the operation.
- * Each entry maps an operation name to its applier function and resulting constraint type.
- */
-const VectorSemanticsMapper = {
-	'setAttr': { apply: applySetAttrSemantics, type: ConstraintType.OperandModification },
-	'recycle': { apply: applyRecycleSemantics, type: ConstraintType.ResultPostcondition },
-	'concatenate': { apply: applyConcatenateSemantics, type: ConstraintType.ResultPostcondition },
-	'selectPositive': { apply: applySelectPositiveSemantics, type: ConstraintType.OperandPrecondition },
-	'selectNegative': { apply: applySelectNegativeSemantics, type: ConstraintType.OperandPrecondition },
-	'selectLogical': { apply: applySelectLogicalSemantics, type: ConstraintType.OperandPrecondition },
-	'updatePositive': { apply: applyUpdatePositiveSemantics, type: ConstraintType.OperandModification },
-	'updateNegative': { apply: applyUpdateNegativeSemantics, type: ConstraintType.OperandModification },
-	'updateLogical': { apply: applyUpdateLogicalSemantics, type: ConstraintType.OperandModification },
-	'unknown': { apply: applyUnknownSemantics, type: ConstraintType.ResultPostcondition }
-} as const satisfies Record<string, VectorSemanticsMapperInfo<never, never>>;
-
-type VectorSemanticsMapperInfo<Arguments extends object | undefined, Options extends object | undefined> = {
-	readonly apply: VectorSemanticsApplier<Arguments, Options>,
-	readonly type: ConstraintType
-};
-
-/**
- * Vector semantics applier for applying the abstract semantics of an abstract vector operation.
- * - `value` contains the abstract vector state of the operand
- * - `args` contains the arguments required for the abstract operation
- * - `options` optionally contains additional options to change the behavior of the abstract operation
- */
-type VectorSemanticsApplier<Arguments extends object | undefined, Options extends object | undefined> = (
-	value: VectorDomain<AnyAbstractDomain>,
-	args: Arguments,
-	options?: Options
-) => VectorDomain<AnyAbstractDomain>;
-
-/** All available abstract vector operations */
-export type VectorOperationName = keyof typeof VectorSemanticsMapper;
-
-/** The names of all abstract vector operations */
-export const VectorOperationNames = Object.keys(VectorSemanticsMapper) as readonly VectorOperationName[];
-
-/** The required arguments for an abstract vector operation */
-export type VectorOperationArgs<N extends VectorOperationName> = Parameters<typeof VectorSemanticsMapper[N]['apply']>[1];
-
-/** The optional addition options for an abstract vector operation */
-export type VectorOperationOptions<N extends VectorOperationName> = Parameters<typeof VectorSemanticsMapper[N]['apply']>[2];
-
-/**
- * Applies the abstract semantics of an abstract vector operation.
- * This expects that all arguments have already been sanitized according to the original concrete R operation.
- * @param operation - The name of the abstract operation to apply the semantics of
- * @param value     - The abstract vector state of the operand
- * @param args      - The arguments for applying the abstract semantics
- * @param options   - The optional additional options of the abstract operation
- * @returns The resulting new vector constraints.
- * The semantic type of the resulting constraints depends on the {@link ConstraintType} of the abstract operation.
- */
-export function applyVectorSemantics<Name extends VectorOperationName>(
-	operation: Name,
-	value: VectorDomain<AnyAbstractDomain>,
-	args: VectorOperationArgs<Name>,
-	options?: VectorOperationOptions<Name>
-): VectorDomain<AnyAbstractDomain> {
-	const applier = VectorSemanticsMapper[operation] as VectorSemanticsMapperInfo<VectorOperationArgs<Name>, VectorOperationOptions<Name>>;
-	return applier.apply(value, args, options);
-}
-
-/**
- * Gets the default resulting constraint type for an abstract vector operation.
- */
-export function getConstraintType(operation: VectorOperationName): ConstraintType {
-	return VectorSemanticsMapper[operation].type;
-}
-
-/**
- * Sets attributes on a vector.
- * Per paper section 4.4: If attributes are non-empty, return ⊤ (top element).
- * This is because tracking specific attribute values is excluded from the analysis scope.
- * @param value - The abstract vector
- * @param attrs - The attributes to set (if empty, clears attributes)
- */
-function applySetAttrSemantics(
-	value: VectorDomain<AnyAbstractDomain>,
-	{ attrs }: { attrs: VectorAttrDomain }
-): VectorDomain<AnyAbstractDomain> {
-	// Per paper: if attributes non-empty, return top
-	if (!attrs.isEmpty()) {
-		return value.top();
-	}
-	// Empty attributes: update the attributes component
-	return value.create({
-		length: value.length,
-		values: value.values,
-		summary: value.summary,
-		attributes: attrs
-	});
-}
 
 /**
  * Computes the cardinality (number of integers) in a positive interval.
@@ -134,17 +14,17 @@ function applySetAttrSemantics(
  * @returns The cardinality as a number, or +Infinity
  */
 export function card(interval: PosIntervalDomain): number {
-	if (interval.isBottom()) {
+	if(interval.isBottom()) {
 		return 0;
 	}
-	if (interval.isTop()) {
+	if(interval.isTop()) {
 		return +Infinity;
 	}
-	if (!interval.isValue()) {
+	if(!interval.isValue()) {
 		return +Infinity;
 	}
 	const [l, u] = interval.value;
-	if (u === +Infinity) {
+	if(u === +Infinity) {
 		return +Infinity;
 	}
 	return u - l + 1;
@@ -172,18 +52,18 @@ export function isEnumerable(interval: PosIntervalDomain, threshold = 50): boole
 export function squash<Domain extends AnyAbstractDomain>(
 	value: VectorDomain<Domain>
 ): Domain {
-	if (value.isBottom()) {
+	if(value.isBottom()) {
 		return value.summary.bottom();
 	}
-	if (value.isTop()) {
+	if(value.isTop()) {
 		return value.summary.top();
 	}
 
 	let result = value.summary;
 
-	if (value.values.isValue()) {
+	if(value.values.isValue()) {
 		const valuesArray = value.values.value as readonly Domain[];
-		for (const elem of valuesArray) {
+		for(const elem of valuesArray) {
 			result = result.join(elem);
 		}
 	}
@@ -203,29 +83,29 @@ export function squash<Domain extends AnyAbstractDomain>(
  * @param k - The count of pending zeros
  * @returns The propagated abstract value
  */
-function propagate(
+export function propagate(
 	knownPositions: readonly IntervalDomain[],
 	summary: IntervalDomain,
 	k: number
 ): IntervalDomain {
-	if (knownPositions.length === 0) {
+	if(knownPositions.length === 0) {
 		return summary;
 	}
 
 	const first = knownPositions[0];
 	const rest = knownPositions.slice(1);
 
-	if (first.isValue()) {
+	if(first.isValue()) {
 		const [l, u] = first.value;
 
 		// Check if definitely zero: γ(c₁) = {0}
-		if (l === 0 && u === 0) {
+		if(l === 0 && u === 0) {
 			// Skip and increment counter
 			return propagate(rest, summary, k + 1);
 		}
 
 		// Check if may contain zero: 0 ∈ γ(c₁) but γ(c₁) ≠ {0}
-		if (l <= 0 && u >= 0) {
+		if(l <= 0 && u >= 0) {
 			// Join with propagated value from rest (paper specifies ⊔)
 			const propagated = propagate(rest, summary, k);
 			return first.join(propagated.value);
@@ -233,7 +113,7 @@ function propagate(
 	}
 
 	// Non-zero value
-	if (k > 0) {
+	if(k > 0) {
 		// Decrement counter and continue
 		return propagate(rest, summary, k - 1);
 	}
@@ -247,8 +127,8 @@ function propagate(
  * Per paper Section 4.8: AdjustForZeros([l, u], p, s, a) = ([l', u'], p', s, a) where p = known positions
  *
  * Computes:
- * - l' = l - |{i ≤ n : 0 ∈ γ(pᵢ)}|
- * - u' = u - |{i ≤ n : γ(pᵢ) = {0}}|
+ * - l' = l - |\{i ≤ n : 0 ∈ γ(pᵢ)\}|
+ * - u' = u - |\{i ≤ n : γ(pᵢ) = \{0\}\}|
  *
  * And builds modified known positions using Propagate.
  *
@@ -260,16 +140,16 @@ function propagate(
 export function adjustForZeros(
 	vector: VectorDomain<IntervalDomain>
 ): VectorDomain<IntervalDomain> {
-	if (vector.isBottom()) {
+	if(vector.isBottom()) {
 		return vector;
 	}
-	if (vector.isTop()) {
+	if(vector.isTop()) {
 		return vector;
 	}
 
 	const { length, values, summary, attributes } = vector;
 
-	if (!length.isValue()) {
+	if(!length.isValue()) {
 		return vector.top();
 	}
 
@@ -279,18 +159,18 @@ export function adjustForZeros(
 	let definiteZeros = 0; // |{i : γ(pᵢ) = {0}}|
 	let possibleZeros = 0; // |{i : 0 ∈ γ(pᵢ)}|
 
-	if (values.isValue() && Array.isArray(values.value)) {
+	if(values.isValue() && Array.isArray(values.value)) {
 		const knownPositionValues = values.value as readonly IntervalDomain[];
-		for (const val of knownPositionValues) {
-			if (val.isValue()) {
+		for(const val of knownPositionValues) {
+			if(val.isValue()) {
 				const [vl, vu] = val.value;
-				if (vl === 0 && vu === 0) {
+				if(vl === 0 && vu === 0) {
 					definiteZeros++;
 					possibleZeros++;
-				} else if (vl <= 0 && vu >= 0) {
+				} else if(vl <= 0 && vu >= 0) {
 					possibleZeros++;
 				}
-			} else if (!val.isBottom()) {
+			} else if(!val.isBottom()) {
 				// Top or other non-specific - may contain zero
 				possibleZeros++;
 			}
@@ -305,24 +185,24 @@ export function adjustForZeros(
 	// Build modified known positions using Propagate
 	const newKnownPositionValues: PosIntervalDomain[] = [];
 
-	if (values.isValue() && Array.isArray(values.value)) {
+	if(values.isValue() && Array.isArray(values.value)) {
 		const knownPositionValues = values.value as readonly PosIntervalDomain[];
 
-		for (let i = 0; i < knownPositionValues.length; i++) {
+		for(let i = 0; i < knownPositionValues.length; i++) {
 			// Count zeros before position i
 			let zerosBefore = 0;
-			for (let j = 0; j < i; j++) {
+			for(let j = 0; j < i; j++) {
 				const prevVal = knownPositionValues[j];
-				if (prevVal.isValue()) {
+				if(prevVal.isValue()) {
 					const [pl, pu] = prevVal.value;
-					if (pl <= 0 && pu >= 0) {
+					if(pl <= 0 && pu >= 0) {
 						zerosBefore++;
 					}
 				}
 			}
 
 			const propagated = propagate(knownPositionValues.slice(i), summary, zerosBefore);
-			if (!propagated.isBottom()) {
+			if(!propagated.isBottom()) {
 				newKnownPositionValues.push(propagated);
 			}
 		}
@@ -331,202 +211,166 @@ export function adjustForZeros(
 	const newValues = values.create(newKnownPositionValues);
 
 	return vector.create({
-		length: newLength,
-		values: newValues,
+		length:  newLength,
+		values:  newValues,
 		summary: summary,
 		attributes
 	});
 }
 
 /**
- * Recycles (aligns) two vectors to the same length for binary operations.
- * Per paper section 4.5: Recycle(v₁, v₂) aligns vectors to a common length.
- * The resulting length is the LCM-based alignment of the two length intervals.
- * @param value - The first abstract vector
- * @param other - The second abstract vector
- * @returns A new vector with the aligned length, or top if alignment fails
+ * Initializes a known positions array with a specific pattern.
+ * Per paper Section 4.8: InitPrefix(prefix, l, u, u_r)
+ *
+ * Pattern: [p_1 ... p_l] ++ [p_\{l+1\} ⊔ NA ... p_u ⊔ NA] ++ [NA ... NA]^(u_r - u)
+ * @param knownPositions - The source known positions array
+ * @param l - Lower bound of original vector length
+ * @param u - Upper bound of original vector length
+ * @param uR - Target upper bound for result
+ * @param naValue - The NA abstract value
+ * @returns Initialized known positions array
  */
-function applyRecycleSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ other }: { other: VectorDomain<Domain> }
-): VectorDomain<Domain> {
-	const len1 = value.length;
-	const len2 = other.length;
+export function initKnownPositions<Domain extends AnyAbstractDomain>(
+	knownPositions: readonly Domain[],
+	l: number,
+	u: number,
+	uR: number,
+	naValue: Domain
+): Domain[] {
+	const result: Domain[] = [];
 
-	// If either is bottom, result is bottom
-	if (len1.isBottom() || len2.isBottom()) {
-		return value.bottom();
+	// First l elements: keep as-is (positions 1 to l)
+	for(let i = 0; i < Math.min(l, knownPositions.length); i++) {
+		result.push(knownPositions[i]);
 	}
 
-	// Join the summaries to propagate NA information
-	// If either vector has NA, the combined result should have NA
-	const combinedSummary = value.summary.join(other.summary);
-
-	// If either is top, the aligned length is top
-	if (len1.isTop() || len2.isTop()) {
-		return value.create({
-			length: len1.top(),
-			values: value.values.top(),
-			summary: combinedSummary,
-			attributes: value.attributes.join(other.attributes)
-		});
+	// Positions l+1 to u: join with NA
+	for(let i = l; i < Math.min(u, knownPositions.length); i++) {
+		result.push(knownPositions[i].join(naValue));
 	}
 
-	if (!len1.isValue() || !len2.isValue()) {
-		return value.create({
-			length: len1.top(),
-			values: value.values.top(),
-			summary: combinedSummary,
-			attributes: value.attributes.join(other.attributes)
-		});
+	// Positions u+1 to u_r: fill with NA
+	for(let i = u; i < uR; i++) {
+		result.push(naValue);
 	}
 
-	const [l1, u1] = len1.value;
-	const [l2, u2] = len2.value;
-
-	const newUpper = Math.max(u1, u2);
-	const newLower = Math.max(l1, l2);
-
-	const incompatible = u1 !== +Infinity && u2 !== +Infinity &&
-		(u1 % u2 !== 0) && (u2 % u1 !== 0);
-
-	if (incompatible) {
-		// Incompatible recycling: result is top (we can't precisely track)
-		return value.create({
-			length: len1.top(),
-			values: value.values.top(),
-			summary: combinedSummary,
-			attributes: value.attributes.join(other.attributes)
-		});
-	}
-
-	// Compatible recycling: use the longer length
-	const recycledLength = len1.create([newLower, newUpper]);
-
-	// Join the values domains to combine element information
-	const combinedValues = value.values.join(other.values);
-
-	return value.create({
-		length: recycledLength,
-		values: combinedValues,
-		summary: combinedSummary,
-		attributes: value.attributes.join(other.attributes)
-	});
+	return result;
 }
 
 /**
- * Concatenates two vectors using a slicing-based algorithm.
- * For c(v1, v2), this creates a new vector with length = len(v1) + len(v2)
- * and values computed using position-wise LUB for uncertain lengths.
+ * Recursively updates positions in a target known positions array.
+ * Per paper Section 4.8: UpdatePrefix(prefix, selectorPositions, values)
  *
- * When lengths are uncertain (non-singleton intervals), the algorithm:
- * 1. Starts with maximum concatenation (when first vector has max length)
- * 2. Slides second vector leftward through the uncertainty window
- * 3. Joins overlapping values at each position
- *
- * Complexity: O((u1 - l1) * |v2|) where [l1, u1] is the length interval of the first vector
- * and |v2| is the number of known positions in the second vector.
- *
- * @param value - The first abstract vector
- * @param other - The second abstract vector (may be undefined for single-element c())
- * @returns A new vector with concatenated length and values
+ * For each position in selectorPositions:
+ * - If enumerable and singleton: strong update (replace)
+ * - If enumerable but not singleton: weak update (join)
+ * - If not enumerable: weak update all positions
+ * @param knownPositions - The target known positions to update
+ * @param selectorPositions - The selector intervals (positions to update)
+ * @param values - The values to write (cyclic)
+ * @returns Updated known positions array
  */
-function applyConcatenateSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ other }: { other: VectorDomain<Domain> | undefined }
-): VectorDomain<Domain> {
-	// If other is undefined, return the value as-is (single-element c())
-	if (other === undefined) {
-		return value;
+export function updateKnownPositions<Domain extends AnyAbstractDomain>(
+	knownPositions: Domain[],
+	selectorPositions: readonly PosIntervalDomain[],
+	values: readonly Domain[]
+): Domain[] {
+	if(selectorPositions.length === 0 || values.length === 0) {
+		return knownPositions;
 	}
 
-	const len1 = value.length;
-	const len2 = other.length;
+	const result = [...knownPositions];
+	let valueIdx = 0;
 
-	// If either is bottom, result is bottom
-	if (len1.isBottom() || len2.isBottom()) {
-		return value.bottom();
-	}
+	for(const posInterval of selectorPositions) {
+		if(posInterval.isBottom()) {
+			continue;
+		}
 
-	// If either is top, the result is top
-	if (len1.isTop() || len2.isTop()) {
-		return value.top();
-	}
+		const valueToWrite = values[valueIdx % values.length];
+		valueIdx++;
 
-	if (!len1.isValue() || !len2.isValue()) {
-		return value.top();
-	}
+		if(posInterval.isValue()) {
+			const [l, u] = posInterval.value;
 
-	const [l1, u1] = len1.value;
-	const [l2, u2] = len2.value;
-
-	// Concatenated length is the sum of the two lengths
-	const newLower = l1 + l2;
-	const newUpper = u1 + u2;
-	const concatenatedLength = len1.create([newLower, newUpper]);
-
-	// Concatenate known positions
-	let concatenatedValues: typeof value.values;
-
-	// Edge case: if one vector is empty (length [0, 0]), return the other's values
-	if (l1 === 0 && u1 === 0) {
-		concatenatedValues = other.values;
-	} else if (l2 === 0 && u2 === 0) {
-		concatenatedValues = value.values;
-	} else if (value.values.isBottom() || other.values.isBottom()) {
-		concatenatedValues = value.values.bottom();
-	} else if (value.values.isTop() || other.values.isTop()) {
-		concatenatedValues = value.values.top();
-	} else if (value.values.isValue() && other.values.isValue()) {
-		const values1 = value.values.value as readonly Domain[];
-		const values2 = other.values.value as readonly Domain[];
-
-		// Check if both lengths are certain (singleton intervals)
-		const certain1 = l1 === u1;
-		const certain2 = l2 === u2;
-
-		if (certain1 && certain2) {
-			// Simple concatenation for certain lengths
-			const concatenated = [...values1, ...values2];
-			concatenatedValues = value.values.create(concatenated);
-		} else {
-			// Slicing algorithm for uncertain lengths
-			// The known values arrays should already be expanded to match upper bounds
-			// values1.length === u1, values2.length === u2
-
-			// Start with max concatenation (when first vector has max length u1)
-			const result: Domain[] = [...values1, ...values2];
-
-			// Slide values2 leftward through the uncertainty window [l1, u1)
-			// When first vector has length len_a, values2 starts at position len_a
-			// We slide from u1-1 down to l1
-			for (let len_a = u1 - 1; len_a >= l1; len_a--) {
-				const v2_start = len_a; // values2 starts here when first vector has length len_a
-
-				// Join values2 at their new positions
-				for (let i = 0; i < values2.length; i++) {
-					const pos = v2_start + i;
-					if (pos < result.length) {
-						result[pos] = result[pos].join(values2[i]);
-					}
-				}
+			// Skip zero index
+			if(l === 0 && u === 0) {
+				continue;
 			}
 
-			concatenatedValues = value.values.create(result);
+			// Get actual positions (1-indexed to 0-indexed)
+			const startPos = l <= 0 ? 1 : l;
+			const endPos = u;
+
+			if(isEnumerable(posInterval)) {
+				// Enumerable: update specific positions
+				const isSingleton = card(posInterval) === 1;
+				for(let pos = startPos; pos <= endPos && pos <= result.length; pos++) {
+					const idx = pos - 1;
+					if(isSingleton) {
+						// Strong update: replace
+						result[idx] = valueToWrite;
+					} else {
+						// Weak update: join
+						result[idx] = result[idx].join(valueToWrite);
+					}
+				}
+			} else {
+				// Not enumerable: weak update all positions
+				for(let i = 0; i < result.length; i++) {
+					result[i] = result[i].join(valueToWrite);
+				}
+			}
+		} else {
+			// Non-specific interval: weak update all
+			for(let i = 0; i < result.length; i++) {
+				result[i] = result[i].join(valueToWrite);
+			}
 		}
-	} else {
-		concatenatedValues = value.values.top();
 	}
 
-	// Join summaries to propagate NA information
-	const combinedSummary = value.summary.join(other.summary);
+	return result;
+}
 
-	return value.create({
-		length: concatenatedLength,
-		values: concatenatedValues,
-		summary: combinedSummary,
-		attributes: value.attributes.join(other.attributes)
-	});
+/**
+ * Generates cyclic known positions from a vector up to a target length.
+ * Per paper Section 4.8: ρ_f^♯(ν, l, u_r)
+ *
+ * Cycles through the vector's known positions and summary to generate
+ * values up to the target length.
+ * @param vector - The source vector
+ * @param targetLength - The target length to generate
+ * @returns Array of abstract values
+ */
+export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
+	vector: VectorDomain<Domain>,
+	targetLength: number
+): Domain[] {
+	const result: Domain[] = [];
+
+	if(vector.isBottom()) {
+		return result;
+	}
+
+	const knownPositions = vector.values.isValue()
+		? (vector.values.value as readonly Domain[])
+		: [];
+
+	for(let i = 0; i < targetLength; i++) {
+		if(i < knownPositions.length) {
+			result.push(knownPositions[i]);
+		} else {
+			// Cycle through: use summary, then wrap around
+			const cyclicIdx = (i - knownPositions.length) % Math.max(1, knownPositions.length || 1);
+			if(knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
+				result.push(knownPositions[cyclicIdx]);
+			} else {
+				result.push(vector.summary);
+			}
+		}
+	}
+
+	return result;
 }
 
 /**
@@ -534,27 +378,27 @@ function applyConcatenateSemantics<Domain extends AnyAbstractDomain>(
  * Per paper: ν*♯(j) = p_ν,j if 1 ≤ j ≤ u_ν, otherwise α(NA)
  * Note: Uses 0-based indexing internally.
  */
-function accessPosition<Domain extends AnyAbstractDomain>(
+export function accessPosition<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
 	naValue: Domain
 ): Domain {
-	if (vector.isBottom()) {
+	if(vector.isBottom()) {
 		return vector.summary.bottom();
 	}
-	if (vector.isTop()) {
+	if(vector.isTop()) {
 		return vector.summary.top();
 	}
 
 	// Get upper bound of vector length (0-indexed, so u_ν - 1)
 	let upperBound: number;
-	if (vector.length.isValue()) {
+	if(vector.length.isValue()) {
 		upperBound = vector.length.value[1];
-		if (upperBound === +Infinity) {
+		if(upperBound === +Infinity) {
 			// For infinite length, check known positions
-			if (vector.values.isValue()) {
+			if(vector.values.isValue()) {
 				const values = vector.values.value as readonly Domain[];
-				if (pos < values.length) {
+				if(pos < values.length) {
 					return values[pos];
 				}
 			}
@@ -567,10 +411,10 @@ function accessPosition<Domain extends AnyAbstractDomain>(
 
 	// Position is 0-indexed, paper uses 1-indexed
 	const oneIndexedPos = pos + 1;
-	if (oneIndexedPos >= 1 && oneIndexedPos <= upperBound) {
-		if (vector.values.isValue()) {
+	if(oneIndexedPos >= 1 && oneIndexedPos <= upperBound) {
+		if(vector.values.isValue()) {
 			const values = vector.values.value as readonly Domain[];
-			if (pos < values.length) {
+			if(pos < values.length) {
 				return values[pos];
 			}
 		}
@@ -590,13 +434,13 @@ function accessPosition<Domain extends AnyAbstractDomain>(
  * A position definitely contains zero if the interval is exactly [0, 0].
  * A position may contain zero if 0 is in the interval range.
  */
-function countZerosInIntervalVector(
+export function countZerosInIntervalVector(
 	selector: VectorDomain<PosIntervalDomain>
 ): PosIntervalDomain {
-	if (selector.isBottom()) {
+	if(selector.isBottom()) {
 		return selector.length.bottom();
 	}
-	if (selector.isTop()) {
+	if(selector.isTop()) {
 		return selector.length.create([0, +Infinity]);
 	}
 
@@ -604,20 +448,20 @@ function countZerosInIntervalVector(
 	let possibleZeros = 0;
 
 	// Check known position values for zeros
-	if (selector.values.isValue()) {
+	if(selector.values.isValue()) {
 		const values = selector.values.value as readonly PosIntervalDomain[];
-		for (const val of values) {
-			if (val.isValue()) {
+		for(const val of values) {
+			if(val.isValue()) {
 				const [l, u] = val.value;
-				if (l === 0 && u === 0) {
+				if(l === 0 && u === 0) {
 					// Definitely zero
 					definiteZeros++;
 					possibleZeros++;
-				} else if (l <= 0 && u >= 0) {
+				} else if(l <= 0 && u >= 0) {
 					// May contain zero
 					possibleZeros++;
 				}
-			} else if (!val.isBottom()) {
+			} else if(!val.isBottom()) {
 				// Top or other non-specific value - may contain zero
 				possibleZeros++;
 			}
@@ -625,917 +469,16 @@ function countZerosInIntervalVector(
 	}
 
 	// For summary: conservatively assume it may contain zeros
-	if (!selector.summary.isBottom()) {
+	if(!selector.summary.isBottom()) {
 		// Summary represents all positions beyond the known positions
 		// We don't know how many, so return unbounded
-		if (selector.length.isValue()) {
+		if(selector.length.isValue()) {
 			const [, u] = selector.length.value;
-			if (u === +Infinity) {
+			if(u === +Infinity) {
 				return selector.length.create([definiteZeros, +Infinity]);
 			}
 		}
 	}
 
 	return selector.length.create([definiteZeros, possibleZeros]);
-}
-
-/**
- * Selects elements using positive indices.
- * Per paper Section 4.9.1: x[c] where c ≥ 0
- *
- * Algorithm:
- * 1. Apply AdjustForZeros to handle zero indices
- * 2. Build result known positions by enumerating enumerable positions
- * 3. Result summary is ⊥ for finite selector, Squash(ν₁) for infinite
- */
-function applySelectPositiveSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ selector, naValue }: { selector: VectorDomain<PosIntervalDomain>; naValue: Domain }
-): VectorDomain<Domain> {
-	// Bottom check
-	if (value.isBottom() || selector.isBottom()) {
-		return value.bottom();
-	}
-
-	// Apply AdjustForZeros to handle zero indices in the selector
-	const adjustedSelector = adjustForZeros(selector);
-
-	// Build result known positions from adjusted selector
-	const resultKnownPositions: Domain[] = [];
-
-	if (adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
-		const selectorValues = adjustedSelector.values.value as readonly PosIntervalDomain[];
-
-		for (const idx of selectorValues) {
-			if (idx.isBottom()) {
-				continue;
-			}
-
-			if (isEnumerable(idx)) {
-				// Enumerable position: extract value from source
-				if (idx.isValue()) {
-					const [l] = idx.value;
-					// Pick a representative position (lower bound, skip 0)
-					const pos = l === 0 ? 1 : l;
-					if (pos > 0) {
-						resultKnownPositions.push(accessPosition(value, pos - 1, naValue));
-					}
-				} else {
-					resultKnownPositions.push(squash(value));
-				}
-			} else {
-				// Non-enumerable: join all possible values
-				resultKnownPositions.push(squash(value));
-			}
-		}
-	}
-
-	// Determine result summary based on selector finiteness
-	const selectorLen = adjustedSelector.length;
-	const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
-	const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
-
-	// Create result vector
-	const resultValues = value.values.create(resultKnownPositions);
-
-	return value.create({
-		length: adjustedSelector.length,
-		values: resultValues,
-		summary: resultSummary,
-		attributes: value.attributes
-	});
-}
-
-/**
- * Selects elements using negative indices.
- * Per paper Section 4.9.2: x[c] where c ≤ 0
- *
- * Algorithm:
- * 1. Apply AdjustForZeros to handle zero indices
- * 2. Identify MustDeleted, MayDeleted, MustNotDeleted positions
- * 3. Build result based on selector properties
- */
-function applySelectNegativeSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ selector, naValue }: { selector: VectorDomain<PosIntervalDomain>; naValue: Domain }
-): VectorDomain<Domain> {
-	// Bottom check
-	if (value.isBottom() || selector.isBottom()) {
-		return value.bottom();
-	}
-
-	// Get source vector bounds
-	let sourceUpper: number;
-	if (value.length.isValue()) {
-		sourceUpper = value.length.value[1];
-		if (sourceUpper === +Infinity) {
-			// Cannot precisely handle infinite source - return top
-			return value.top();
-		}
-	} else {
-		return value.top();
-	}
-
-	// Apply AdjustForZeros to handle zero indices in selector
-	const adjustedSelector = adjustForZeros(selector);
-	void adjustedSelector;
-
-	// Identify deleted positions
-	const mustDeleted: number[] = [];
-	const mayDeleted: number[] = [];
-
-	if (selector.values.isValue()) {
-		const selectorValues = selector.values.value as readonly PosIntervalDomain[];
-
-		for (const idx of selectorValues) {
-			if (idx.isBottom()) {
-				continue;
-			}
-
-			if (idx.isValue()) {
-				const [l, u] = idx.value;
-				// Negative indices: -k means exclude position k
-				// Convert to positive: position = -index
-				// Index interval [l, u] with l ≤ u ≤ 0 maps to positions [-u, -l]
-				if (l <= 0 && u <= 0) {
-					const posLower = Math.abs(u); // -u (if u is negative)
-					const posUpper = Math.abs(l); // -l (if l is negative)
-
-					if (card(idx) === 1) {
-						// Must delete: single position
-						const pos = posLower;
-						if (pos >= 1 && pos <= sourceUpper) {
-							mustDeleted.push(pos);
-						}
-					} else {
-						// May delete: range of positions
-						for (let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
-							mayDeleted.push(pos);
-						}
-					}
-				}
-			} else {
-				// Non-value interval - conservatively assume may delete
-				for (let pos = 1; pos <= sourceUpper; pos++) {
-					mayDeleted.push(pos);
-				}
-			}
-		}
-	}
-
-	// Check if any non-enumerable position exists
-	const hasNonEnumerable = selector.values.isValue() &&
-		(selector.values.value as readonly PosIntervalDomain[]).some(idx => !isEnumerable(idx));
-
-	// Compute result bounds
-	const numMustDeleted = mustDeleted.length;
-	const newUpper = Math.max(0, sourceUpper - numMustDeleted);
-
-	if (hasNonEnumerable || mayDeleted.length > 0) {
-		// Cannot precisely track - use conservative approach
-		// Result has at most sourceUpper - numMustDeleted positions
-		const resultLength = value.length.create([0, newUpper]);
-
-		// Build known positions: squash all values except mustDeleted
-		const resultKnownPositions: Domain[] = [];
-		const numPositions = Math.min(newUpper, sourceUpper);
-
-		for (let i = 1; i <= numPositions; i++) {
-			if (!mustDeleted.includes(i)) {
-				resultKnownPositions.push(accessPosition(value, i - 1, naValue));
-			}
-		}
-
-		return value.create({
-			length: resultLength,
-			values: value.values.create(resultKnownPositions),
-			summary: value.summary.bottom(),
-			attributes: value.attributes
-		});
-	}
-
-	// All positions enumerable - precise result
-	const resultLength = value.length.create([newUpper, newUpper]);
-	const resultKnownPositions: Domain[] = [];
-
-	for (let i = 1; i <= sourceUpper; i++) {
-		if (!mustDeleted.includes(i)) {
-			resultKnownPositions.push(accessPosition(value, i - 1, naValue));
-		}
-	}
-
-	return value.create({
-		length: resultLength,
-		values: value.values.create(resultKnownPositions),
-		summary: value.summary.bottom(),
-		attributes: value.attributes
-	});
-}
-
-/**
- * Selects elements using a logical vector.
- * Per paper Section 4.9.3: x[c] where c is boolean
- *
- * Algorithm:
- * 1. Recycle mask if shorter than source
- * 2. Build known positions position-by-position based on concretization
- * 3. Handle True, False, and NA cases
- */
-function applySelectLogicalSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ selector, naValue }: { selector: VectorDomain<Domain>; naValue: Domain }
-): VectorDomain<Domain> {
-	// Bottom check
-	if (value.isBottom() || selector.isBottom()) {
-		return value.bottom();
-	}
-
-	// Get lengths
-	let sourceLen = 0;
-	if (value.length.isValue()) {
-		sourceLen = value.length.value[1];
-	}
-
-	let selectorLen = 0;
-	if (selector.length.isValue()) {
-		selectorLen = selector.length.value[1];
-	}
-
-	// Empty selector results in empty output
-	if (selectorLen === 0) {
-		return value.create({
-			length: value.length.create([0, 0]),
-			values: value.values.create([]),
-			summary: value.summary.bottom(),
-			attributes: value.attributes
-		});
-	}
-
-	if (sourceLen === +Infinity || selectorLen === +Infinity) {
-		// Infinite case - use squash
-		return value.create({
-			length: value.length.create([0, +Infinity]),
-			values: value.values.top(),
-			summary: squash(value),
-			attributes: value.attributes
-		});
-	}
-
-	// Recycle mask to match source length (R semantics)
-	const maxLen = Math.max(sourceLen, selectorLen);
-
-	// Build result known positions
-	const resultKnownPositions: Domain[] = [];
-
-	for (let i = 0; i < maxLen; i++) {
-		// Get selector value at position i (recycled)
-		const selectorPos = i % selectorLen;
-		let selectorVal: Domain;
-
-		if (selector.values.isValue()) {
-			const selectorValues = selector.values.value as readonly Domain[];
-			if (selectorPos < selectorValues.length) {
-				selectorVal = selectorValues[selectorPos];
-			} else {
-				selectorVal = selector.summary;
-			}
-		} else {
-			selectorVal = selector.summary;
-		}
-
-		// Determine contribution based on selector value
-		// For interval domain: False=[0,0], True=[1,1], NA=special
-		// We need to check what values the selector interval represents
-		const sourceVal = accessPosition(value, i, naValue);
-
-		// Simplified: always select when unsure, include NA if selector may be NA
-		if (selectorVal.isValue()) {
-			// Check if it's definitely false (interval [0,0])
-			// This would require domain-specific knowledge, so we conservatively include
-			resultKnownPositions.push(sourceVal);
-		} else {
-			// Non-specific value - include with possible NA
-			resultKnownPositions.push(sourceVal.join(naValue));
-		}
-	}
-
-	// Determine finiteness
-	const isInfinite = selector.length.isValue() && selector.length.value[1] === +Infinity;
-
-	return value.create({
-		length: value.length.create([0, resultKnownPositions.length]),
-		values: value.values.create(resultKnownPositions),
-		summary: isInfinite ? squash(value) : value.summary.bottom(),
-		attributes: value.attributes
-	});
-}
-
-/**
- * Initializes a known positions array with a specific pattern.
- * Per paper Section 4.8: InitPrefix(prefix, l, u, u_r)
- *
- * Pattern: [p_1 ... p_l] ++ [p_{l+1} ⊔ NA ... p_u ⊔ NA] ++ [NA ... NA]^(u_r - u)
- *
- * @param knownPositions - The source known positions array
- * @param l - Lower bound of original vector length
- * @param u - Upper bound of original vector length
- * @param uR - Target upper bound for result
- * @param naValue - The NA abstract value
- * @returns Initialized known positions array
- */
-function initKnownPositions<Domain extends AnyAbstractDomain>(
-	knownPositions: readonly Domain[],
-	l: number,
-	u: number,
-	uR: number,
-	naValue: Domain
-): Domain[] {
-	const result: Domain[] = [];
-
-	// First l elements: keep as-is (positions 1 to l)
-	for (let i = 0; i < Math.min(l, knownPositions.length); i++) {
-		result.push(knownPositions[i]);
-	}
-
-	// Positions l+1 to u: join with NA
-	for (let i = l; i < Math.min(u, knownPositions.length); i++) {
-		result.push(knownPositions[i].join(naValue));
-	}
-
-	// Positions u+1 to u_r: fill with NA
-	for (let i = u; i < uR; i++) {
-		result.push(naValue);
-	}
-
-	return result;
-}
-
-/**
- * Recursively updates positions in a target known positions array.
- * Per paper Section 4.8: UpdatePrefix(prefix, selectorPositions, values)
- *
- * For each position in selectorPositions:
- * - If enumerable and singleton: strong update (replace)
- * - If enumerable but not singleton: weak update (join)
- * - If not enumerable: weak update all positions
- *
- * @param knownPositions - The target known positions to update
- * @param selectorPositions - The selector intervals (positions to update)
- * @param values - The values to write (cyclic)
- * @returns Updated known positions array
- */
-function updateKnownPositions<Domain extends AnyAbstractDomain>(
-	knownPositions: Domain[],
-	selectorPositions: readonly PosIntervalDomain[],
-	values: readonly Domain[]
-): Domain[] {
-	if (selectorPositions.length === 0 || values.length === 0) {
-		return knownPositions;
-	}
-
-	const result = [...knownPositions];
-	let valueIdx = 0;
-
-	for (const posInterval of selectorPositions) {
-		if (posInterval.isBottom()) {
-			continue;
-		}
-
-		const valueToWrite = values[valueIdx % values.length];
-		valueIdx++;
-
-		if (posInterval.isValue()) {
-			const [l, u] = posInterval.value;
-
-			// Skip zero index
-			if (l === 0 && u === 0) {
-				continue;
-			}
-
-			// Get actual positions (1-indexed to 0-indexed)
-			const startPos = l <= 0 ? 1 : l;
-			const endPos = u;
-
-			if (isEnumerable(posInterval)) {
-				// Enumerable: update specific positions
-				const isSingleton = card(posInterval) === 1;
-				for (let pos = startPos; pos <= endPos && pos <= result.length; pos++) {
-					const idx = pos - 1;
-					if (isSingleton) {
-						// Strong update: replace
-						result[idx] = valueToWrite;
-					} else {
-						// Weak update: join
-						result[idx] = result[idx].join(valueToWrite);
-					}
-				}
-			} else {
-				// Not enumerable: weak update all positions
-				for (let i = 0; i < result.length; i++) {
-					result[i] = result[i].join(valueToWrite);
-				}
-			}
-		} else {
-			// Non-specific interval: weak update all
-			for (let i = 0; i < result.length; i++) {
-				result[i] = result[i].join(valueToWrite);
-			}
-		}
-	}
-
-	return result;
-}
-
-/**
- * Generates cyclic known positions from a vector up to a target length.
- * Per paper Section 4.8: ρ_f^♯(ν, l, u_r)
- *
- * Cycles through the vector's known positions and summary to generate
- * values up to the target length.
- *
- * @param vector - The source vector
- * @param targetLength - The target length to generate
- * @returns Array of abstract values
- */
-function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
-	vector: VectorDomain<Domain>,
-	targetLength: number
-): Domain[] {
-	const result: Domain[] = [];
-
-	if (vector.isBottom()) {
-		return result;
-	}
-
-	const knownPositions = vector.values.isValue()
-		? (vector.values.value as readonly Domain[])
-		: [];
-
-	for (let i = 0; i < targetLength; i++) {
-		if (i < knownPositions.length) {
-			result.push(knownPositions[i]);
-		} else {
-			// Cycle through: use summary, then wrap around
-			const cyclicIdx = (i - knownPositions.length) % Math.max(1, knownPositions.length || 1);
-			if (knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
-				result.push(knownPositions[cyclicIdx]);
-			} else {
-				result.push(vector.summary);
-			}
-		}
-	}
-
-	return result;
-}
-
-/**
- * Updates elements using positive indices.
- * Per paper Section 4.8.1: x[c] <- v where c ≥ 0
- *
- * Algorithm:
- * 1. Apply AdjustForZeros to handle zero indices
- * 2. Handle three cases based on selector properties:
- *    - Non-enumerable positions: collapse vector
- *    - Infinite selector with enumerable positions
- *    - Finite selector with enumerable positions
- */
-function applyUpdatePositiveSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ selector, values, naValue }: { selector: VectorDomain<PosIntervalDomain>; values: VectorDomain<Domain>; naValue: Domain }
-): VectorDomain<Domain> {
-	// Bottom checks
-	if (value.isBottom() || selector.isBottom() || values.isBottom()) {
-		return value.bottom();
-	}
-
-	// Apply AdjustForZeros to handle zero indices
-	const adjustedSelector = adjustForZeros(selector);
-
-	// Check for non-enumerable positions
-	const hasNonEnumerable = adjustedSelector.values.isValue() &&
-		(adjustedSelector.values.value as readonly PosIntervalDomain[])
-			.some(idx => !isEnumerable(idx));
-
-	if (hasNonEnumerable) {
-		// Case 1: Non-enumerable positions - collapse entire vector
-		const vAll = squash(value).join(squash(values));
-		return value.create({
-			length: value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
-			values: value.values.create([]),
-			summary: vAll,
-			attributes: value.attributes
-		});
-	}
-
-	// Get bounds
-	let sourceLower = 0, sourceUpper = 0;
-	if (value.length.isValue()) {
-		sourceLower = value.length.value[0];
-		sourceUpper = value.length.value[1];
-	}
-
-	let selectorLower = 0, selectorUpper = 0;
-	if (adjustedSelector.length.isValue()) {
-		selectorLower = adjustedSelector.length.value[0];
-		selectorUpper = adjustedSelector.length.value[1];
-	}
-
-	const isInfinite = selectorUpper === +Infinity;
-
-	// Get source known positions
-	const sourceKnownPositions = value.values.isValue()
-		? (value.values.value as readonly Domain[])
-		: [];
-
-	if (isInfinite) {
-		// Case 2: Infinite selector with enumerable positions
-		// Check if selector summary is enumerable
-		const selectorSummaryEnumerable = isEnumerable(adjustedSelector.summary);
-
-		// Compute u_r = max(u_2', l_{s_2})
-		const summaryLower = adjustedSelector.summary.isValue()
-			? adjustedSelector.summary.value[0]
-			: 0;
-		const uR = Math.max(selectorUpper === +Infinity ? 0 : selectorUpper, summaryLower);
-
-		// Initialize base known positions
-		const selectorKnownPositions = adjustedSelector.values.isValue()
-			? (adjustedSelector.values.value as readonly PosIntervalDomain[])
-			: [];
-
-		const baseKnownPositions = initKnownPositions(
-			selectorKnownPositions as unknown as Domain[],
-			sourceLower,
-			sourceUpper,
-			uR,
-			naValue
-		);
-
-		// Generate cyclic values from values vector
-		let valuesUpper = 0;
-		if (values.length.isValue()) {
-			valuesUpper = values.length.value[1];
-		}
-		const cyclicValues = generateCyclicKnownPositions(values, valuesUpper);
-
-		// Update known positions
-		let resultKnownPositions = updateKnownPositions(
-			baseKnownPositions,
-			selectorKnownPositions,
-			cyclicValues
-		);
-
-		// If summary is not enumerable, weak update positions in [l_{s_2}, u_r]
-		if (!selectorSummaryEnumerable && adjustedSelector.summary.isValue()) {
-			const squashValues = squash(values);
-			const lS2 = adjustedSelector.summary.value[0];
-			for (let i = Math.max(0, lS2 - 1); i < resultKnownPositions.length; i++) {
-				resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
-			}
-		}
-
-		const resultSummary = value.summary.join(squash(values));
-
-		return value.create({
-			length: value.length.create([sourceLower, +Infinity]),
-			values: value.values.create(resultKnownPositions),
-			summary: resultSummary,
-			attributes: value.attributes
-		});
-	} else {
-		// Case 3: Finite selector with enumerable positions
-		// Compute u_r = max index in selector
-		let uR = 0;
-		if (adjustedSelector.values.isValue()) {
-			const selectorKnownPositions = adjustedSelector.values.value as readonly PosIntervalDomain[];
-			for (const idx of selectorKnownPositions) {
-				if (idx.isValue()) {
-					uR = Math.max(uR, idx.value[1]);
-				}
-			}
-		}
-		uR = Math.max(uR, sourceUpper);
-
-		// Get selector known positions
-		const selectorKnownPositions = adjustedSelector.values.isValue()
-			? (adjustedSelector.values.value as readonly PosIntervalDomain[])
-			: [];
-
-		// Initialize base known positions from selector
-		const baseKnownPositions = initKnownPositions(
-			selectorKnownPositions as unknown as Domain[],
-			sourceLower,
-			sourceUpper,
-			uR,
-			naValue
-		);
-
-		// Generate cyclic values
-		let valuesUpper = 0;
-		if (values.length.isValue()) {
-			valuesUpper = values.length.value[1];
-		}
-		const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
-
-		// Update known positions
-		const resultKnownPositions = updateKnownPositions(
-			baseKnownPositions,
-			selectorKnownPositions,
-			cyclicValues
-		);
-
-		return value.create({
-			length: value.length.create([sourceLower, uR]),
-			values: value.values.create(resultKnownPositions),
-			summary: value.summary.bottom(),
-			attributes: value.attributes
-		});
-	}
-}
-
-/**
- * Updates elements using negative indices.
- * Per paper Section 4.8.2: x[c] <- v where c ≤ 0
- *
- * Algorithm:
- * 1. Apply AdjustForZeros to handle zero indices
- * 2. Identify MustUpdated, MayNotUpdated, MustNotUpdated position sets
- * 3. Handle three cases based on selector properties
- */
-function applyUpdateNegativeSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ selector, values, naValue }: { selector: VectorDomain<PosIntervalDomain>; values: VectorDomain<Domain>; naValue: Domain }
-): VectorDomain<Domain> {
-	// Bottom checks
-	if (value.isBottom() || selector.isBottom() || values.isBottom()) {
-		return value.bottom();
-	}
-
-	// Get source bounds
-	let sourceUpper = 0;
-	if (value.length.isValue()) {
-		sourceUpper = value.length.value[1];
-		if (sourceUpper === +Infinity) {
-			// Cannot handle infinite source precisely
-			return value.top();
-		}
-	} else {
-		return value.top();
-	}
-
-	// Apply AdjustForZeros
-	const adjustedSelector = adjustForZeros(selector);
-
-	// Identify position sets
-	const mustNotUpdated: number[] = [];
-	const mayNotUpdated: number[] = [];
-
-	if (adjustedSelector.values.isValue()) {
-		const selectorKnownPositions = adjustedSelector.values.value as readonly PosIntervalDomain[];
-
-		for (const idx of selectorKnownPositions) {
-			if (idx.isBottom()) {
-				continue;
-			}
-
-			if (idx.isValue()) {
-				const [l, u] = idx.value;
-				// Negative indices: convert to positive positions
-				if (l <= 0 && u <= 0) {
-					const posLower = Math.abs(u);
-					const posUpper = Math.abs(l);
-
-					if (card(idx) === 1) {
-						// Must not update: single definite position
-						const pos = posLower;
-						if (pos >= 1 && pos <= sourceUpper) {
-							mustNotUpdated.push(pos);
-						}
-					} else {
-						// May not update: range of positions
-						for (let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
-							mayNotUpdated.push(pos);
-						}
-					}
-				}
-			} else {
-				// Non-specific: may not update any position
-				for (let pos = 1; pos <= sourceUpper; pos++) {
-					mayNotUpdated.push(pos);
-				}
-			}
-		}
-	}
-
-	// Check for non-enumerable positions
-	const hasNonEnumerable = adjustedSelector.values.isValue() &&
-		(adjustedSelector.values.value as readonly PosIntervalDomain[])
-			.some(idx => !isEnumerable(idx));
-
-	const v = squash(values);
-
-	if (hasNonEnumerable) {
-		// Case 1: Non-enumerable positions
-		// Weak update all positions not in mustNotUpdated
-		const sourceKnownPositions = value.values.isValue()
-			? (value.values.value as readonly Domain[])
-			: [];
-
-		const resultKnownPositions: Domain[] = [];
-		for (let i = 1; i <= sourceUpper; i++) {
-			const idx = i - 1;
-			let val: Domain;
-			if (idx < sourceKnownPositions.length) {
-				val = sourceKnownPositions[idx];
-			} else {
-				val = value.summary;
-			}
-
-			if (!mustNotUpdated.includes(i)) {
-				// Weak update
-				val = val.join(v);
-			}
-			resultKnownPositions.push(val);
-		}
-
-		const resultSummary = value.summary.join(v);
-
-		return value.create({
-			length: value.length,
-			values: value.values.create(resultKnownPositions),
-			summary: resultSummary,
-			attributes: value.attributes
-		});
-	}
-
-	// Check if selector is infinite
-	const isInfinite = adjustedSelector.length.isValue() &&
-		adjustedSelector.length.value[1] === +Infinity;
-
-	if (isInfinite) {
-		// Case 2: Infinite selector with enumerable positions
-		// Build a positive selector and apply positive update
-		// Simplified: return top for now
-		return value.top();
-	} else {
-		// Case 3: Finite selector with enumerable positions
-		// Compute u_r = max(u_1, u_2')
-		let selectorUpper = 0;
-		if (adjustedSelector.length.isValue()) {
-			selectorUpper = adjustedSelector.length.value[1];
-		}
-		const uR = Math.max(sourceUpper, selectorUpper);
-
-		// Generate cyclic values
-		let valuesUpper = 0;
-		if (values.length.isValue()) {
-			valuesUpper = values.length.value[1];
-		}
-		const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
-
-		// Initialize result known positions from source
-		const sourceKnownPositions = value.values.isValue()
-			? (value.values.value as readonly Domain[])
-			: [];
-
-		const resultKnownPositions: Domain[] = [];
-		for (let i = 0; i < uR; i++) {
-			if (i < sourceKnownPositions.length) {
-				resultKnownPositions.push(sourceKnownPositions[i]);
-			} else if (i < sourceUpper) {
-				resultKnownPositions.push(value.summary);
-			} else {
-				resultKnownPositions.push(naValue);
-			}
-		}
-
-		// Update positions not in mustNotUpdated or mayNotUpdated
-		const updatedPositions = new Set([...mustNotUpdated, ...mayNotUpdated]);
-		for (let i = 1; i <= uR; i++) {
-			if (!updatedPositions.has(i)) {
-				// Position must be updated
-				const idx = i - 1;
-				const valueIdx = (i - 1) % cyclicValues.length;
-				resultKnownPositions[idx] = cyclicValues[valueIdx];
-			}
-		}
-
-		return value.create({
-			length: value.length.create([value.length.isValue() ? value.length.value[0] : 0, uR]),
-			values: value.values.create(resultKnownPositions),
-			summary: value.summary.bottom(),
-			attributes: value.attributes
-		});
-	}
-}
-
-/**
- * Updates elements using a logical vector.
- * Per paper Section 4.8.3: x[c] <- v where c is boolean
- *
- * Algorithm:
- * 1. Check for NA in selector (error case if values length != 1)
- * 2. Apply AdjustForZeros
- * 3. Initialize result known positions
- * 4. Update positions based on selector values (True/False/NA)
- */
-function applyUpdateLogicalSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	{ selector, values, naValue }: { selector: VectorDomain<Domain>; values: VectorDomain<Domain>; naValue: Domain }
-): VectorDomain<Domain> {
-	// Bottom checks
-	if (value.isBottom() || selector.isBottom() || values.isBottom()) {
-		return value.bottom();
-	}
-
-	// Check for NA in selector
-	const selectorSquash = squash(selector);
-	// Simplified: check if NA might be in selector
-	// In a full implementation, we'd check the actual abstract domain
-
-	// Get bounds
-	let sourceLower = 0, sourceUpper = 0;
-	if (value.length.isValue()) {
-		sourceLower = value.length.value[0];
-		sourceUpper = value.length.value[1];
-	}
-
-	let selectorUpper = 0;
-	if (selector.length.isValue()) {
-		selectorUpper = selector.length.value[1];
-	}
-
-	const isInfinite = selectorUpper === +Infinity;
-
-	// Get known positions
-	const sourceKnownPositions = value.values.isValue()
-		? (value.values.value as readonly Domain[])
-		: [];
-	const selectorKnownPositions = selector.values.isValue()
-		? (selector.values.value as readonly Domain[])
-		: [];
-
-	// Initialize result known positions
-	const maxLen = Math.max(sourceKnownPositions.length, selectorKnownPositions.length);
-	const resultKnownPositions: Domain[] = [];
-
-	// Initialize with source values, extended with NA
-	for (let i = 0; i < maxLen; i++) {
-		if (i < sourceKnownPositions.length) {
-			resultKnownPositions.push(sourceKnownPositions[i]);
-		} else if (i < sourceUpper) {
-			resultKnownPositions.push(value.summary);
-		} else {
-			resultKnownPositions.push(naValue);
-		}
-	}
-
-	// Generate cyclic values
-	let valuesUpper = 0;
-	if (values.length.isValue()) {
-		valuesUpper = values.length.value[1];
-	}
-	const cyclicValues = generateCyclicKnownPositions(values, selectorUpper);
-
-	// Update based on selector
-	for (let i = 0; i < maxLen && i < cyclicValues.length; i++) {
-		let selectorVal: Domain;
-		if (i < selectorKnownPositions.length) {
-			selectorVal = selectorKnownPositions[i];
-		} else if (i < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {
-			selectorVal = selector.summary;
-		} else {
-			selectorVal = selector.summary.top();
-		}
-
-		if (selectorVal.isValue()) {
-			// Check if it's True ([1,1]), False ([0,0]), or both
-			// For simplicity, assume interval domain
-			// This would need domain-specific handling in a full implementation
-			resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];
-		} else {
-			// Uncertain: weak update
-			resultKnownPositions[i] = resultKnownPositions[i].join(cyclicValues[i % cyclicValues.length]);
-		}
-	}
-
-	// Determine result bounds
-	const resultUpper = isInfinite ? +Infinity : Math.max(sourceUpper, selectorUpper);
-	const resultSummary = isInfinite ? squash(values) : value.summary.bottom();
-
-	return value.create({
-		length: value.length.create([sourceLower, resultUpper]),
-		values: value.values.create(resultKnownPositions),
-		summary: resultSummary,
-		attributes: value.attributes
-	});
-}
-
-/**
- * Unknown vector operation - returns top to indicate no information.
- */
-function applyUnknownSemantics<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>
-): VectorDomain<Domain> {
-	return value.top();
 }

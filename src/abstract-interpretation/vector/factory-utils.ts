@@ -15,6 +15,9 @@ export type NAAwareDomainFactory<InnerDomain extends AnyAbstractDomain> = (
 	concrete: ReadonlySet<ConcreteDomain<InnerDomain>> | typeof Top | typeof NA,
 ) => NAAwareDomain<InnerDomain>;
 
+/**
+ *
+ */
 export function createIntervalNAAwareFactory(): NAAwareDomainFactory<IntervalDomain> {
 	const innerFactory = (
 		concrete: ReadonlySet<number> | typeof Top,
@@ -55,6 +58,9 @@ export function createIntervalNAAwareFactory(): NAAwareDomainFactory<IntervalDom
 	return factory;
 }
 
+/**
+ *
+ */
 export function wrapInNAAware<Inner extends AnyAbstractDomain>(
 	inner: Inner,
 	hasNA: boolean,

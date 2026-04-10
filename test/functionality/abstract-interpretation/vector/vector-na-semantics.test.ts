@@ -40,10 +40,10 @@ const naAwareIntervalFactory: DomainFactory<NAAwareDomain<IntervalDomain>> = (co
 	// Handle undefined case: naValueToDomain returns undefined for non-numeric values (including NA)
 	// When concrete is undefined, it means NA was passed and we should set hasNA = true
 	let hasNA = false;
-	let concreteValues = new Set<number>();
-	if (concrete === undefined) {
+	const concreteValues = new Set<number>();
+	if(concrete === undefined) {
 		hasNA = true;
-	} else if (concrete instanceof Set) {
+	} else if(concrete instanceof Set) {
 		hasNA = concrete.has(NA);
 		for(const v of concrete) {
 			if(v !== NA) {
@@ -137,7 +137,7 @@ function assertContainsNA(vector: VectorDomain<NAAwareDomain<IntervalDomain>> | 
 			}
 		} else {
 			// Summary is a concrete value - check it
-			const summary = vector.summary as NAAwareDomain<IntervalDomain>;
+			const summary = vector.summary;
 			if(typeof summary.containsNA === 'function') {
 				containsNA = summary.containsNA();
 			}
@@ -147,7 +147,7 @@ function assertContainsNA(vector: VectorDomain<NAAwareDomain<IntervalDomain>> | 
 	assert.strictEqual(containsNA, expected, message ?? `Expected vector to ${expected ? '' : 'not '}contain NA`);
 }
 
-function assertVectorLength(
+function _assertVectorLength(
 	vector: VectorDomain<NAAwareDomain<IntervalDomain>> | undefined,
 	expected: [number, number]
 ): void {
@@ -179,7 +179,7 @@ async function getVectorForCriterion(
 	const cfg = extractCfg(result.normalize, ctx, undefined, undefined, true);
 	const inference = new VectorInferenceVisitor(naAwareIntervalFactory, naValueToDomain, { controlFlow: cfg, dfg: result.dataflow.graph, normalizedAst: result.normalize, ctx });
 	inference.start();
-	return inference.getAbstractValue(node) as VectorDomain<NAAwareDomain<IntervalDomain>> | undefined;
+	return inference.getAbstractValue(node);
 }
 
 /* ============================================================================
@@ -358,7 +358,7 @@ c <- b[c(1, 2)]`;
 		});
 
 		test('large vector with scattered NA values', async() => {
-			const code = `x <- c(1, 2, NA, 4, 5, NA, 7, 8, 9, NA)`;
+			const code = 'x <- c(1, 2, NA, 4, 5, NA, 7, 8, 9, NA)';
 			const vector = await getVectorForCriterion(shell, code, '1@x');
 			assert.ok(vector !== undefined);
 			assertContainsNA(vector, true);
