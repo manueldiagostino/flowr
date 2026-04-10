@@ -43,7 +43,7 @@ type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
 
 type SelectorType = 'positive' | 'negative' | 'logical';
 
-type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'updatePositive' | 'updateNegative' | 'updateLogical' | 'unknown';
+type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'unknown';
 
 interface VectorOperation<Name extends VectorOperationName = VectorOperationName> {
 	operation:     Name;
@@ -235,22 +235,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		return 'positive';
 	}
 
-	/**
-	 * Maps a selector type to the corresponding abstract vector update operation name.
-	 * @param selectorType - The detected selector type
-	 * @returns The corresponding update operation name
-	 */
-	private selectorTypeToUpdateOperation(selectorType: SelectorType): Extract<VectorOperationName, 'updatePositive' | 'updateNegative' | 'updateLogical'> {
-		switch(selectorType) {
-			case 'negative':
-				return 'updateNegative';
-			case 'logical':
-				return 'updateLogical';
-			case 'positive':
-			default:
-				return 'updatePositive';
-		}
-	}
+
 
 	// ==================== Function Handlers ====================
 
@@ -407,13 +392,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 			// Detect selector type from AST
 			const selectorType = this.detectSelectorType(selectorArg);
-			const operation = this.selectorTypeToUpdateOperation(selectorType);
 
 			return [{
-				operation,
-				operand:  operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+				operation: 'update',
+				operand: operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
 				selector: selector !== undefined ? String(selector) : undefined,
-				values:   values !== undefined ? String(values) : undefined
+				values: values !== undefined ? String(values) : undefined,
+				selectorType
 			}];
 		}
 
@@ -608,8 +593,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				argsWithNaValue
 			);
 
-			const isOperandModification = operation === 'updatePositive' || operation === 'updateNegative' ||
-				operation === 'updateLogical' || operation === 'setAttr';
+			const isOperandModification = operation === 'update' || operation === 'setAttr';
 
 			// For chained operations (operand is undefined), we use the accumulated value
 			// which is the result of the previous operation - no state update needed
@@ -664,9 +648,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): Record<string, unknown> {
 		const operationsNeedingNaValue = new Set([
 			'select',
-			'updatePositive',
-			'updateNegative',
-			'updateLogical'
+			'update'
 		]);
 
 		if(operationsNeedingNaValue.has(operation) && !('naValue' in args)) {
@@ -702,12 +684,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					args.naValue as Domain,
 					args.selectorType as SelectorType | undefined
 				);
-			case 'updatePositive':
-				return this.applyUpdate(value, args.selector as VectorDomain<PosIntervalDomain>, args.values as VectorDomain<Domain>, args.naValue as Domain, 'positive');
-			case 'updateNegative':
-				return this.applyUpdate(value, args.selector as VectorDomain<PosIntervalDomain>, args.values as VectorDomain<Domain>, args.naValue as Domain, 'negative');
-			case 'updateLogical':
-				return this.applyUpdate(value, args.selector as VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as Domain, 'logical');
+			case 'update':
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as Domain, args.selectorType as SelectorType);
 			default:
 				return value.top();
 		}
