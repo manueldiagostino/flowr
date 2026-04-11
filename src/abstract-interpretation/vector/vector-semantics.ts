@@ -2,6 +2,7 @@ import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorDomain } from './vector-domain';
+import type { NAAwareDomain } from './na-aware-domain';
 import { ConstraintType } from '../data-frame/semantics';
 
 export { ConstraintType };
@@ -47,11 +48,11 @@ export function isEnumerable(interval: PosIntervalDomain, threshold = 50): boole
  * Per paper section 4.6: Squash(p, s) = ⊔ᵢ pᵢ ⊔ s
  * This joins all known positions with the summary to get a single abstract value.
  * @param value - The abstract vector
- * @returns The joined abstract value representing all elements
+ * @returns The joined abstract value representing all elements (as NAAwareDomain)
  */
 export function squash<Domain extends AnyAbstractDomain>(
 	value: VectorDomain<Domain>
-): Domain {
+): NAAwareDomain<Domain> {
 	if(value.isBottom()) {
 		return value.summary.bottom();
 	}
@@ -64,7 +65,7 @@ export function squash<Domain extends AnyAbstractDomain>(
 	if(value.values.isValue()) {
 		const valuesArray = value.values.value as readonly Domain[];
 		for(const elem of valuesArray) {
-			result = result.join(elem);
+			result = result.join(result.create({ inner: elem, hasNA: false }));
 		}
 	}
 
@@ -77,12 +78,12 @@ export function squash<Domain extends AnyAbstractDomain>(
  * This joins all known positions (except excluded indices) with the summary to get a single abstract value.
  * @param value - The abstract vector
  * @param excludedIndices - Set of 1-based indices to exclude from the join
- * @returns The joined abstract value representing all non-excluded elements
+ * @returns The joined abstract value representing all non-excluded elements (as NAAwareDomain)
  */
 export function squashedExcept<Domain extends AnyAbstractDomain>(
 	value: VectorDomain<Domain>,
 	excludedIndices: ReadonlySet<number>
-): Domain {
+): NAAwareDomain<Domain> {
 	if(value.isBottom()) {
 		return value.summary.bottom();
 	}
@@ -95,9 +96,8 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 	if(value.values.isValue()) {
 		const valuesArray = value.values.value as readonly Domain[];
 		for(let i = 0; i < valuesArray.length; i++) {
-			// Paper uses 1-based indexing, so we check i+1 against excluded indices
 			if(!excludedIndices.has(i + 1)) {
-				result = result.join(valuesArray[i]);
+				result = result.join(result.create({ inner: valuesArray[i], hasNA: false }));
 			}
 		}
 	}
@@ -119,11 +119,12 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
  */
 export function propagate(
 	knownPositions: readonly IntervalDomain[],
-	summary: IntervalDomain,
+	summary: NAAwareDomain<IntervalDomain>,
 	k: number
 ): IntervalDomain {
 	if(knownPositions.length === 0) {
-		return summary;
+		const inner = summary.getInner();
+		return inner ?? summary.bottom().getInner()!;
 	}
 
 	const first = knownPositions[0];
@@ -394,12 +395,22 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 		if(i < knownPositions.length) {
 			result.push(knownPositions[i]);
 		} else {
-			// Cycle through: use summary, then wrap around
 			const cyclicIdx = (i - knownPositions.length) % Math.max(1, knownPositions.length || 1);
 			if(knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
 				result.push(knownPositions[cyclicIdx]);
 			} else {
-				result.push(vector.summary);
+				const inner = vector.summary.getInner();
+				if(inner !== undefined) {
+					result.push(inner);
+				} else if(vector.summary.isTop()) {
+					// For Top, use top of the first known position or create a bottom
+					const topVal = knownPositions.length > 0 ? knownPositions[0].top() : null;
+					result.push(topVal ?? knownPositions[0].bottom());
+				} else {
+					// For Bottom, use bottom of the first known position or create a bottom
+					const bottomVal = knownPositions.length > 0 ? knownPositions[0].bottom() : null;
+					result.push(bottomVal ?? knownPositions[0].bottom());
+				}
 			}
 		}
 	}
@@ -418,10 +429,12 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 	naValue: Domain
 ): Domain {
 	if(vector.isBottom()) {
-		return vector.summary.bottom();
+		const inner = vector.summary.bottom().getInner();
+		return inner ?? naValue.bottom();
 	}
 	if(vector.isTop()) {
-		return vector.summary.top();
+		const inner = vector.summary.top().getInner();
+		return inner ?? naValue.top();
 	}
 
 	// Get upper bound of vector length (0-indexed, so u_ν - 1)
@@ -436,11 +449,14 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 					return values[pos];
 				}
 			}
-			return vector.summary;
+			const inner = vector.summary.getInner();
+			return inner ?? naValue.top();
 		}
 	} else {
 		// Cannot determine bounds, return join of all possible values
-		return squash(vector);
+		const squashed = squash(vector);
+		const inner = squashed.getInner();
+		return inner ?? naValue.top();
 	}
 
 	// Position is 0-indexed, paper uses 1-indexed
@@ -453,7 +469,8 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 			}
 		}
 		// Position exists but not in known positions - use summary
-		return vector.summary;
+		const inner = vector.summary.getInner();
+		return inner ?? naValue.bottom();
 	}
 
 	// Position out of bounds - return NA

@@ -11,14 +11,17 @@ import { createDataflowPipeline } from '../../../../src/core/steps/pipeline/defa
 import { contextFromInput } from '../../../../src/project/context/flowr-analyzer-context';
 import { SlicingCriterion } from '../../../../src/slicing/criterion/parse';
 import { NA } from '../../../../src/abstract-interpretation/domains/lattice';
-import type { Top } from '../../../../src/abstract-interpretation/domains/lattice';
+import { Bottom, type Top } from '../../../../src/abstract-interpretation/domains/lattice';
 import { withShell } from '../../_helper/shell';
 import type { RShell } from '../../../../src/r-bridge/shell';
 
 const defaultAbsintConfig: FlowrConfig = FlowrConfig.setInConfig(FlowrConfig.default(), 'solver.evalStrings', false);
 
-const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
 	if(concrete === NA || concrete === undefined) {
+		return IntervalDomain.bottom();
+	}
+	if(concrete === Bottom) {
 		return IntervalDomain.bottom();
 	}
 	return IntervalDomain.abstract(concrete);

@@ -1,13 +1,16 @@
 import { describe, test, assert } from 'vitest';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
+import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import type { DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 
 describe('NAAwareDomain', () => {
 	const intervalFactory: DomainFactory<IntervalDomain> = (concrete) => {
 		if(concrete === Top) {
 			return IntervalDomain.top();
+		}
+		if(concrete === Bottom) {
+			return IntervalDomain.bottom();
 		}
 		if(concrete === NA || concrete === undefined) {
 			return IntervalDomain.bottom();

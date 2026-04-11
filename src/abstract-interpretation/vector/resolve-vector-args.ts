@@ -12,6 +12,7 @@ import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { Bottom, NA } from '../domains/lattice';
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
+import { NAAwareDomain } from './na-aware-domain';
 import { RNa } from '../../r-bridge/lang-4.x/convert-values';
 import { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 
@@ -135,7 +136,7 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 
 	const elementDomains = domainValueSets.map(values => factory(values));
 	const knownPositions = KnownInitialPositionsDomain.bottom<Domain>(factory).create(elementDomains) as KnownInitialPositionsDomain<Domain>;
-	const summaryBottom = knownPositions.create(Bottom) as unknown as Domain;
+	const summaryBottom = NAAwareDomain.bottom(factory);
 
 	return new VectorDomain({
 		length:     PosIntervalDomain.bottom().create([domainValueSets.length, domainValueSets.length]),
@@ -163,7 +164,7 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 		// Pass NA directly to the factory, not wrapped in a set
 		const elementDomain = factory(NA);
 		const knownPositions = KnownInitialPositionsDomain.bottom<Domain>(factory).create([elementDomain]) as KnownInitialPositionsDomain<Domain>;
-		const summaryBottom = knownPositions.create(Bottom) as unknown as Domain;
+		const summaryBottom = NAAwareDomain.bottom(factory);
 
 		return new VectorDomain({
 			length:     PosIntervalDomain.bottom().create([1, 1]),

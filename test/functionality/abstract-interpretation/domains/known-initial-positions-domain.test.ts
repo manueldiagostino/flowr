@@ -5,7 +5,7 @@ import { Bottom, Top } from '../../../../src/abstract-interpretation/domains/lat
 import type { NA } from '../../../../src/abstract-interpretation/domains/lattice';
 
 describe('Sequence Prefix Domain', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
 		if(concrete === undefined) {
 			return IntervalDomain.bottom();
 		}

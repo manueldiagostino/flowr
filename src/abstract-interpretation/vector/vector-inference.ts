@@ -955,10 +955,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 							resultKnownPositions.push(accessPosition(value, pos - 1, naValue));
 						}
 					} else {
-						resultKnownPositions.push(squash(value));
+						const squashed = squash(value);
+						const inner = squashed.getInner();
+						resultKnownPositions.push(inner ?? naValue.top());
 					}
 				} else {
-					resultKnownPositions.push(squash(value));
+					const squashed = squash(value);
+					const inner = squashed.getInner();
+					resultKnownPositions.push(inner ?? naValue.top());
 				}
 			}
 		}
@@ -1115,10 +1119,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				if(selectorPos < selectorValues.length) {
 					selectorVal = selectorValues[selectorPos];
 				} else {
-					selectorVal = selector.summary;
+					const inner = selector.summary.getInner();
+					selectorVal = inner ?? naValue.top();
 				}
 			} else {
-				selectorVal = selector.summary;
+				const inner = selector.summary.getInner();
+				selectorVal = inner ?? naValue.top();
 			}
 			const sourceVal = accessPosition(value, i, naValue);
 			if(selectorVal.isValue()) {
@@ -1202,8 +1208,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const isInfinite = selectorUpper === +Infinity;
 		if(isInfinite) {
-			const selectorSummaryEnumerable = isEnumerable(adjustedSelector.summary);
-			const summaryLower = adjustedSelector.summary.isValue() ? adjustedSelector.summary.value[0] : 0;
+			const summaryInner = adjustedSelector.summary.getInner();
+			const selectorSummaryEnumerable = summaryInner !== undefined ? isEnumerable(summaryInner) : false;
+			const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : 0;
 			const uR = Math.max(selectorUpper === +Infinity ? 0 : selectorUpper, summaryLower);
 			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly PosIntervalDomain[]) : [];
 			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue);
@@ -1213,11 +1220,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 			const cyclicValues = generateCyclicKnownPositions(values, valuesUpper);
 			const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
-			if(!selectorSummaryEnumerable && adjustedSelector.summary.isValue()) {
+			if(!selectorSummaryEnumerable && summaryInner !== undefined && summaryInner.isValue()) {
 				const squashValues = squash(values);
-				const lS2 = adjustedSelector.summary.value[0];
+				const squashValuesInner = squashValues.getInner();
+				const lS2 = summaryInner.value[0];
 				for(let i = Math.max(0, lS2 - 1); i < resultKnownPositions.length; i++) {
-					resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
+					resultKnownPositions[i] = resultKnownPositions[i].join(squashValuesInner ?? naValue.top());
 				}
 			}
 			const resultSummary = value.summary.join(squash(values));
@@ -1316,6 +1324,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly PosIntervalDomain[]).some(idx => !isEnumerable(idx));
 		const v = squash(values);
+		const vInner = v.getInner();
 		if(hasNonEnumerable) {
 			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly Domain[]) : [];
 			const resultKnownPositions: Domain[] = [];
@@ -1325,10 +1334,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				if(idx < sourceKnownPositions.length) {
 					val = sourceKnownPositions[idx];
 				} else {
-					val = value.summary;
+					const inner = value.summary.getInner();
+					val = inner ?? naValue.bottom();
 				}
 				if(!mustNotUpdated.includes(i)) {
-					val = val.join(v);
+					val = val.join(vInner ?? naValue.top());
 				}
 				resultKnownPositions.push(val);
 			}
@@ -1360,7 +1370,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				if(i < sourceKnownPositions.length) {
 					resultKnownPositions.push(sourceKnownPositions[i]);
 				} else if(i < sourceUpper) {
-					resultKnownPositions.push(value.summary);
+					const inner = value.summary.getInner();
+					resultKnownPositions.push(inner ?? naValue.bottom());
 				} else {
 					resultKnownPositions.push(naValue);
 				}
@@ -1419,7 +1430,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(i < sourceKnownPositions.length) {
 				resultKnownPositions.push(sourceKnownPositions[i]);
 			} else if(i < sourceUpper) {
-				resultKnownPositions.push(value.summary);
+				const inner = value.summary.getInner();
+				resultKnownPositions.push(inner ?? naValue.bottom());
 			} else {
 				resultKnownPositions.push(naValue);
 			}
@@ -1430,9 +1442,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(i < selectorKnownPositions.length) {
 				selectorVal = selectorKnownPositions[i];
 			} else if(i < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {
-				selectorVal = selector.summary;
+				const inner = selector.summary.getInner();
+				selectorVal = inner ?? naValue.top();
 			} else {
-				selectorVal = selector.summary.top();
+				const inner = selector.summary.top().getInner();
+				selectorVal = inner ?? naValue.top();
 			}
 			if(selectorVal.isValue()) {
 				resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];

@@ -4,7 +4,7 @@ import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
+import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import {
 	card,
 	isEnumerable,
@@ -20,7 +20,7 @@ import {
 } from '../../../../src/abstract-interpretation/vector/vector-semantics';
 
 describe('Vector Semantics', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
 		if(concrete === undefined) {
 			return IntervalDomain.bottom();
 		}
@@ -198,9 +198,12 @@ describe('Vector Semantics', () => {
 	});
 
 	describe('Phase 1: adjustForZeros helper', () => {
-		const intervalFactory2 = (concrete: ReadonlySet<number> | typeof Top | typeof NA | undefined): IntervalDomain => {
+		const intervalFactory2 = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
 			if(concrete === Top) {
 				return IntervalDomain.top();
+			}
+			if(concrete === Bottom) {
+				return IntervalDomain.bottom();
 			}
 			if(concrete === NA || concrete === undefined) {
 				return IntervalDomain.bottom();

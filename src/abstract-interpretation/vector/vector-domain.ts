@@ -6,6 +6,7 @@ import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
 import { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { Bottom, Top } from '../domains/lattice';
+import { NAAwareDomain } from './na-aware-domain';
 
 export type { DomainFactory } from './known-initial-positions-domain';
 
@@ -24,11 +25,11 @@ export type { DomainFactory } from './known-initial-positions-domain';
  */
 export type VectorProduct<Domain extends AnyAbstractDomain> = {
 	/** The possible range of vector lengths as [min, max] interval */
-	length:     PosIntervalDomain;
+	length: PosIntervalDomain;
 	/** Known abstract values for positions 0 to values.length-1 */
-	values:     KnownInitialPositionsDomain<Domain>;
+	values: KnownInitialPositionsDomain<Domain>;
 	/** Abstract value summarizing all positions from values.length onwards */
-	summary:    Domain;
+	summary: NAAwareDomain<Domain>;
 	/** Abstraction of R vector attributes (names, dim, class, other) */
 	attributes: VectorAttrDomain;
 };
@@ -50,6 +51,11 @@ const SafetyMaxKnownLength = 1000;
 export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomain<VectorProduct<Domain>> {
 	private readonly factory: DomainFactory<Domain>;
 
+	/**
+	 * Creates a VectorDomain from input values.
+	 * @param value - The already-normalized product value
+	 * @param factory - The domain factory for creating element domain values
+	 */
 	constructor(value: VectorProduct<Domain>, factory: DomainFactory<Domain>) {
 		super(value);
 		this.factory = factory;
@@ -89,17 +95,68 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
+	 * Wraps a Domain value in an NAAwareDomain without NA.
+	 * @param domain - The domain value to wrap
+	 * @returns An NAAwareDomain wrapping the domain value
+	 */
+	private wrapSummary(domain: Domain): NAAwareDomain<Domain> {
+		return new NAAwareDomain({ inner: domain, hasNA: false }, this.factory);
+	}
+
+	/**
+	 * Factory method to create a VectorDomain without requiring knowledge of NAAwareDomain.
+	 *
+	 * This method provides a simplified API where users provide a plain Domain value for the summary,
+	 * and the wrapping in NAAwareDomain happens internally.
+	 *
+	 * @template Domain - The abstract domain for individual vector elements
+	 * @param factory - The domain factory for creating element domain values
+	 * @param length - The possible range of vector lengths
+	 * @param values - Known abstract values for positions 0 to values.length-1
+	 * @param summary - Abstract value summarizing all positions from values.length onwards (plain Domain, wrapped internally)
+	 * @param attributes - Abstraction of R vector attributes
+	 * @returns A new VectorDomain instance
+	 *
+	 * @example
+	 * ```typescript
+	 * // Create a vector domain without importing NAAwareDomain
+	 * const vector = VectorDomain.create(
+	 *   intervalFactory,
+	 *   new PosIntervalDomain([0, 10]),
+	 *   new KnownInitialPositionsDomain([new IntervalDomain([1, 1])], intervalFactory),
+	 *   new IntervalDomain([5, 10]),  // Plain Domain for summary
+	 *   VectorAttrDomain.top()
+	 * );
+	 * ```
+	 */
+	public static create<Domain extends AnyAbstractDomain>(
+		factory: DomainFactory<Domain>,
+		length: PosIntervalDomain,
+		values: KnownInitialPositionsDomain<Domain>,
+		summary: Domain,
+		attributes: VectorAttrDomain
+	): VectorDomain<Domain> {
+		const wrappedSummary = new NAAwareDomain({ inner: summary, hasNA: false }, factory);
+		return new VectorDomain({
+			length,
+			values,
+			summary: wrappedSummary,
+			attributes
+		}, factory);
+	}
+
+	/**
 	 * Creates the top element of the vector domain.
 	 * Represents any possible vector: unknown length, empty content, summary is top, attributes is top.
 	 */
 	public static top<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
-		const summaryTop = factory(Top as ReadonlySet<ConcreteDomain<Domain>> | typeof Top);
+		const summaryTop = NAAwareDomain.top(factory);
 		return new VectorDomain({
-			length:     PosIntervalDomain.top(),
-			values:     KnownInitialPositionsDomain.top(factory),
-			summary:    summaryTop,
+			length: PosIntervalDomain.top(),
+			values: KnownInitialPositionsDomain.top(factory),
+			summary: summaryTop,
 			attributes: VectorAttrDomain.top()
 		}, factory);
 	}
@@ -112,11 +169,11 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
 		const bottomDomain = KnownInitialPositionsDomain.bottom<Domain>(factory);
-		const summaryBottom = bottomDomain.create(Bottom) as unknown as Domain;
+		const summaryBottom = NAAwareDomain.bottom(factory);
 		return new VectorDomain({
-			length:     PosIntervalDomain.bottom(),
-			values:     bottomDomain,
-			summary:    summaryBottom,
+			length: PosIntervalDomain.bottom(),
+			values: bottomDomain,
+			summary: summaryBottom,
 			attributes: VectorAttrDomain.bottom()
 		}, factory);
 	}
@@ -142,7 +199,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * @returns The reduced value with maintained invariants
 	 */
 	protected reduce(value: VectorProduct<Domain>): VectorProduct<Domain> {
-		if(value.length.isBottom() || value.values.isBottom()) {
+		if (value.length.isBottom() || value.values.isBottom()) {
 			return value;
 		}
 
@@ -150,34 +207,34 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		let { values, summary } = value;
 		let modified = false;
 
-		if(length.isValue()) {
+		if (length.isValue()) {
 			const upperBound = length.value[1];
 
-			if(Number.isFinite(upperBound) && values.isValue()) {
+			if (Number.isFinite(upperBound) && values.isValue()) {
 				const valuesArray = values.value as readonly Domain[];
 
-				if(valuesArray.length > upperBound) {
-					for(let i = upperBound; i < valuesArray.length; i++) {
-						summary = summary.join(valuesArray[i]);
+				if (valuesArray.length > upperBound) {
+					for (let i = upperBound; i < valuesArray.length; i++) {
+						summary = summary.join(this.wrapSummary(valuesArray[i]));
 					}
 					values = values.create(valuesArray.slice(0, upperBound));
 					modified = true;
 				}
 
 				const lowerBound = length.value[0];
-				if(lowerBound === upperBound && valuesArray.length === upperBound) {
+				if (lowerBound === upperBound && valuesArray.length === upperBound) {
 					summary = summary.bottom();
 					modified = true;
 				}
 			}
 		}
 
-		if(values.isValue()) {
+		if (values.isValue()) {
 			const valuesArray = values.value as readonly Domain[];
 
-			if(valuesArray.length > SafetyMaxKnownLength) {
-				for(let i = SafetyMaxKnownLength; i < valuesArray.length; i++) {
-					summary = summary.join(valuesArray[i]);
+			if (valuesArray.length > SafetyMaxKnownLength) {
+				for (let i = SafetyMaxKnownLength; i < valuesArray.length; i++) {
+					summary = summary.join(this.wrapSummary(valuesArray[i]));
 				}
 				values = values.create(valuesArray.slice(0, SafetyMaxKnownLength));
 				modified = true;
@@ -198,10 +255,10 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	public widen(other: VectorDomain<Domain>): this;
 	public widen(other: this): this;
 	public widen(other: this | VectorDomain<Domain>): this {
-		if(this.isBottom()) {
+		if (this.isBottom()) {
 			return this.create(other.value);
 		}
-		if(other.isBottom()) {
+		if (other.isBottom()) {
 			return this.create(this.value);
 		}
 
@@ -210,11 +267,11 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const newAttributes = this.attributes.join(other.attributes);
 		let newValues: KnownInitialPositionsDomain<Domain>;
 
-		if(this.values.isTop() || other.values.isTop()) {
+		if (this.values.isTop() || other.values.isTop()) {
 			newValues = KnownInitialPositionsDomain.top(this.factory);
-		} else if(this.values.isBottom()) {
+		} else if (this.values.isBottom()) {
 			newValues = other.values;
-		} else if(other.values.isBottom()) {
+		} else if (other.values.isBottom()) {
 			newValues = this.values;
 		} else {
 			const thisArr = this.values.value as readonly Domain[];
@@ -223,25 +280,25 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			const commonLen = Math.min(thisArr.length, otherArr.length);
 
 			const commonKnown: Domain[] = [];
-			for(let i = 0; i < commonLen; i++) {
+			for (let i = 0; i < commonLen; i++) {
 				commonKnown.push(thisArr[i].widen(otherArr[i]));
 			}
 
-			for(let i = commonLen; i < thisArr.length; i++) {
-				newSummary = newSummary.join(thisArr[i]);
+			for (let i = commonLen; i < thisArr.length; i++) {
+				newSummary = newSummary.join(this.wrapSummary(thisArr[i]));
 			}
 
-			for(let i = commonLen; i < otherArr.length; i++) {
-				newSummary = newSummary.join(otherArr[i]);
+			for (let i = commonLen; i < otherArr.length; i++) {
+				newSummary = newSummary.join(this.wrapSummary(otherArr[i]));
 			}
 
 			newValues = this.values.create(commonKnown);
 		}
 
 		return this.create({
-			length:     newLength,
-			values:     newValues,
-			summary:    newSummary,
+			length: newLength,
+			values: newValues,
+			summary: newSummary,
 			attributes: newAttributes
 		});
 	}
