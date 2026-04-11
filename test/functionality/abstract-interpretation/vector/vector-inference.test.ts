@@ -11,21 +11,13 @@ import { createDataflowPipeline } from '../../../../src/core/steps/pipeline/defa
 import { contextFromInput } from '../../../../src/project/context/flowr-analyzer-context';
 import { SlicingCriterion } from '../../../../src/slicing/criterion/parse';
 import { NA } from '../../../../src/abstract-interpretation/domains/lattice';
+import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { Bottom, type Top } from '../../../../src/abstract-interpretation/domains/lattice';
 import { withShell } from '../../_helper/shell';
 import type { RShell } from '../../../../src/r-bridge/shell';
+import { intervalFactory } from '../_helper/vector-helpers';
 
 const defaultAbsintConfig: FlowrConfig = FlowrConfig.setInConfig(FlowrConfig.default(), 'solver.evalStrings', false);
-
-const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
-	if(concrete === NA || concrete === undefined) {
-		return IntervalDomain.bottom();
-	}
-	if(concrete === Bottom) {
-		return IntervalDomain.bottom();
-	}
-	return IntervalDomain.abstract(concrete);
-};
 
 const valueToDomain = (value: string | number | boolean): ReadonlySet<number> | undefined => {
 	if(typeof value === 'number') {
@@ -330,10 +322,10 @@ describe('Vector Inference Unit Tests', () => {
 	test('VectorDomain factory creates correct domain', () => {
 		const len = new PosIntervalDomain([3, 3]);
 		const vals = new KnownInitialPositionsDomain(
-			[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new IntervalDomain([l, u])),
-			intervalFactory
+			[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
+			(v) => new NAAwareDomain({ inner: intervalFactory(v), hasNA: false }, intervalFactory)
 		);
-		const sum = IntervalDomain.bottom();
+		const sum = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
 		const attrs = VectorAttrDomain.top();
 
 		const vector = new VectorDomain({

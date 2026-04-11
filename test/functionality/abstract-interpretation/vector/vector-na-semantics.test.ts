@@ -2,11 +2,8 @@ import { describe, test, assert } from 'vitest';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
-import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
-import type { DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorInferenceVisitor } from '../../../../src/abstract-interpretation/vector/vector-inference';
 import { FlowrConfig } from '../../../../src/config';
 import { extractCfg } from '../../../../src/control-flow/extract-cfg';
@@ -15,46 +12,9 @@ import { contextFromInput } from '../../../../src/project/context/flowr-analyzer
 import { SlicingCriterion } from '../../../../src/slicing/criterion/parse';
 import { withShell } from '../../_helper/shell';
 import type { RShell } from '../../../../src/r-bridge/shell';
+import { intervalFactory, naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA } from '../_helper/na-aware-helpers';
 
 const defaultAbsintConfig: FlowrConfig = FlowrConfig.setInConfig(FlowrConfig.default(), 'solver.evalStrings', false);
-
-/* ============================================================================
- * Factories for NAAwareDomain<IntervalDomain>
- * ============================================================================ */
-
-const intervalFactory: DomainFactory<IntervalDomain> = (concrete) => {
-	if(concrete === Top) {
-		return IntervalDomain.top();
-	}
-	if(concrete === NA || !(concrete instanceof Set)) {
-		return IntervalDomain.bottom();
-	}
-	return IntervalDomain.abstract(concrete);
-};
-
-const naAwareIntervalFactory: DomainFactory<NAAwareDomain<IntervalDomain>> = (concrete) => {
-	if(concrete === Top) {
-		return NAAwareDomain.top(intervalFactory);
-	}
-
-	// Handle undefined case: naValueToDomain returns undefined for non-numeric values (including NA)
-	// When concrete is undefined, it means NA was passed and we should set hasNA = true
-	let hasNA = false;
-	const concreteValues = new Set<number>();
-	if(concrete === undefined) {
-		hasNA = true;
-	} else if(concrete instanceof Set) {
-		hasNA = concrete.has(NA);
-		for(const v of concrete) {
-			if(v !== NA) {
-				concreteValues.add(v as number);
-			}
-		}
-	}
-
-	const inner = intervalFactory(concreteValues.size > 0 ? concreteValues : Top);
-	return new NAAwareDomain({ inner, hasNA }, intervalFactory);
-};
 
 const naValueToDomain = (value: string | number | boolean): ReadonlySet<number | typeof NA> | undefined => {
 	if(typeof value === 'number') {
@@ -62,90 +22,6 @@ const naValueToDomain = (value: string | number | boolean): ReadonlySet<number |
 	}
 	return undefined;
 };
-
-/* ============================================================================
- * Helper Functions for Creating NA-Aware Vectors
- * ============================================================================ */
-
-function createNAAwareVector(
-	length: [number, number],
-	values: Array<{ range: [number, number]; hasNA: boolean }>,
-	summary?: { range: [number, number]; hasNA: boolean }
-): VectorDomain<NAAwareDomain<IntervalDomain>> {
-	const len = new PosIntervalDomain(length);
-	const vals = new KnownInitialPositionsDomain(
-		values.map(v => new NAAwareDomain(
-			{ inner: new IntervalDomain(v.range), hasNA: v.hasNA },
-			intervalFactory
-		)),
-		naAwareIntervalFactory
-	);
-	const sum = summary === undefined
-		? NAAwareDomain.bottom(intervalFactory)
-		: new NAAwareDomain(
-			{ inner: new IntervalDomain(summary.range), hasNA: summary.hasNA },
-			intervalFactory
-		);
-
-	return new VectorDomain({
-		length:     len,
-		values:     vals,
-		summary:    sum,
-		attributes: VectorAttrDomain.top()
-	}, naAwareIntervalFactory);
-}
-
-function createPureNAVector(length: [number, number]): VectorDomain<NAAwareDomain<IntervalDomain>> {
-	return createNAAwareVector(
-		length,
-		[{ range: [0, 0], hasNA: true }],
-		{ range: [0, 0], hasNA: true }
-	);
-}
-
-/* ============================================================================
- * Helper Functions for Test Assertions
- * ============================================================================ */
-
-function assertContainsNA(vector: VectorDomain<NAAwareDomain<IntervalDomain>> | undefined, expected: boolean, message?: string): void {
-	assert.ok(vector !== undefined, 'Expected a VectorDomain result');
-	if(vector === undefined) {
-		return;
-	}
-
-	let containsNA = false;
-	if(vector.values.isValue()) {
-		const values = vector.values.value as readonly NAAwareDomain<IntervalDomain>[];
-		for(const val of values) {
-			if(val.containsNA()) {
-				containsNA = true;
-				break;
-			}
-		}
-	}
-	// When values is Bottom, we must check the summary since it may contain NA info
-	// Only skip summary check if summary is also Bottom (no info available)
-	if(!containsNA) {
-		if(vector.summary.isBottom()) {
-			// Both values and summary are Bottom - no NA info available
-			// containsNA stays false
-		} else if(vector.summary.isTop()) {
-			// Top summary may contain NA
-			const summary = vector.summary as NAAwareDomain<IntervalDomain>;
-			if(typeof summary.containsNA === 'function') {
-				containsNA = summary.containsNA();
-			}
-		} else {
-			// Summary is a concrete value - check it
-			const summary = vector.summary;
-			if(typeof summary.containsNA === 'function') {
-				containsNA = summary.containsNA();
-			}
-		}
-	}
-
-	assert.strictEqual(containsNA, expected, message ?? `Expected vector to ${expected ? '' : 'not '}contain NA`);
-}
 
 function _assertVectorLength(
 	vector: VectorDomain<NAAwareDomain<IntervalDomain>> | undefined,

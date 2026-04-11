@@ -2,22 +2,9 @@ import { describe, test, assert } from 'vitest';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
-import type { DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
+import { intervalFactory } from '../_helper/na-aware-helpers';
 
 describe('NAAwareDomain', () => {
-	const intervalFactory: DomainFactory<IntervalDomain> = (concrete) => {
-		if(concrete === Top) {
-			return IntervalDomain.top();
-		}
-		if(concrete === Bottom) {
-			return IntervalDomain.bottom();
-		}
-		if(concrete === NA || concrete === undefined) {
-			return IntervalDomain.bottom();
-		}
-		return IntervalDomain.abstract(concrete);
-	};
-
 	describe('Basic Lattice Elements', () => {
 		test('top() creates top element', () => {
 			const top = NAAwareDomain.top(intervalFactory);

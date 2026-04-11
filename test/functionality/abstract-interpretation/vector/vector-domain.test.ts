@@ -3,34 +3,11 @@ import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vec
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
-import { VectorAttrDomain, type VectorAttr } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import type { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
+import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
+import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
+import { mkVector, intervalFactory } from '../_helper/vector-helpers';
 
 describe('Vector Domain', () => {
-	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
-		if(concrete === undefined) {
-			return IntervalDomain.bottom();
-		}
-		return IntervalDomain.abstract(concrete as ReadonlySet<number> | typeof Top);
-	};
-
-	const mkVector = (
-		length: [number, number],
-		values: [number, number][],
-		summary?: [number, number],
-		attributes?: { must: VectorAttr[]; may: VectorAttr[] }
-	): VectorDomain<IntervalDomain> => {
-		const len = new PosIntervalDomain(length);
-		const vals = new KnownInitialPositionsDomain(
-			values.map(([l, u]) => new IntervalDomain([l, u])),
-			intervalFactory
-		);
-		const sum = summary === undefined ? IntervalDomain.bottom() : new IntervalDomain(summary);
-		const attrs = attributes
-			? VectorAttrDomain.from(attributes.must, attributes.may)
-			: VectorAttrDomain.top();
-		return new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, intervalFactory);
-	};
 
 	describe('Basic Lattice Elements', () => {
 		test('top() creates top element', () => {
@@ -317,15 +294,33 @@ describe('Vector Domain', () => {
 	});
 
 	describe('Reduction Logic', () => {
+		const naFactory = (concrete: ReadonlySet<number> | typeof import('../../../../src/abstract-interpretation/domains/lattice').Top | typeof import('../../../../src/abstract-interpretation/domains/lattice').Bottom | typeof import('../../../../src/abstract-interpretation/domains/lattice').NA | undefined): NAAwareDomain<IntervalDomain> => {
+			const { Top, NA, Bottom } = require('../../../../src/abstract-interpretation/domains/lattice');
+			if(concrete === Top) {
+				return NAAwareDomain.top(intervalFactory);
+			}
+			if(concrete === Bottom) {
+				return NAAwareDomain.bottom(intervalFactory);
+			}
+			if(concrete === undefined || concrete === NA) {
+				return new NAAwareDomain({ inner: intervalFactory(Top), hasNA: true }, intervalFactory);
+			}
+			const arr = [...concrete] as number[];
+			if(arr.length === 0) {
+				return NAAwareDomain.bottom(intervalFactory);
+			}
+			return new NAAwareDomain({ inner: new IntervalDomain([Math.min(...arr), Math.max(...arr)]), hasNA: false }, intervalFactory);
+		};
+
 		test('values array trimmed to length upper bound', () => {
 			const len = new PosIntervalDomain([0, 2]);
 			const vals = new KnownInitialPositionsDomain(
-				[[1, 1], [2, 2], [3, 3], [4, 4]].map(([l, u]) => new IntervalDomain([l, u])),
-				intervalFactory
+				[[1, 1], [2, 2], [3, 3], [4, 4]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
+				naFactory
 			);
-			const sum = new IntervalDomain([1, 10]);
+			const sum = new NAAwareDomain({ inner: new IntervalDomain([1, 10]), hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, intervalFactory);
+			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, naFactory);
 
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
 			assert.strictEqual(vector.summary.toString(), '[1, 10]');
@@ -334,12 +329,12 @@ describe('Vector Domain', () => {
 		test('excess values joined into summary', () => {
 			const len = new PosIntervalDomain([0, 2]);
 			const vals = new KnownInitialPositionsDomain(
-				[[1, 1], [5, 5], [10, 10]].map(([l, u]) => new IntervalDomain([l, u])),
-				intervalFactory
+				[[1, 1], [5, 5], [10, 10]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
+				naFactory
 			);
-			const sum = new IntervalDomain([1, 10]);
+			const sum = new NAAwareDomain({ inner: new IntervalDomain([1, 10]), hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, intervalFactory);
+			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, naFactory);
 
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [5, 5]]');
 			assert.strictEqual(vector.summary.toString(), '[1, 10]');
@@ -355,12 +350,12 @@ describe('Vector Domain', () => {
 		test('no reduction when values within bounds', () => {
 			const len = new PosIntervalDomain([0, 10]);
 			const vals = new KnownInitialPositionsDomain(
-				[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new IntervalDomain([l, u])),
-				intervalFactory
+				[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
+				naFactory
 			);
-			const sum = new IntervalDomain([1, 10]);
+			const sum = new NAAwareDomain({ inner: new IntervalDomain([1, 10]), hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, intervalFactory);
+			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, naFactory);
 
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
 			assert.strictEqual(vector.summary.toString(), '[1, 10]');
