@@ -65,11 +65,19 @@ export function squash<Domain extends AnyAbstractDomain>(
 	if(value.values.isValue()) {
 		const valuesArray = value.values.value as readonly Domain[];
 		for(const elem of valuesArray) {
-			result = result.join(result.create({ inner: elem, hasNA: false }));
+			const elemHasNA = elementMayContainNA(elem, value.summary);
+			result = result.join(result.create({ inner: elem, hasNA: elemHasNA }));
 		}
 	}
 
 	return result;
+}
+
+function elementMayContainNA<Domain extends AnyAbstractDomain>(
+	elem: Domain,
+	summary: NAAwareDomain<Domain>
+): boolean {
+	return summary.containsNA();
 }
 
 /**
@@ -97,7 +105,8 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 		const valuesArray = value.values.value as readonly Domain[];
 		for(let i = 0; i < valuesArray.length; i++) {
 			if(!excludedIndices.has(i + 1)) {
-				result = result.join(result.create({ inner: valuesArray[i], hasNA: false }));
+				const hasNA = value.summary.containsNA();
+				result = result.join(result.create({ inner: valuesArray[i], hasNA }));
 			}
 		}
 	}
@@ -426,55 +435,70 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 export function accessPosition<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: Domain
-): Domain {
+	naValue: NAAwareDomain<Domain>
+): NAAwareDomain<Domain> {
 	if(vector.isBottom()) {
-		const inner = vector.summary.bottom().getInner();
-		return inner ?? naValue.bottom();
+		return vector.summary.bottom();
 	}
 	if(vector.isTop()) {
-		const inner = vector.summary.top().getInner();
-		return inner ?? naValue.top();
+		return vector.summary.top();
 	}
 
-	// Get upper bound of vector length (0-indexed, so u_ν - 1)
-	let upperBound: number;
-	if(vector.length.isValue()) {
-		upperBound = vector.length.value[1];
-		if(upperBound === +Infinity) {
-			// For infinite length, check known positions
-			if(vector.values.isValue()) {
-				const values = vector.values.value as readonly Domain[];
-				if(pos < values.length) {
-					return values[pos];
-				}
-			}
-			const inner = vector.summary.getInner();
-			return inner ?? naValue.top();
+	const lengthUpperBound = getLengthUpperBound(vector.length);
+
+	if(lengthUpperBound === undefined) {
+		return squash(vector);
+	}
+
+	if(lengthUpperBound === +Infinity) {
+		return accessFromInfiniteLengthVector(vector, pos, naValue);
+	}
+
+	return accessFromFiniteLengthVector(vector, pos, naValue, lengthUpperBound);
+}
+
+function getLengthUpperBound(length: PosIntervalDomain): number | undefined {
+	if(!length.isValue()) {
+		return undefined;
+	}
+	return length.value[1];
+}
+
+function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
+	vector: VectorDomain<Domain>,
+	pos: number,
+	naValue: NAAwareDomain<Domain>
+): NAAwareDomain<Domain> {
+	if(vector.values.isValue()) {
+		const values = vector.values.value as readonly Domain[];
+		if(pos < values.length) {
+			const hasNA = vector.summary.containsNA();
+			return naValue.create({ inner: values[pos], hasNA });
 		}
-	} else {
-		// Cannot determine bounds, return join of all possible values
-		const squashed = squash(vector);
-		const inner = squashed.getInner();
-		return inner ?? naValue.top();
 	}
+	return vector.summary;
+}
 
-	// Position is 0-indexed, paper uses 1-indexed
+function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
+	vector: VectorDomain<Domain>,
+	pos: number,
+	naValue: NAAwareDomain<Domain>,
+	lengthUpperBound: number
+): NAAwareDomain<Domain> {
 	const oneIndexedPos = pos + 1;
-	if(oneIndexedPos >= 1 && oneIndexedPos <= upperBound) {
-		if(vector.values.isValue()) {
-			const values = vector.values.value as readonly Domain[];
-			if(pos < values.length) {
-				return values[pos];
-			}
-		}
-		// Position exists but not in known positions - use summary
-		const inner = vector.summary.getInner();
-		return inner ?? naValue.bottom();
+	if(oneIndexedPos < 1 || oneIndexedPos > lengthUpperBound) {
+		return naValue;
 	}
 
-	// Position out of bounds - return NA
-	return naValue;
+	if(vector.values.isValue()) {
+		const values = vector.values.value as readonly Domain[];
+		if(pos < values.length) {
+			const hasNA = vector.summary.containsNA();
+			return naValue.create({ inner: values[pos], hasNA });
+		}
+	}
+
+	return vector.summary;
 }
 
 /**

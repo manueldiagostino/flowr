@@ -143,6 +143,38 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
+	 * Alternative create method that accepts raw domain values array.
+	 * Wraps them in KnownInitialPositionsDomain internally.
+	 * @template Domain - The abstract domain for individual vector elements
+	 * @param factory - The domain factory for creating element domain values
+	 * @param length - The possible range of vector lengths
+	 * @param values - Array of domain values for positions 0 to values.length-1
+	 * @param summary - Abstract value summarizing all positions from values.length onwards
+	 * @param attributes - Abstraction of R vector attributes
+	 * @returns A new VectorDomain instance
+	 * @example
+	 * ```typescript
+	 * const vector = VectorDomain.fromValues(
+	 *   intervalFactory,
+	 *   new PosIntervalDomain([0, 10]),
+	 *   [new IntervalDomain([1, 1]), new IntervalDomain([2, 2])],
+	 *   new IntervalDomain([5, 10]),
+	 *   VectorAttrDomain.top()
+	 * );
+	 * ```
+	 */
+	public static fromValues<Domain extends AnyAbstractDomain>(
+		factory: DomainFactory<Domain>,
+		length: PosIntervalDomain,
+		values: readonly Domain[],
+		summary: Domain,
+		attributes: VectorAttrDomain
+	): VectorDomain<Domain> {
+		const knownPositions = new KnownInitialPositionsDomain(values, factory);
+		return VectorDomain.create(factory, length, knownPositions, summary, attributes);
+	}
+
+	/**
 	 * Creates the top element of the vector domain.
 	 * Represents any possible vector: unknown length, empty content, summary is top, attributes is top.
 	 */
@@ -260,7 +292,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		}
 
 		const newLength = this.length.widen(other.length);
-		let newSummary = this.summary.widen(other.summary);
+		let newSummary = this.summary.join(other.summary);
 		const newAttributes = this.attributes.join(other.attributes);
 		let newValues: KnownInitialPositionsDomain<Domain>;
 

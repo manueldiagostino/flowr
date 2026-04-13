@@ -13,7 +13,7 @@ import { SlicingCriterion } from '../../../../src/slicing/criterion/parse';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { withShell } from '../../_helper/shell';
 import type { RShell } from '../../../../src/r-bridge/shell';
-import { intervalFactory } from '../_helper/vector-helpers';
+import { intervalFactory } from '../_helper/interval-factory';
 
 const defaultAbsintConfig: FlowrConfig = FlowrConfig.setInConfig(FlowrConfig.default(), 'solver.evalStrings', false);
 

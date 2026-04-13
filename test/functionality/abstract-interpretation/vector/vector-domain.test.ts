@@ -1,11 +1,7 @@
 import { assert, test, describe } from 'vitest';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
-import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
-import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
-import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { mkVector, intervalFactory } from '../_helper/vector-helpers';
+import { mkVector } from '../_helper/vector-helpers';
+import { intervalFactory } from '../_helper/interval-factory';
 
 describe('Vector Domain', () => {
 
@@ -29,10 +25,18 @@ describe('Vector Domain', () => {
 		});
 
 		test('create with value creates vector domain', () => {
-			const vector = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], [1, 10]);
+			const vector = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			assert.strictEqual(vector.isValue(), true);
 			assert.strictEqual(vector.length.toString(), '[0, 3]');
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
+			assert.strictEqual(vector.summary.isBottom(), true);
+		});
+
+		test('infinite vector has summary valorized', () => {
+			const vector = mkVector([0, Infinity], [[1, 1], [2, 2]], [1, 10]);
+			assert.strictEqual(vector.isValue(), true);
+			assert.strictEqual(vector.length.toString(), '[0, +∞]');
+			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
 			assert.strictEqual(vector.summary.toString(), '[1, 10]');
 		});
 	});
@@ -41,17 +45,17 @@ describe('Vector Domain', () => {
 		test('isTop returns true only for top element', () => {
 			assert.strictEqual(VectorDomain.top(intervalFactory).isTop(), true);
 			assert.strictEqual(VectorDomain.bottom(intervalFactory).isTop(), false);
-			assert.strictEqual(mkVector([0, 3], [[1, 1]], [1, 10]).isTop(), false);
+			assert.strictEqual(mkVector([0, 1], [[1, 1]], undefined).isTop(), false);
 		});
 
 		test('isBottom returns true only for bottom element', () => {
 			assert.strictEqual(VectorDomain.bottom(intervalFactory).isBottom(), true);
 			assert.strictEqual(VectorDomain.top(intervalFactory).isBottom(), false);
-			assert.strictEqual(mkVector([0, 3], [[1, 1]], [1, 10]).isBottom(), false);
+			assert.strictEqual(mkVector([0, 1], [[1, 1]], undefined).isBottom(), false);
 		});
 
 		test('isValue returns true for all values', () => {
-			assert.strictEqual(mkVector([0, 3], [[1, 1]], [1, 10]).isValue(), true);
+			assert.strictEqual(mkVector([0, 1], [[1, 1]], undefined).isValue(), true);
 			assert.strictEqual(VectorDomain.top(intervalFactory).isValue(), true);
 			assert.strictEqual(VectorDomain.bottom(intervalFactory).isValue(), true);
 		});
@@ -59,25 +63,30 @@ describe('Vector Domain', () => {
 
 	describe('Accessors', () => {
 		test('length accessor returns the length domain', () => {
-			const vector = mkVector([5, 10], [[1, 1]], [1, 10]);
+			const vector = mkVector([5, 5], [[1, 1]], undefined);
 			assert.strictEqual(vector.length.isValue(), true);
-			assert.deepStrictEqual((vector.length.value as [number, number]), [5, 10]);
+			assert.deepStrictEqual((vector.length.value as [number, number]), [5, 5]);
 		});
 
 		test('values accessor returns the known positions domain', () => {
-			const vector = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
+			const vector = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			assert.strictEqual(vector.values.isValue(), true);
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
 		});
 
-		test('summary accessor returns the summary domain', () => {
-			const vector = mkVector([0, 3], [[1, 1]], [5, 15]);
+		test('summary accessor returns the summary domain for infinite vectors', () => {
+			const vector = mkVector([0, Infinity], [[1, 1]], [5, 15]);
 			assert.strictEqual(vector.summary.isValue(), true);
 			assert.strictEqual(vector.summary.toString(), '[5, 15]');
 		});
 
+		test('summary accessor returns bottom for finite vectors', () => {
+			const vector = mkVector([0, 1], [[1, 1]], undefined);
+			assert.strictEqual(vector.summary.isBottom(), true);
+		});
+
 		test('attributes accessor returns the attributes domain', () => {
-			const vector = mkVector([0, 3], [[1, 1]], [1, 10], { must: ['names'], may: ['names', 'dim'] });
+			const vector = mkVector([0, 1], [[1, 1]], undefined, { must: ['names'], may: ['names', 'dim'] });
 			assert.strictEqual(vector.attributes.isValue(), true);
 			assert.strictEqual(vector.attributes.toString(), '({names}, {names, dim})');
 		});
@@ -85,27 +94,27 @@ describe('Vector Domain', () => {
 
 	describe('equals', () => {
 		test('same values are equal', () => {
-			const a = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
+			const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			assert.strictEqual(a.equals(b), true);
 			assert.strictEqual(b.equals(a), true);
 		});
 
 		test('different length values are not equal', () => {
 			const a = mkVector([0, 4], [[1, 1], [2, 2], [3, 3], [4, 4]], undefined);
-			const b = mkVector([0, 3], [[1, 1], [2, 2], [3, 3], [4, 4]], undefined);
+			const b = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			assert.strictEqual(a.equals(b), false);
 		});
 
 		test('different values are not equal', () => {
-			const a = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1], [2, 3]], [1, 10]);
+			const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+			const b = mkVector([0, 2], [[1, 1], [2, 3]], undefined);
 			assert.strictEqual(a.equals(b), false);
 		});
 
-		test('different summary values are not equal', () => {
-			const a = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1], [2, 2]], [1, 11]);
+		test('different summary values are not equal for infinite vectors', () => {
+			const a = mkVector([0, Infinity], [[1, 1], [2, 2]], [1, 10]);
+			const b = mkVector([0, Infinity], [[1, 1], [2, 2]], [1, 11]);
 			assert.strictEqual(a.equals(b), false);
 		});
 
@@ -126,7 +135,7 @@ describe('Vector Domain', () => {
 		test('bottom is leq anything', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
 			const top = VectorDomain.top(intervalFactory);
-			const value = mkVector([0, 3], [[1, 1]], [1, 10]);
+			const value = mkVector([0, 1], [[1, 1]], undefined);
 			assert.strictEqual(bottom.leq(top), true);
 			assert.strictEqual(bottom.leq(value), true);
 			assert.strictEqual(bottom.leq(bottom), true);
@@ -135,22 +144,22 @@ describe('Vector Domain', () => {
 		test('anything is leq top', () => {
 			const top = VectorDomain.top(intervalFactory);
 			const bottom = VectorDomain.bottom(intervalFactory);
-			const value = mkVector([0, 3], [[1, 1]], [1, 10]);
+			const value = mkVector([0, 1], [[1, 1]], undefined);
 			assert.strictEqual(top.leq(top), true);
 			assert.strictEqual(value.leq(top), true);
 			assert.strictEqual(bottom.leq(top), true);
 		});
 
 		test('narrower interval is leq wider interval', () => {
-			const narrow = mkVector([1, 3], [[1, 1]], [1, 10]);
-			const wide = mkVector([0, 5], [[1, 2]], [1, 15]);
+			const narrow = mkVector([1, 1], [[1, 1]], undefined);
+			const wide = mkVector([0, 2], [[1, 2], [3, 4]], undefined);
 			assert.strictEqual(narrow.leq(wide), true);
 			assert.strictEqual(wide.leq(narrow), false);
 		});
 
 		test('equal values are leq each other', () => {
-			const a = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
+			const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			assert.strictEqual(a.leq(b), true);
 			assert.strictEqual(b.leq(a), true);
 		});
@@ -159,35 +168,35 @@ describe('Vector Domain', () => {
 	describe('join (least upper bound)', () => {
 		test('join with bottom returns other', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
-			const value = mkVector([0, 3], [[1, 1]], [1, 10]);
+			const value = mkVector([0, 1], [[1, 1]], undefined);
 			const join = bottom.join(value);
 			assert.strictEqual(join.length.toString(), value.length.toString());
 			assert.strictEqual(join.values.toString(), value.values.toString());
 		});
 
 		test('join combines length intervals', () => {
-			const a = mkVector([0, 2], [[1, 1]], [1, 10]);
-			const b = mkVector([1, 3], [[1, 1]], [1, 10]);
+			const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const result = a.join(b);
-			assert.strictEqual(result.length.toString(), '[0, 3]');
+			assert.strictEqual(result.length.toString(), '[0, 2]');
 		});
 
 		test('join of different length values extends with remaining elements', () => {
-			const a = mkVector([0, 3], [[1, 1]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], [1, 10]);
+			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
+			const b = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			const result = a.join(b);
 			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
 		});
 
 		test('join is commutative', () => {
-			const a = mkVector([0, 2], [[1, 3]], [5, 10]);
-			const b = mkVector([1, 4], [[2, 5]], [8, 15]);
+			const a = mkVector([0, 2], [[1, 3], [5, 5]], undefined);
+			const b = mkVector([0, 2], [[2, 5], [8, 8]], undefined);
 			assert.strictEqual(a.join(b).equals(b.join(a)), true);
 		});
 
 		test('join maintains lattice properties', () => {
-			const a = mkVector([0, 2], [[1, 3]], [5, 10]);
-			const b = mkVector([1, 4], [[2, 5]], [8, 15]);
+			const a = mkVector([0, 2], [[1, 3], [5, 5]], undefined);
+			const b = mkVector([0, 2], [[2, 5], [8, 8]], undefined);
 			const join = a.join(b);
 			assert.strictEqual(a.leq(join), true);
 			assert.strictEqual(b.leq(join), true);
@@ -197,41 +206,41 @@ describe('Vector Domain', () => {
 	describe('meet (greatest lower bound)', () => {
 		test('meet with bottom returns bottom', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
-			const value = mkVector([0, 3], [[1, 1]], [1, 10]);
+			const value = mkVector([0, 1], [[1, 1]], undefined);
 			assert.strictEqual(value.meet(bottom).isBottom(), true);
 			assert.strictEqual(bottom.meet(value).isBottom(), true);
 		});
 
 		test('meet intersects length intervals', () => {
-			const a = mkVector([0, 5], [[1, 1]], [1, 10]);
-			const b = mkVector([3, 8], [[1, 1]], [1, 10]);
+			const a = mkVector([0, 5], [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], undefined);
+			const b = mkVector([3, 8], [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7], [8, 8]], undefined);
 			const result = a.meet(b);
 			assert.strictEqual(result.length.toString(), '[3, 5]');
 		});
 
 		test('meet of non-overlapping lengths has bottom length', () => {
-			const a = mkVector([0, 3], [[1, 1]], [1, 10]);
-			const b = mkVector([5, 8], [[1, 1]], [1, 10]);
+			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
+			const b = mkVector([5, 8], [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7], [8, 8]], undefined);
 			const result = a.meet(b);
 			assert.strictEqual(result.length.isBottom(), true);
 		});
 
 		test('meet of different length values truncates to common prefix', () => {
-			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
+			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
+			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const result = a.meet(b);
 			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2]]');
 		});
 
 		test('meet is commutative', () => {
-			const a = mkVector([0, 5], [[1, 5]], [10, 20]);
-			const b = mkVector([2, 8], [[3, 8]], [15, 25]);
+			const a = mkVector([0, 5], [[1, 5], [2, 6], [3, 7], [4, 8], [5, 9]], undefined);
+			const b = mkVector([2, 8], [[3, 8], [4, 9], [5, 10], [6, 11], [7, 12], [8, 13], [9, 14], [10, 15]], undefined);
 			assert.strictEqual(a.meet(b).equals(b.meet(a)), true);
 		});
 
 		test('meet maintains lattice properties', () => {
-			const a = mkVector([0, 5], [[1, 5]], [10, 20]);
-			const b = mkVector([2, 8], [[3, 8]], [15, 25]);
+			const a = mkVector([0, 5], [[1, 5], [2, 6], [3, 7], [4, 8], [5, 9]], undefined);
+			const b = mkVector([2, 8], [[3, 8], [4, 9], [5, 10], [6, 11], [7, 12], [8, 13], [9, 14], [10, 15]], undefined);
 			const meet = a.meet(b);
 			assert.strictEqual(meet.leq(a), true);
 			assert.strictEqual(meet.leq(b), true);
@@ -241,37 +250,37 @@ describe('Vector Domain', () => {
 	describe('widen', () => {
 		test('widen with bottom returns other', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
-			const value = mkVector([0, 3], [[1, 1]], [1, 10]);
+			const value = mkVector([0, 1], [[1, 1]], undefined);
 			const result = bottom.widen(value);
 			assert.strictEqual(result.length.toString(), value.length.toString());
 			assert.strictEqual(result.values.toString(), value.values.toString());
 		});
 
 		test('widen widens length interval', () => {
-			const a = mkVector([0, 2], [[1, 1]], [1, 10]);
-			const b = mkVector([1, 3], [[1, 1]], [1, 10]);
+			const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const result = a.widen(b);
-			assert.strictEqual(result.length.toString(), '[0, +∞]');
+			assert.strictEqual(result.length.toString(), '[0, 2]');
 		});
 
 		test('widen widens values element-wise', () => {
-			const a = mkVector([0, 3], [[1, 3]], [5, 10]);
-			const b = mkVector([0, 3], [[2, 5]], [8, 15]);
+			const a = mkVector([0, 1], [[1, 3]], undefined);
+			const b = mkVector([0, 1], [[2, 5]], undefined);
 			const result = a.widen(b);
 			assert.strictEqual(result.values.toString(), '[[1, +∞]]');
 		});
 
-		test('widen collapses different length values into summary', () => {
-			const a = mkVector([0, 3], [[1, 1], [2, 2]], [1, 10]);
-			const b = mkVector([0, 3], [[1, 1]], [1, 10]);
+		test('widen collapses different length values into summary for infinite vectors', () => {
+			const a = mkVector([0, Infinity], [[1, 1], [2, 2], [3, 3]], [1, 10]);
+			const b = mkVector([0, Infinity], [[1, 1]], [1, 15]);
 			const result = a.widen(b);
 			assert.strictEqual(result.values.toString(), '[[1, 1]]');
-			assert.strictEqual(result.summary.toString(), '[1, 10]');
+			assert.strictEqual(result.summary.toString(), '[1, 15]');
 		});
 
 		test('widen soundly over-approximates join', () => {
-			const a = mkVector([0, 2], [[1, 3]], [5, 10]);
-			const b = mkVector([1, 4], [[2, 5]], [8, 15]);
+			const a = mkVector([0, 2], [[1, 3], [5, 5]], undefined);
+			const b = mkVector([0, 2], [[2, 5], [8, 8]], undefined);
 			const join = a.join(b);
 			const widen = a.widen(b);
 			assert.strictEqual(join.leq(widen), true);
@@ -281,63 +290,35 @@ describe('Vector Domain', () => {
 	describe('narrow', () => {
 		test('narrow with bottom returns bottom', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
-			const value = mkVector([0, 3], [[1, 1]], [1, 10]);
+			const value = mkVector([0, 1], [[1, 1]], undefined);
 			assert.strictEqual(value.narrow(bottom).isBottom(), true);
 		});
 
 		test('narrow refines the abstract value', () => {
-			const a = mkVector([0, 5], [[1, 5]], [10, 20]);
-			const b = mkVector([2, 4], [[2, 4]], [12, 18]);
+			const a = mkVector([0, 5], [[1, 5], [2, 6], [3, 7], [4, 8], [5, 9]], undefined);
+			const b = mkVector([2, 4], [[2, 4], [3, 5]], undefined);
 			const narrow = a.narrow(b);
 			assert.strictEqual(narrow.leq(a), true);
 		});
 	});
 
 	describe('Reduction Logic', () => {
-		const naFactory = (concrete: ReadonlySet<number> | typeof import('../../../../src/abstract-interpretation/domains/lattice').Top | typeof import('../../../../src/abstract-interpretation/domains/lattice').Bottom | typeof import('../../../../src/abstract-interpretation/domains/lattice').NA | undefined): NAAwareDomain<IntervalDomain> => {
-			const { Top, NA, Bottom } = require('../../../../src/abstract-interpretation/domains/lattice');
-			if(concrete === Top) {
-				return NAAwareDomain.top(intervalFactory);
-			}
-			if(concrete === Bottom) {
-				return NAAwareDomain.bottom(intervalFactory);
-			}
-			if(concrete === undefined || concrete === NA) {
-				return new NAAwareDomain({ inner: intervalFactory(Top), hasNA: true }, intervalFactory);
-			}
-			const arr = [...concrete] as number[];
-			if(arr.length === 0) {
-				return NAAwareDomain.bottom(intervalFactory);
-			}
-			return new NAAwareDomain({ inner: new IntervalDomain([Math.min(...arr), Math.max(...arr)]), hasNA: false }, intervalFactory);
-		};
-
 		test('values array trimmed to length upper bound', () => {
-			const len = new PosIntervalDomain([0, 2]);
-			const vals = new KnownInitialPositionsDomain(
-				[[1, 1], [2, 2], [3, 3], [4, 4]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
-				naFactory
-			);
-			const sum = new NAAwareDomain({ inner: new IntervalDomain([1, 10]), hasNA: false }, intervalFactory);
-			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, naFactory);
+			// When length upper bound is 2, only 2 values should be kept
+			// Excess values [3,3] and [4,4] are joined into the summary
+			const vector = mkVector([0, 2], [[1, 1], [2, 2], [3, 3], [4, 4]], undefined);
 
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
-			assert.strictEqual(vector.summary.toString(), '[1, 10]');
+			// Summary includes joined excess value
+			assert.strictEqual(vector.summary.toString(), '[3, 4]');
 		});
 
 		test('excess values joined into summary', () => {
-			const len = new PosIntervalDomain([0, 2]);
-			const vals = new KnownInitialPositionsDomain(
-				[[1, 1], [5, 5], [10, 10]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
-				naFactory
-			);
-			const sum = new NAAwareDomain({ inner: new IntervalDomain([1, 10]), hasNA: false }, intervalFactory);
-			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, naFactory);
+			const vector = mkVector([0, 2], [[1, 1], [5, 5], [10, 10]], undefined);
 
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [5, 5]]');
-			assert.strictEqual(vector.summary.toString(), '[1, 10]');
+			// Summary includes the last excess value
+			assert.strictEqual(vector.summary.toString(), '[10, 10]');
 		});
 
 		test('summary becomes bottom when length equals values length', () => {
@@ -348,17 +329,10 @@ describe('Vector Domain', () => {
 		});
 
 		test('no reduction when values within bounds', () => {
-			const len = new PosIntervalDomain([0, 10]);
-			const vals = new KnownInitialPositionsDomain(
-				[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
-				naFactory
-			);
-			const sum = new NAAwareDomain({ inner: new IntervalDomain([1, 10]), hasNA: false }, intervalFactory);
-			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, naFactory);
+			const vector = mkVector([3, 10], [[1, 1], [2, 2], [3, 3]], undefined);
 
 			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
-			assert.strictEqual(vector.summary.toString(), '[1, 10]');
+			assert.strictEqual(vector.summary.isBottom(), true);
 		});
 	});
 });
