@@ -1,4 +1,4 @@
-import type { AbstractDomainValue } from '../domains/abstract-domain';
+import type { AbstractValue } from '../domains/abstract-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { ProductDomain } from '../domains/product-domain';
 import { SetRangeDomain } from '../domains/set-range-domain';
@@ -11,7 +11,7 @@ export type AbstractDataFrameShape = {
 };
 
 /** The type of abstract values of a sub abstract domain (shape property) of the data frame shape product domain */
-export type DataFrameShapeProperty<Property extends keyof AbstractDataFrameShape> = AbstractDomainValue<AbstractDataFrameShape[Property]>;
+export type DataFrameShapeProperty<Property extends keyof AbstractDataFrameShape> = AbstractValue<AbstractDataFrameShape[Property]>;
 
 /**
  * The data frame abstract domain as product domain of a column names domain, column count domain, and row count domain.

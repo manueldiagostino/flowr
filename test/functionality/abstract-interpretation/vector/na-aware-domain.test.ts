@@ -1,8 +1,8 @@
 import { describe, test, assert } from 'vitest';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
-import { intervalFactory } from '../_helper/na-aware-helpers';
+import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
+import { intervalFactory, createNAAwareInterval, wrapIntervalWithNA } from '../_helper/na-aware-helpers';
 
 describe('NAAwareDomain', () => {
 	describe('Basic Lattice Elements', () => {
@@ -36,14 +36,8 @@ describe('NAAwareDomain', () => {
 			const na = NAAwareDomain.na(intervalFactory);
 			const top = NAAwareDomain.top(intervalFactory);
 			const bottom = NAAwareDomain.bottom(intervalFactory);
-			const pureValue = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
-			const valueWithNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
+			const pureValue = createNAAwareInterval([1, 10], false);
+			const valueWithNA = createNAAwareInterval([1, 10], true);
 
 			assert.strictEqual(na.isNA(), true);
 			assert.strictEqual(top.isNA(), false);
@@ -56,14 +50,8 @@ describe('NAAwareDomain', () => {
 			const na = NAAwareDomain.na(intervalFactory);
 			const top = NAAwareDomain.top(intervalFactory);
 			const bottom = NAAwareDomain.bottom(intervalFactory);
-			const pureValue = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
-			const valueWithNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
+			const pureValue = createNAAwareInterval([1, 10], false);
+			const valueWithNA = createNAAwareInterval([1, 10], true);
 
 			assert.strictEqual(na.containsNA(), true);
 			assert.strictEqual(top.containsNA(), true);
@@ -75,10 +63,7 @@ describe('NAAwareDomain', () => {
 
 	describe('Join with NA', () => {
 		test('pureValue.join(pureNA) results in value with hasNA=true', () => {
-			const pureValue = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
+			const pureValue = createNAAwareInterval([1, 10], false);
 			const pureNA = NAAwareDomain.na(intervalFactory);
 
 			const joined = pureValue.join(pureNA);
@@ -89,10 +74,7 @@ describe('NAAwareDomain', () => {
 		});
 
 		test('valueWithNA.join(pureNA) remains value with NA', () => {
-			const valueWithNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
+			const valueWithNA = createNAAwareInterval([1, 10], true);
 			const pureNA = NAAwareDomain.na(intervalFactory);
 
 			const joined = valueWithNA.join(pureNA);
@@ -111,11 +93,19 @@ describe('NAAwareDomain', () => {
 			assert.strictEqual(joined.containsNA(), true);
 		});
 
+		test('topWithoutNA.join(pureNA) results in NAAwareDomain.Top', () => {
+			const topItv = createNAAwareInterval(IntervalDomain.top().value as [number, number], false);
+			const pureNA = NAAwareDomain.na(intervalFactory);
+
+			const joined = topItv.join(pureNA);
+
+			assert.strictEqual(joined.isTop(), true);
+			assert.strictEqual(joined.containsNA(), true);
+		});
+
+
 		test('join preserves inner domain values', () => {
-			const pureValue = new NAAwareDomain(
-				{ inner: new IntervalDomain([5, 15]), hasNA: false },
-				intervalFactory
-			);
+			const pureValue = createNAAwareInterval([5, 15], false);
 			const pureNA = NAAwareDomain.na(intervalFactory);
 
 			const joined = pureValue.join(pureNA);
@@ -128,10 +118,7 @@ describe('NAAwareDomain', () => {
 
 	describe('Meet with NA', () => {
 		test('pureValue.meet(pureNA) results in Bottom (no common values)', () => {
-			const pureValue = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
+			const pureValue = createNAAwareInterval([1, 10], false);
 			const pureNA = NAAwareDomain.na(intervalFactory);
 
 			const met = pureValue.meet(pureNA);
@@ -143,14 +130,8 @@ describe('NAAwareDomain', () => {
 		});
 
 		test('meet of values both containing NA keeps NA flag', () => {
-			const value1 = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
-			const value2 = new NAAwareDomain(
-				{ inner: new IntervalDomain([5, 15]), hasNA: true },
-				intervalFactory
-			);
+			const value1 = createNAAwareInterval([1, 10], true);
+			const value2 = createNAAwareInterval([5, 15], true);
 
 			const met = value1.meet(value2);
 
@@ -158,14 +139,8 @@ describe('NAAwareDomain', () => {
 		});
 
 		test('meet of value with NA and value without NA loses NA flag', () => {
-			const withNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
-			const withoutNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([5, 15]), hasNA: false },
-				intervalFactory
-			);
+			const withNA = createNAAwareInterval([1, 10], true);
+			const withoutNA = createNAAwareInterval([5, 15], false);
 
 			const met = withNA.meet(withoutNA);
 
@@ -185,10 +160,7 @@ describe('NAAwareDomain', () => {
 		});
 
 		test('concretize of value with NA returns inner values + NA', () => {
-			const valueWithNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 5]), hasNA: true },
-				intervalFactory
-			);
+			const valueWithNA = createNAAwareInterval([1, 5], true);
 			const concretized = valueWithNA.concretize(10);
 
 			assert.notStrictEqual(concretized, Top);
@@ -197,10 +169,8 @@ describe('NAAwareDomain', () => {
 		});
 
 		test('concretize of value without NA returns only inner values', () => {
-			const pureValue = new NAAwareDomain(
-				{ inner: IntervalDomain.abstract(new Set([1, 2, 3])), hasNA: false },
-				intervalFactory
-			);
+			const interval = IntervalDomain.abstract(new Set<number>([1, 2, 3]));
+			const pureValue = wrapIntervalWithNA(interval, false);
 			const concretized = pureValue.concretize(10);
 
 			assert.notStrictEqual(concretized, Top);
@@ -258,40 +228,22 @@ describe('NAAwareDomain', () => {
 
 	describe('Equality and Ordering', () => {
 		test('equals returns true for identical values', () => {
-			const value1 = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
-			const value2 = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
+			const value1 = createNAAwareInterval([1, 10], true);
+			const value2 = createNAAwareInterval([1, 10], true);
 
 			assert.strictEqual(value1.equals(value2), true);
 		});
 
 		test('equals returns false for different hasNA flags', () => {
-			const value1 = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
-			const value2 = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
+			const value1 = createNAAwareInterval([1, 10], true);
+			const value2 = createNAAwareInterval([1, 10], false);
 
 			assert.strictEqual(value1.equals(value2), false);
 		});
 
 		test('leq respects NA ordering', () => {
-			const pureValue = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
-			const withNA = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
+			const pureValue = createNAAwareInterval([1, 10], false);
+			const withNA = createNAAwareInterval([1, 10], true);
 
 			assert.strictEqual(pureValue.leq(withNA), true);
 			assert.strictEqual(withNA.leq(pureValue), false);
@@ -305,18 +257,12 @@ describe('NAAwareDomain', () => {
 		});
 
 		test('value with NA returns inner + "+NA"', () => {
-			const value = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: true },
-				intervalFactory
-			);
+			const value = createNAAwareInterval([1, 10], true);
 			assert.ok(value.toString().includes('+NA'));
 		});
 
 		test('value without NA returns just inner', () => {
-			const value = new NAAwareDomain(
-				{ inner: new IntervalDomain([1, 10]), hasNA: false },
-				intervalFactory
-			);
+			const value = createNAAwareInterval([1, 10], false);
 			const str = value.toString();
 			assert.ok(!str.includes('+NA'));
 		});

@@ -1,10 +1,47 @@
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
-import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import { NAAwareDomain, type NAAwareInnerValue } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
+import { IntervalDomain, type IntervalLift } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain, type DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
+
+/**
+ * Type alias for NAAwareDomain wrapping IntervalDomain.
+ * Using NAAwareInnerValue ensures proper type inference across operations.
+ */
+export type NAAwareInterval = NAAwareDomain<IntervalDomain<IntervalLift>, NAAwareInnerValue<IntervalDomain<IntervalLift>>>;
+
+/**
+ * Factory function to create a properly-typed NAAwareDomain wrapping an IntervalDomain.
+ * This avoids TypeScript's overly-specific type inference when using 'new' directly.
+ * @param range - The interval range [min, max]
+ * @param hasNA - Whether this abstract value contains NA
+ * @returns A properly-typed NAAwareInterval instance
+ */
+export function createNAAwareInterval(
+	range: [number, number],
+	hasNA: boolean
+): NAAwareInterval {
+	return new NAAwareDomain(
+		{ inner: new IntervalDomain(range), hasNA },
+		intervalFactory
+	) as NAAwareInterval;
+}
+
+/**
+ * Factory function to create a properly-typed NAAwareDomain from an existing IntervalDomain.
+ * Use this when you have an IntervalDomain created via IntervalDomain.abstract() or other means.
+ * @param inner - The already-created IntervalDomain
+ * @param hasNA - Whether this abstract value contains NA
+ * @returns A properly-typed NAAwareInterval instance
+ */
+export function wrapIntervalWithNA(
+	inner: IntervalDomain<IntervalLift>,
+	hasNA: boolean
+): NAAwareInterval {
+	return new NAAwareDomain({ inner, hasNA }, intervalFactory) as NAAwareInterval;
+}
 
 /**
  * Interval factory for NAAwareDomain tests.
@@ -30,7 +67,7 @@ export const naAwareIntervalFactory: DomainFactory<NAAwareDomain<IntervalDomain>
 
 	let hasNA = false;
 	const concreteValues = new Set<number>();
-	
+
 	if(concrete === undefined) {
 		hasNA = true;
 	} else if(concrete instanceof Set) {
@@ -115,7 +152,7 @@ export function assertContainsNA(
 			}
 		}
 	}
-	
+
 	if(!containsNA && !vector.summary.isBottom() && vector.summary.isValue()) {
 		// The summary is NAAwareDomain<Domain> where Domain = NAAwareDomain<IntervalDomain>
 		// So summary.value is NAAwareDomain<IntervalDomain> which has containsNA()

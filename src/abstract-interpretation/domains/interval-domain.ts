@@ -15,7 +15,7 @@ type IntervalTop = typeof IntervalTop;
 /** The type of the Bottom element of the interval domain as {@link Bottom} symbol */
 type IntervalBottom = typeof Bottom;
 /** The type of the abstract values of the interval domain that are Top, Bottom, or actual values */
-type IntervalLift = IntervalValue | IntervalBottom;
+export type IntervalLift = IntervalValue | IntervalBottom;
 
 /**
  * The interval abstract domain as intervals with possibly infinite bounds representing possible numeric values.
