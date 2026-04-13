@@ -543,7 +543,6 @@ export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bo
 /**
  * Classifies an abstract position interval by its sign.
  * Per paper section 4.7: positions are filtered into positive (≥ 0) and negative (≤ 0) sets.
- *
  * @param position - The PosIntervalDomain to classify
  * @returns The classification: 'positive' if definitely > 0, 'negative' if definitely < 0,
  *          'ambiguous' if spans 0 or includes 0, 'bottom' if Bottom
@@ -594,7 +593,6 @@ export interface SplitPosition {
  * - [-5, 0] → positive: [0, 0], negative: [-5, 0]
  * - [1, 5] → positive: [1, 5], negative: Bottom (no negative values)
  * - [-5, -1] → positive: Bottom, negative: [-5, -1]
- *
  * @param position - The position to split (must not be Bottom)
  * @returns Object with positive and negative parts
  */
@@ -633,7 +631,6 @@ export function splitAmbiguousPosition(position: PosIntervalDomain): SplitPositi
 /**
  * Creates a new selector VectorDomain with filtered/split positions.
  * Used in abstract filtering to build positive and negative filtered selectors.
- *
  * @param selector - The original selector VectorDomain
  * @param positions - The new positions array (already filtered and split)
  * @returns A new VectorDomain with the given positions
@@ -647,9 +644,9 @@ export function createFilteredSelector<Domain extends AnyAbstractDomain>(
 	}
 
 	return selector.create({
-		length: selector.length,
-		values: selector.values.create(positions),
-		summary: selector.summary,
+		length:     selector.length,
+		values:     selector.values.create(positions),
+		summary:    selector.summary,
 		attributes: selector.attributes
 	});
 }

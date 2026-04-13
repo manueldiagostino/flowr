@@ -1,8 +1,7 @@
 import { describe, test, assert } from 'vitest';
-import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
-import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
+import type { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
+import type { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
+import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import { VectorInferenceVisitor } from '../../../../src/abstract-interpretation/vector/vector-inference';
 import { FlowrConfig } from '../../../../src/config';
@@ -12,7 +11,7 @@ import { contextFromInput } from '../../../../src/project/context/flowr-analyzer
 import { SlicingCriterion } from '../../../../src/slicing/criterion/parse';
 import { withShell } from '../../_helper/shell';
 import type { RShell } from '../../../../src/r-bridge/shell';
-import { intervalFactory, naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA } from '../_helper/na-aware-helpers';
+import { naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA } from '../_helper/na-aware-helpers';
 
 const defaultAbsintConfig: FlowrConfig = FlowrConfig.setInConfig(FlowrConfig.default(), 'solver.evalStrings', false);
 

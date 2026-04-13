@@ -47,7 +47,6 @@ export const mkVectorFactory: import('../../../../src/abstract-interpretation/ve
 
 /**
  * Helper to create a VectorDomain for testing with NAAwareDomain<IntervalDomain> values.
- *
  * @param length - Tuple of [min, max] for vector length
  * @param values - Array of [min, max] intervals for known initial positions
  * @param summary - Optional [min, max] interval for summary (defaults to Bottom)
@@ -75,7 +74,6 @@ export const mkVector = (
 
 /**
  * Helper to create a VectorDomain for testing with NAAwareDomain<IntervalDomain> values.
- *
  * @param length - Tuple of [min, max] for vector length
  * @param values - Array of [min, max] intervals for known initial positions
  * @param summary - Optional [min, max] interval for summary (defaults to Bottom)

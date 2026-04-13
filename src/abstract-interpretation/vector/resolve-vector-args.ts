@@ -10,7 +10,7 @@ import { VectorDomain } from './vector-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { VectorAttrDomain } from '../domains/vector-attr-domain';
-import { Bottom, NA } from '../domains/lattice';
+import { NA } from '../domains/lattice';
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import { RNa } from '../../r-bridge/lang-4.x/convert-values';

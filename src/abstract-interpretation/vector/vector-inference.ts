@@ -359,8 +359,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 			return [{
 				operation: 'select',
-				operand:      operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-				selector:     selector !== undefined ? String(selector) : undefined,
+				operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+				selector:  selector !== undefined ? String(selector) : undefined,
 				selectorType
 			}];
 		}
@@ -395,9 +395,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 			return [{
 				operation: 'update',
-				operand: operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-				selector: selector !== undefined ? String(selector) : undefined,
-				values: values !== undefined ? String(values) : undefined,
+				operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+				selector:  selector !== undefined ? String(selector) : undefined,
+				values:    values !== undefined ? String(values) : undefined,
 				selectorType
 			}];
 		}
