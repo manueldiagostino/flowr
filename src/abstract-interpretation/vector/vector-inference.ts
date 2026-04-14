@@ -19,9 +19,9 @@ import {
 	splitAmbiguousPosition,
 	createFilteredSelector
 } from './vector-semantics';
-import { NA } from '../domains/lattice';
+import { NA, Top, Bottom } from '../domains/lattice';
 import type { IntervalDomain } from '../domains/interval-domain';
-import type { PosIntervalDomain } from '../domains/positive-interval-domain';
+import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { type ValueToDomainConverter, buildVectorFromLiteral } from './resolve-vector-args';
 import type { RNumber } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
@@ -682,11 +682,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return this.applySelect(
 					value,
 					args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
-					args.naValue as unknown as NAAwareDomain<Domain>,
+					args.naValue as NAAwareDomain<Domain>,
 					args.selectorType as SelectorType | undefined
 				);
 			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as unknown as NAAwareDomain<Domain>, args.selectorType as SelectorType);
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorType as SelectorType);
 			default:
 				return value.top();
 		}
@@ -810,15 +810,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		} else if(value.values.isTop() || other.values.isTop()) {
 			concatenatedValues = value.values.top();
 		} else if(value.values.isValue() && other.values.isValue()) {
-			const values1 = value.values.value as readonly Domain[];
-			const values2 = other.values.value as readonly Domain[];
+			const values1 = value.values.value as readonly NAAwareDomain<Domain>[];
+			const values2 = other.values.value as readonly NAAwareDomain<Domain>[];
 			const certain1 = l1 === u1;
 			const certain2 = l2 === u2;
 			if(certain1 && certain2) {
 				const concatenated = [...values1, ...values2];
 				concatenatedValues = value.values.create(concatenated);
 			} else {
-				const result: Domain[] = [...values1, ...values2];
+				const result: NAAwareDomain<Domain>[] = [...values1, ...values2];
 				for(let len_a = u1 - 1; len_a >= l1; len_a--) {
 					const v2Start = len_a;
 					for(let i = 0; i < values2.length; i++) {
@@ -876,7 +876,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return this.applySelectPositive(value, numericSelector as unknown as VectorDomain<PosIntervalDomain>, naValue);
 		}
 
-		const selectorValues = numericSelector.values.value as readonly IntervalDomain[];
+		const selectorValues = numericSelector.values.value as readonly NAAwareDomain<IntervalDomain>[];
 		const positivePositions: IntervalDomain[] = [];
 		const negativePositions: IntervalDomain[] = [];
 
@@ -909,8 +909,19 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 		}
 
-		const posSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, positivePositions as unknown as PosIntervalDomain[]);
-		const negSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, negativePositions as unknown as PosIntervalDomain[]);
+		// Factory for PosIntervalDomain
+		const posIntervalFactory = (c: unknown) => {
+			if(c === undefined || c === Bottom) {
+				return PosIntervalDomain.bottom();
+			}
+			if(c === Top) {
+				return PosIntervalDomain.top();
+			}
+			const values = [...(c as Set<number>)];
+			return new PosIntervalDomain([Math.min(...values), Math.max(...values)]);
+		};
+		const posSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, positivePositions as unknown as PosIntervalDomain[], posIntervalFactory);
+		const negSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, negativePositions as unknown as PosIntervalDomain[], posIntervalFactory);
 
 		let result = value.bottom();
 
@@ -941,9 +952,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		const adjustedSelector = adjustForZeros(selector);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		if(adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
-			const selectorValues = adjustedSelector.values.value as readonly PosIntervalDomain[];
+			const selectorValues = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorValues) {
 				if(idx.isBottom()) {
 					continue;
@@ -954,13 +965,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 						const pos = l === 0 ? 1 : l;
 						if(pos > 0) {
 							const accessed = accessPosition(value, pos - 1, naValue);
-							resultKnownPositions.push(accessed.getInner()!);
+							resultKnownPositions.push(accessed);
 						}
 					} else {
-						resultKnownPositions.push(squash(value).getInner()!);
+						resultKnownPositions.push(squash(value));
 					}
 				} else {
-					resultKnownPositions.push(squash(value).getInner()!);
+					resultKnownPositions.push(squash(value));
 				}
 			}
 		}
@@ -1005,7 +1016,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const mustDeleted: number[] = [];
 		const mayDeleted: number[] = [];
 		if(selector.values.isValue()) {
-			const selectorValues = selector.values.value as readonly PosIntervalDomain[];
+			const selectorValues = selector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorValues) {
 				if(idx.isBottom()) {
 					continue;
@@ -1033,17 +1044,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				}
 			}
 		}
-		const hasNonEnumerable = selector.values.isValue() && (selector.values.value as readonly PosIntervalDomain[]).some(idx => !isEnumerable(idx));
+		const hasNonEnumerable = selector.values.isValue() && (selector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.getInner()));
 		const numMustDeleted = mustDeleted.length;
 		const newUpper = Math.max(0, sourceUpper - numMustDeleted);
 		if(hasNonEnumerable || mayDeleted.length > 0) {
 			const resultLength = value.length.create([0, newUpper]);
-			const resultKnownPositions: Domain[] = [];
+			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			const numPositions = Math.min(newUpper, sourceUpper);
 			for(let i = 1; i <= numPositions; i++) {
 				if(!mustDeleted.includes(i)) {
 					const accessed = accessPosition(value, i - 1, naValue);
-					resultKnownPositions.push(accessed.getInner()!);
+					resultKnownPositions.push(accessed);
 				}
 			}
 			return value.create({
@@ -1054,11 +1065,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			});
 		}
 		const resultLength = value.length.create([newUpper, newUpper]);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 1; i <= sourceUpper; i++) {
 			if(!mustDeleted.includes(i)) {
 				const accessed = accessPosition(value, i - 1, naValue);
-				resultKnownPositions.push(accessed.getInner()!);
+				resultKnownPositions.push(accessed);
 			}
 		}
 		return value.create({
@@ -1110,22 +1121,22 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			});
 		}
 		const maxLen = Math.max(sourceLen, selectorLen);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 0; i < maxLen; i++) {
 			const selectorPos = i % selectorLen;
 			let selectorVal: Domain;
 			if(selector.values.isValue()) {
-				const selectorValues = selector.values.value as readonly Domain[];
+				const selectorValues = selector.values.value as readonly NAAwareDomain<Domain>[];
 				if(selectorPos < selectorValues.length) {
 					selectorVal = selectorValues[selectorPos];
 				} else {
-					selectorVal = selector.summary.getInner()!;
+					selectorVal = selector.summary.getInner();
 				}
 			} else {
-				selectorVal = selector.summary.getInner()!;
+				selectorVal = selector.summary.getInner();
 			}
-			const sourceVal = accessPosition(value, i, naValue).getInner()!;
-			const naValInner = naValue.getInner()!;
+			const sourceVal = accessPosition(value, i, naValue);
+			const naValInner = naValue.getInner();
 			if(selectorVal.isValue()) {
 				resultKnownPositions.push(sourceVal);
 			} else {
@@ -1186,7 +1197,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		const adjustedSelector = adjustForZeros(selector);
-		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly PosIntervalDomain[]).some(idx => !isEnumerable(idx));
+		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.getInner()));
 		if(hasNonEnumerable) {
 			const vAll = squash(value).join(squash(values));
 			return value.create({
@@ -1211,8 +1222,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selectorSummaryEnumerable = summaryInner !== undefined ? isEnumerable(summaryInner) : false;
 			const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : 0;
 			const uR = Math.max(selectorUpper === +Infinity ? 0 : selectorUpper, summaryLower);
-			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly PosIntervalDomain[]) : [];
-			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue.getInner()!);
+			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
+			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue.getInner());
 			let valuesUpper = 0;
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
@@ -1224,7 +1235,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				const squashValuesInner = squashValues.getInner();
 				const lS2 = summaryInner.value[0];
 				for(let i = Math.max(0, lS2 - 1); i < resultKnownPositions.length; i++) {
-					resultKnownPositions[i] = resultKnownPositions[i].join(squashValuesInner ?? naValue.top().getInner()!);
+					resultKnownPositions[i] = resultKnownPositions[i].join(squashValuesInner ?? naValue.top().getInner());
 				}
 			}
 			const resultSummary = value.summary.join(squash(values));
@@ -1237,7 +1248,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		} else {
 			let uR = 0;
 			if(adjustedSelector.values.isValue()) {
-				const selectorKnownPositions = adjustedSelector.values.value as readonly PosIntervalDomain[];
+				const selectorKnownPositions = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 				for(const idx of selectorKnownPositions) {
 					if(idx.isValue()) {
 						uR = Math.max(uR, idx.value[1]);
@@ -1245,8 +1256,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				}
 			}
 			uR = Math.max(uR, sourceUpper);
-			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly PosIntervalDomain[]) : [];
-			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue.getInner()!);
+			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
+			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue.getInner());
 			let valuesUpper = 0;
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
@@ -1293,7 +1304,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const mustNotUpdated: number[] = [];
 		const mayNotUpdated: number[] = [];
 		if(adjustedSelector.values.isValue()) {
-			const selectorKnownPositions = adjustedSelector.values.value as readonly PosIntervalDomain[];
+			const selectorKnownPositions = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorKnownPositions) {
 				if(idx.isBottom()) {
 					continue;
@@ -1321,22 +1332,22 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				}
 			}
 		}
-		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly PosIntervalDomain[]).some(idx => !isEnumerable(idx));
+		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.getInner()));
 		const v = squash(values);
 		const vInner = v.getInner();
 		if(hasNonEnumerable) {
-			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly Domain[]) : [];
-			const resultKnownPositions: Domain[] = [];
+			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
+			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			for(let i = 1; i <= sourceUpper; i++) {
 				const idx = i - 1;
 				let val: Domain;
 				if(idx < sourceKnownPositions.length) {
 					val = sourceKnownPositions[idx];
 				} else {
-					val = value.summary.getInner()!;
+					val = value.summary.getInner();
 				}
 				if(!mustNotUpdated.includes(i)) {
-					val = val.join(vInner ?? naValue.top().getInner()!);
+					val = val.join(vInner ?? naValue.top().getInner());
 				}
 				resultKnownPositions.push(val);
 			}
@@ -1362,15 +1373,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				valuesUpper = values.length.value[1];
 			}
 			const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
-			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly Domain[]) : [];
-			const resultKnownPositions: Domain[] = [];
+			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
+			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			for(let i = 0; i < uR; i++) {
 				if(i < sourceKnownPositions.length) {
 					resultKnownPositions.push(sourceKnownPositions[i]);
 				} else if(i < sourceUpper) {
-					resultKnownPositions.push(value.summary.getInner()!);
+					resultKnownPositions.push(value.summary.getInner());
 				} else {
-					resultKnownPositions.push(naValue.getInner()!);
+					resultKnownPositions.push(naValue.getInner());
 				}
 			}
 			const updatedPositions = new Set([...mustNotUpdated, ...mayNotUpdated]);
@@ -1419,17 +1430,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			selectorUpper = selector.length.value[1];
 		}
 		const isInfinite = selectorUpper === +Infinity;
-		const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly Domain[]) : [];
-		const selectorKnownPositions = selector.values.isValue() ? (selector.values.value as readonly Domain[]) : [];
+		const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
+		const selectorKnownPositions = selector.values.isValue() ? (selector.values.value as readonly NAAwareDomain<Domain>[]) : [];
 		const maxLen = Math.max(sourceKnownPositions.length, selectorKnownPositions.length);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 0; i < maxLen; i++) {
 			if(i < sourceKnownPositions.length) {
 				resultKnownPositions.push(sourceKnownPositions[i]);
 			} else if(i < sourceUpper) {
-				resultKnownPositions.push(value.summary.getInner()!);
+				resultKnownPositions.push(value.summary.getInner());
 			} else {
-				resultKnownPositions.push(naValue.getInner()!);
+				resultKnownPositions.push(naValue.getInner());
 			}
 		}
 		const cyclicValues = generateCyclicKnownPositions(values, selectorUpper);
@@ -1438,9 +1449,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(i < selectorKnownPositions.length) {
 				selectorVal = selectorKnownPositions[i];
 			} else if(i < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {
-				selectorVal = selector.summary.getInner()!;
+				selectorVal = selector.summary.getInner();
 			} else {
-				selectorVal = selector.summary.top().getInner()!;
+				selectorVal = selector.summary.top().getInner();
 			}
 			if(selectorVal.isValue()) {
 				resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];

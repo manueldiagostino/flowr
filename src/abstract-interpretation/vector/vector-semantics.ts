@@ -2,7 +2,9 @@ import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorDomain } from './vector-domain';
-import type { NAAwareDomain } from './na-aware-domain';
+import { NAAwareDomain } from './na-aware-domain';
+import type { DomainFactory } from './known-initial-positions-domain';
+import { Bottom } from '../domains/lattice';
 import { ConstraintType } from '../data-frame/semantics';
 
 export { ConstraintType };
@@ -57,18 +59,22 @@ export function squash<Domain extends AnyAbstractDomain>(
 		return value.summary.bottom();
 	}
 	if(value.isTop()) {
-		return value.summary.top();
+		return value.summary;
 	}
 
 	let result = value.summary;
 
-	if(value.values.isValue()) {
-		const valuesArray = value.values.value as readonly Domain[];
-		for(const elem of valuesArray) {
-			const elemHasNA = elementMayContainNA(elem, value.summary);
-			result = result.join(result.create({ inner: elem, hasNA: elemHasNA }));
-		}
+	for(const elem of value.values.toArray()) {
+		result = result.join(elem);
 	}
+
+	// if(value.values.isValue()) {
+	// 	const valuesArray = value.values.value as readonly Domain[];
+	// 	for(const elem of valuesArray) {
+	// 		const elemHasNA = elementMayContainNA(elem, value.summary);
+	// 		result = result.join(result.create({ inner: elem, hasNA: elemHasNA }));
+	// 	}
+	// }
 
 	return result;
 }
@@ -102,11 +108,10 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 	let result = value.summary;
 
 	if(value.values.isValue()) {
-		const valuesArray = value.values.value as readonly Domain[];
+		const valuesArray = value.values.value as readonly NAAwareDomain<Domain>[];
 		for(let i = 0; i < valuesArray.length; i++) {
 			if(!excludedIndices.has(i + 1)) {
-				const hasNA = value.summary.containsNA();
-				result = result.join(result.create({ inner: valuesArray[i], hasNA }));
+				result = result.join(valuesArray[i]);
 			}
 		}
 	}
@@ -132,8 +137,7 @@ export function propagate(
 	k: number
 ): IntervalDomain {
 	if(knownPositions.length === 0) {
-		const inner = summary.getInner();
-		return inner ?? summary.bottom().getInner()!;
+		return summary.value.inner;
 	}
 
 	const first = knownPositions[0];
@@ -152,14 +156,16 @@ export function propagate(
 		if(l <= 0 && u >= 0) {
 			// Join with propagated value from rest (paper specifies ⊔)
 			const propagated = propagate(rest, summary, k);
-			return first.join(propagated.value);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			return (first as any).join(propagated);
 		}
 	}
 
 	// Non-zero value
 	if(k > 0) {
 		// Decrement counter and continue, joining with first (per paper L411)
-		return first.join(propagate(rest, summary, k - 1).value);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return (first as any).join(propagate(rest, summary, k - 1));
 	}
 
 	// k = 0, return this value
@@ -204,8 +210,9 @@ export function adjustForZeros(
 	let possibleZeros = 0; // |{i : 0 ∈ γ(pᵢ)}|
 
 	if(values.isValue() && Array.isArray(values.value)) {
-		const knownPositionValues = values.value as readonly IntervalDomain[];
-		for(const val of knownPositionValues) {
+		const knownPositionValues = values.value as readonly NAAwareDomain<IntervalDomain>[];
+		for(const naVal of knownPositionValues) {
+			const val = naVal.getInner();
 			if(val.isValue()) {
 				const [vl, vu] = val.value;
 				if(vl === 0 && vu === 0) {
@@ -227,16 +234,16 @@ export function adjustForZeros(
 	const newLength = length.create([newL, newU]);
 
 	// Build modified known positions using Propagate
-	const newKnownPositionValues: PosIntervalDomain[] = [];
+	const newKnownPositionValues: NAAwareDomain<IntervalDomain>[] = [];
 
 	if(values.isValue() && Array.isArray(values.value)) {
-		const knownPositionValues = values.value as readonly PosIntervalDomain[];
+		const knownPositionValues = values.value as readonly NAAwareDomain<IntervalDomain>[];
 
 		for(let i = 0; i < knownPositionValues.length; i++) {
 			// Count zeros before position i
 			let zerosBefore = 0;
 			for(let j = 0; j < i; j++) {
-				const prevVal = knownPositionValues[j];
+				const prevVal = knownPositionValues[j].getInner();
 				if(prevVal.isValue()) {
 					const [pl, pu] = prevVal.value;
 					if(pl <= 0 && pu >= 0) {
@@ -245,9 +252,10 @@ export function adjustForZeros(
 				}
 			}
 
-			const propagated = propagate(knownPositionValues.slice(i), summary, zerosBefore);
+			const innerValues = knownPositionValues.slice(i).map(v => v.getInner());
+			const propagated = propagate(innerValues, summary, zerosBefore);
 			if(!propagated.isBottom()) {
-				newKnownPositionValues.push(propagated);
+				newKnownPositionValues.push(new NAAwareDomain({ inner: propagated, hasNA: summary.containsNA() }, summary.getFactory()));
 			}
 		}
 	}
@@ -408,18 +416,7 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 			if(knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
 				result.push(knownPositions[cyclicIdx]);
 			} else {
-				const inner = vector.summary.getInner();
-				if(inner !== undefined) {
-					result.push(inner);
-				} else if(vector.summary.isTop()) {
-					// For Top, use top of the first known position or create a bottom
-					const topVal = knownPositions.length > 0 ? knownPositions[0].top() : null;
-					result.push(topVal ?? knownPositions[0].bottom());
-				} else {
-					// For Bottom, use bottom of the first known position or create a bottom
-					const bottomVal = knownPositions.length > 0 ? knownPositions[0].bottom() : null;
-					result.push(bottomVal ?? knownPositions[0].bottom());
-				}
+				result.push(vector.summary.getInner());
 			}
 		}
 	}
@@ -524,8 +521,9 @@ export function countZerosInIntervalVector(
 
 	// Check known position values for zeros
 	if(selector.values.isValue()) {
-		const values = selector.values.value as readonly PosIntervalDomain[];
-		for(const val of values) {
+		const values = selector.values.value;
+		for(const naVal of values) {
+			const val = naVal.getInner();
 			if(val.isValue()) {
 				const [l, u] = val.value;
 				if(l === 0 && u === 0) {
@@ -657,19 +655,24 @@ export function splitAmbiguousPosition(position: PosIntervalDomain): SplitPositi
  * Used in abstract filtering to build positive and negative filtered selectors.
  * @param selector - The original selector VectorDomain
  * @param positions - The new positions array (already filtered and split)
+ * @param factory - The domain factory for creating PosIntervalDomain values
  * @returns A new VectorDomain with the given positions
  */
 export function createFilteredSelector<Domain extends AnyAbstractDomain>(
 	selector: VectorDomain<PosIntervalDomain>,
-	positions: readonly PosIntervalDomain[]
+	positions: readonly PosIntervalDomain[],
+	factory: DomainFactory<PosIntervalDomain>
 ): VectorDomain<PosIntervalDomain> {
 	if(positions.length === 0) {
 		return selector.bottom();
 	}
 
+	// Wrap positions in NAAwareDomain
+	const naAwarePositions = positions.map(pos => new NAAwareDomain({ inner: pos, hasNA: false }, factory));
+
 	return selector.create({
 		length:     selector.length,
-		values:     selector.values.create(positions),
+		values:     selector.values.create(naAwarePositions),
 		summary:    selector.summary,
 		attributes: selector.attributes
 	});

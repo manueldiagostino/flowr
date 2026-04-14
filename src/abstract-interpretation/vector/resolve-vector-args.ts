@@ -134,12 +134,19 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 		return VectorDomain.bottom(factory);
 	}
 
-	const elementDomains = domainValueSets.map(values => factory(values));
-	const knownPositions = KnownInitialPositionsDomain.bottom<Domain>(factory).create(elementDomains) as KnownInitialPositionsDomain<Domain>;
+	// Wrap each element domain in NAAwareDomain (hasNA: false for concrete values)
+	const elementDomains = domainValueSets.map(values => {
+		const innerDomain = factory(values);
+		return new NAAwareDomain({ inner: innerDomain, hasNA: false }, factory);
+	});
+	const knownPositions = new KnownInitialPositionsDomain(
+		elementDomains,
+		factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+	);
 	const summaryBottom = NAAwareDomain.bottom(factory);
 
 	return new VectorDomain({
-		length:     PosIntervalDomain.bottom().create([domainValueSets.length, domainValueSets.length]),
+		length:     new PosIntervalDomain([domainValueSets.length, domainValueSets.length]),
 		values:     knownPositions,
 		summary:    summaryBottom,
 		attributes: VectorAttrDomain.top()
@@ -161,13 +168,16 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 ): VectorDomain<Domain> | undefined {
 	// Handle NA symbol - NA is parsed as RSymbol with content === 'NA'
 	if(RSymbol.isSpecial(node) && node.content === RNa) {
-		// Pass NA directly to the factory, not wrapped in a set
-		const elementDomain = factory(NA);
-		const knownPositions = KnownInitialPositionsDomain.bottom<Domain>(factory).create([elementDomain]) as KnownInitialPositionsDomain<Domain>;
+		// Create pure NA value (inner is Bottom, hasNA is true)
+		const naValue = NAAwareDomain.na(factory);
+		const knownPositions = new KnownInitialPositionsDomain(
+			[naValue],
+			factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+		);
 		const summaryBottom = NAAwareDomain.bottom(factory);
 
 		return new VectorDomain({
-			length:     PosIntervalDomain.bottom().create([1, 1]),
+			length:     new PosIntervalDomain([1, 1]),
 			values:     knownPositions,
 			summary:    summaryBottom,
 			attributes: VectorAttrDomain.top()

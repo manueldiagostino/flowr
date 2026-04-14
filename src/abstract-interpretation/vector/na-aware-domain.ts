@@ -4,7 +4,7 @@ import type {
 	ConcreteDomain,
 } from '../domains/abstract-domain';
 import { AbstractDomain } from '../domains/abstract-domain';
-import { Top, Bottom, NA, BottomSymbol, NASymbol } from '../domains/lattice';
+import { Top, NA, BottomSymbol, NASymbol } from '../domains/lattice';
 import type { DomainFactory } from './known-initial-positions-domain';
 
 /**
@@ -29,8 +29,12 @@ export type NAAwareTop<Domain extends AnyAbstractDomain> = {
 
 /**
  * The Bottom element type for NAAwareDomain.
+ * Bottom is represented as {inner: Domain.bottom(), hasNA: false}
  */
-export type NAAwareBottom = typeof Bottom;
+export type NAAwareBottom<Domain extends AnyAbstractDomain> = {
+	readonly inner: Domain;
+	readonly hasNA: false;
+};
 
 /**
  * The value type for NAAwareDomain - either a concrete inner value, Top, or Bottom.
@@ -38,7 +42,7 @@ export type NAAwareBottom = typeof Bottom;
 export type NAAwareValue<Domain extends AnyAbstractDomain> =
   | NAAwareInnerValue<Domain>
   | NAAwareTop<Domain>
-  | NAAwareBottom;
+  | NAAwareBottom<Domain>;
 
 /**
  * A wrapper domain that tracks NA (Not Available) values separately from concrete values.
@@ -58,7 +62,7 @@ export class NAAwareDomain<
 		ConcreteDomain<Domain> | typeof NA,
 		NAAwareInnerValue<Domain>,
 		NAAwareTop<Domain>,
-		NAAwareBottom,
+		NAAwareBottom<Domain>,
 		Value
 	> {
 	private readonly factory: DomainFactory<Domain>;
@@ -87,8 +91,9 @@ export class NAAwareDomain<
 	 */
 	public static bottom<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>
-	): NAAwareDomain<Domain, NAAwareBottom> {
-		return new NAAwareDomain(Bottom, factory);
+	): NAAwareDomain<Domain, NAAwareBottom<Domain>> {
+		const innerBottom = factory(new Set<ConcreteDomain<Domain>>());
+		return new NAAwareDomain({ inner: innerBottom, hasNA: false }, factory);
 	}
 
 	/**
@@ -107,8 +112,8 @@ export class NAAwareDomain<
 		return NAAwareDomain.top(this.factory);
 	}
 
-	public bottom(): this & NAAwareDomain<Domain, NAAwareBottom>;
-	public bottom(): NAAwareDomain<Domain, NAAwareBottom> {
+	public bottom(): this & NAAwareDomain<Domain, NAAwareBottom<Domain>>;
+	public bottom(): NAAwareDomain<Domain, NAAwareBottom<Domain>> {
 		return NAAwareDomain.bottom(this.factory);
 	}
 
@@ -116,9 +121,6 @@ export class NAAwareDomain<
 	 * Checks if this abstract value IS exactly NA (pure NA, no other values).
 	 */
 	public isNA(): boolean {
-		if(this.value === Bottom) {
-			return false;
-		}
 		// Pure NA: inner domain is Bottom (no concrete values) but hasNA is true
 		return this.value.inner.isBottom() && this.value.hasNA;
 	}
@@ -127,30 +129,26 @@ export class NAAwareDomain<
 	 * Checks if this abstract value contains NA (may also contain other values).
 	 */
 	public containsNA(): boolean {
-		if(this.value === Bottom) {
-			return false;
-		}
 		return this.value.hasNA;
 	}
 
 	/**
 	 * Gets the inner domain value (excluding NA tracking).
-	 * Returns undefined if this is Top or Bottom.
+	 * Always returns a valid Domain value.
 	 */
-	public getInner(): Domain | undefined {
-		if(this.value === Bottom) {
-			return undefined;
-		}
+	public getInner(): Domain {
 		return this.value.inner;
 	}
 
+	/**
+	 * Gets the domain factory used to create this NAAwareDomain.
+	 * @returns The domain factory
+	 */
+	public getFactory(): DomainFactory<Domain> {
+		return this.factory;
+	}
+
 	public equals(other: this): boolean {
-		if(this.value === other.value) {
-			return true;
-		}
-		if(this.value === Bottom || other.value === Bottom) {
-			return false;
-		}
 		return this.value.inner.equals(other.value.inner) &&
 			this.value.hasNA === other.value.hasNA;
 	}
@@ -166,9 +164,6 @@ export class NAAwareDomain<
 			return true;
 		}
 		if(other.isBottom() || this.isTop()) {
-			return false;
-		}
-		if(this.value === Bottom || other.value === Bottom) {
 			return false;
 		}
 		// Component-wise ordering
@@ -289,10 +284,6 @@ export class NAAwareDomain<
 	 * - Bottom → empty set
 	 */
 	public concretize(limit: number): ReadonlySet<ConcreteDomain<Domain> | typeof NA> | typeof Top {
-		if(this.value === Bottom) {
-			return new Set();
-		}
-
 		const { inner, hasNA } = this.value;
 		const innerConcretized = inner.concretize(limit);
 
@@ -345,9 +336,6 @@ export class NAAwareDomain<
 	}
 
 	public toJson(): unknown {
-		if(this.value === Bottom) {
-			return Bottom.description;
-		}
 		return {
 			inner: this.value.inner.toJson(),
 			hasNA: this.value.hasNA
@@ -355,10 +343,11 @@ export class NAAwareDomain<
 	}
 
 	public toString(): string {
-		if(this.value === Bottom) {
-			return BottomSymbol;
-		} else if(this.isNA()) {
+		if(this.isNA()) {
 			return NASymbol;
+		}
+		if(this.isBottom()) {
+			return BottomSymbol;
 		}
 		const innerStr = this.value.inner.toString();
 		const naMarker = this.value.hasNA ? `+${NASymbol}` : '';
@@ -366,14 +355,14 @@ export class NAAwareDomain<
 	}
 
 	public isTop(): this is NAAwareDomain<Domain, NAAwareTop<Domain>> {
-		return this.value !== Bottom && this.value.inner.isTop() && this.value.hasNA;
+		return this.value.inner.isTop() && this.value.hasNA;
 	}
 
-	public isBottom(): this is NAAwareDomain<Domain, NAAwareBottom> {
-		return this.value === Bottom || (this.value.inner.isBottom() && !this.value.hasNA);
+	public isBottom(): this is NAAwareDomain<Domain, NAAwareBottom<Domain>> {
+		return this.value.inner.isBottom() && !this.value.hasNA;
 	}
 
 	public isValue(): this is NAAwareDomain<Domain, NAAwareInnerValue<Domain>> {
-		return this.value !== Bottom;
+		return !this.isBottom() && !this.isTop();
 	}
 }

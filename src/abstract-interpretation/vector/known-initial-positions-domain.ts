@@ -306,4 +306,8 @@ export class KnownInitialPositionsDomain<
 	> {
 		return this.value !== Bottom;
 	}
+
+	public toArray(): Domain[] {
+		return this.value as Domain[];
+	}
 }
