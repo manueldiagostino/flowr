@@ -212,7 +212,7 @@ export function adjustForZeros(
 	if(values.isValue() && Array.isArray(values.value)) {
 		const knownPositionValues = values.value as readonly NAAwareDomain<IntervalDomain>[];
 		for(const naVal of knownPositionValues) {
-			const val = naVal.getInner();
+			const val = naVal.inner;
 			if(val.isValue()) {
 				const [vl, vu] = val.value;
 				if(vl === 0 && vu === 0) {
@@ -243,7 +243,7 @@ export function adjustForZeros(
 			// Count zeros before position i
 			let zerosBefore = 0;
 			for(let j = 0; j < i; j++) {
-				const prevVal = knownPositionValues[j].getInner();
+				const prevVal = knownPositionValues[j].inner;
 				if(prevVal.isValue()) {
 					const [pl, pu] = prevVal.value;
 					if(pl <= 0 && pu >= 0) {
@@ -252,10 +252,10 @@ export function adjustForZeros(
 				}
 			}
 
-			const innerValues = knownPositionValues.slice(i).map(v => v.getInner());
+			const innerValues = knownPositionValues.slice(i).map(v => v.inner);
 			const propagated = propagate(innerValues, summary, zerosBefore);
 			if(!propagated.isBottom()) {
-				newKnownPositionValues.push(new NAAwareDomain({ inner: propagated, hasNA: summary.containsNA() }, summary.getFactory()));
+				newKnownPositionValues.push(new NAAwareDomain({ inner: propagated, hasNA: summary.containsNA() }, summary.factory));
 			}
 		}
 	}
@@ -416,7 +416,7 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 			if(knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
 				result.push(knownPositions[cyclicIdx]);
 			} else {
-				result.push(vector.summary.getInner());
+				result.push(vector.summary.inner);
 			}
 		}
 	}
@@ -523,7 +523,7 @@ export function countZerosInIntervalVector(
 	if(selector.values.isValue()) {
 		const values = selector.values.value;
 		for(const naVal of values) {
-			const val = naVal.getInner();
+			const val = naVal.inner;
 			if(val.isValue()) {
 				const [l, u] = val.value;
 				if(l === 0 && u === 0) {

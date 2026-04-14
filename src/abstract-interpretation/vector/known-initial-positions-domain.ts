@@ -35,15 +35,22 @@ export class KnownInitialPositionsDomain<
 		KnownInitialPositionsBottom,
 		Value
 	> {
-	private readonly factory: DomainFactory<Domain>;
+	private readonly _factory: DomainFactory<Domain>;
 
 	constructor(value: Value, factory: DomainFactory<Domain>) {
 		super(value);
-		this.factory = factory;
+		this._factory = factory;
+	}
+
+	/**
+	 * Gets the domain factory used to create this KnownInitialPositionsDomain.
+	 */
+	public get factory(): DomainFactory<Domain> {
+		return this._factory;
 	}
 
 	public create(value: KnownInitialPositionsLift<Domain>): this {
-		return new KnownInitialPositionsDomain(value, this.factory) as this;
+		return new KnownInitialPositionsDomain(value, this._factory) as this;
 	}
 
 	public static top<Domain extends AnyAbstractDomain>(
@@ -66,7 +73,7 @@ export class KnownInitialPositionsDomain<
 			KnownInitialPositionsBottom,
 			KnownInitialPositionsTop
 		> {
-		return KnownInitialPositionsDomain.top(this.factory) as this &
+		return KnownInitialPositionsDomain.top(this._factory) as this &
 			AbstractDomain<
 				readonly ConcreteDomain<Domain>[],
 				KnownInitialPositionsValue<Domain>,
@@ -84,7 +91,7 @@ export class KnownInitialPositionsDomain<
 			KnownInitialPositionsBottom,
 			KnownInitialPositionsBottom
 		> {
-		return KnownInitialPositionsDomain.bottom(this.factory) as this &
+		return KnownInitialPositionsDomain.bottom(this._factory) as this &
 			AbstractDomain<
 				readonly ConcreteDomain<Domain>[],
 				KnownInitialPositionsValue<Domain>,
@@ -239,7 +246,7 @@ export class KnownInitialPositionsDomain<
 		const arrays = [...concrete];
 		if(arrays.length === 1) {
 			// Single array: abstract each element individually
-			const result = arrays[0].map((elem) => this.factory(new Set([elem])));
+			const result = arrays[0].map((elem) => this._factory(new Set([elem])));
 			return this.create(result as KnownInitialPositionsValue<Domain>);
 		}
 
@@ -258,7 +265,7 @@ export class KnownInitialPositionsDomain<
 				}
 			}
 			// Use the factory to abstract all values at this position
-			result.push(this.factory(valuesAtPos));
+			result.push(this._factory(valuesAtPos));
 		}
 		return this.create(result as KnownInitialPositionsValue<Domain>);
 	}

@@ -94,6 +94,13 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
+	 * Gets the domain factory used to create this VectorDomain.
+	 */
+	public get factory(): DomainFactory<Domain> {
+		return this._factory;
+	}
+
+	/**
 	 * Factory method to create a VectorDomain with explicit NAAwareDomain wrapping.
 	 *
 	 * All values and summary must be explicitly wrapped in NAAwareDomain, making NA-awareness

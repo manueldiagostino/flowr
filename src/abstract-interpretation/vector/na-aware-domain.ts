@@ -65,16 +65,16 @@ export class NAAwareDomain<
 		NAAwareBottom<Domain>,
 		Value
 	> {
-	private readonly factory: DomainFactory<Domain>;
+	private readonly _factory: DomainFactory<Domain>;
 
 	constructor(value: Value, factory: DomainFactory<Domain>) {
 		super(value);
-		this.factory = factory;
+		this._factory = factory;
 	}
 
 	public create(value: NAAwareValue<Domain>): this;
 	public create(value: NAAwareValue<Domain>): NAAwareDomain<Domain> {
-		return new NAAwareDomain(value, this.factory);
+		return new NAAwareDomain(value, this._factory);
 	}
 
 	/**
@@ -84,6 +84,13 @@ export class NAAwareDomain<
 		factory: DomainFactory<Domain>
 	): NAAwareDomain<Domain, NAAwareTop<Domain>> {
 		return new NAAwareDomain({ inner: factory(Top) as AbstractDomainTop<Domain>, hasNA: true }, factory);
+	}
+
+	/**
+	 * Gets the domain factory used to create this NAAwareDomain.
+	 */
+	public get factory(): DomainFactory<Domain> {
+		return this._factory;
 	}
 
 	/**
@@ -185,12 +192,12 @@ export class NAAwareDomain<
 
 	public top(): this & NAAwareDomain<Domain, NAAwareTop<Domain>>;
 	public top(): NAAwareDomain<Domain, NAAwareTop<Domain>> {
-		return NAAwareDomain.top(this.factory);
+		return NAAwareDomain.top(this._factory);
 	}
 
 	public bottom(): this & NAAwareDomain<Domain, NAAwareBottom<Domain>>;
 	public bottom(): NAAwareDomain<Domain, NAAwareBottom<Domain>> {
-		return NAAwareDomain.bottom(this.factory);
+		return NAAwareDomain.bottom(this._factory);
 	}
 
 	/**
@@ -212,16 +219,8 @@ export class NAAwareDomain<
 	 * Gets the inner domain value (excluding NA tracking).
 	 * Always returns a valid Domain value.
 	 */
-	public getInner(): Domain {
+	public get inner(): Domain {
 		return this.value.inner;
-	}
-
-	/**
-	 * Gets the domain factory used to create this NAAwareDomain.
-	 * @returns The domain factory
-	 */
-	public getFactory(): DomainFactory<Domain> {
-		return this.factory;
 	}
 
 	public equals(other: this): boolean {
