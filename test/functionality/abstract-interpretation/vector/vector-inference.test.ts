@@ -319,19 +319,22 @@ x <- y`;
 describe('Vector Inference Unit Tests', () => {
 	test('VectorDomain factory creates correct domain', () => {
 		const len = new PosIntervalDomain([3, 3]);
+
 		const vals = new KnownInitialPositionsDomain(
 			[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
-			(v) => new NAAwareDomain({ inner: intervalFactory(v), hasNA: false }, intervalFactory)
+			(v: any) => new NAAwareDomain({ inner: intervalFactory(v), hasNA: false }, intervalFactory)
 		);
-		const sum = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const sum: any = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
 		const attrs = VectorAttrDomain.top();
+
 
 		const vector = new VectorDomain({
 			length:     len,
 			values:     vals,
 			summary:    sum,
 			attributes: attrs
-		}, intervalFactory);
+		}, intervalFactory as any);
 
 		assert.strictEqual(vector.length.toString(), '[3, 3]');
 		assert.ok(vector.values.isValue());

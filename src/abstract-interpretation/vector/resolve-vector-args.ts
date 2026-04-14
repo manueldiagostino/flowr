@@ -139,9 +139,10 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 		const innerDomain = factory(values);
 		return new NAAwareDomain({ inner: innerDomain, hasNA: false }, factory);
 	});
+	const smartFactory = NAAwareDomain.createSmartFactory(factory);
 	const knownPositions = new KnownInitialPositionsDomain(
 		elementDomains,
-		factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+		smartFactory
 	);
 	const summaryBottom = NAAwareDomain.bottom(factory);
 
@@ -170,9 +171,10 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 	if(RSymbol.isSpecial(node) && node.content === RNa) {
 		// Create pure NA value (inner is Bottom, hasNA is true)
 		const naValue = NAAwareDomain.na(factory);
+		const smartFactory = NAAwareDomain.createSmartFactory(factory);
 		const knownPositions = new KnownInitialPositionsDomain(
 			[naValue],
-			factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+			smartFactory
 		);
 		const summaryBottom = NAAwareDomain.bottom(factory);
 

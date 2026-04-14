@@ -60,38 +60,21 @@ export const intervalFactory: DomainFactory<IntervalDomain> = (concrete) => {
 /**
  * Factory for NAAwareDomain<IntervalDomain> that handles NA values.
  */
-export const naAwareIntervalFactory: DomainFactory<NAAwareDomain<IntervalDomain>> = (concrete) => {
-	if(concrete === Top) {
-		return NAAwareDomain.top(intervalFactory);
-	}
-
-	let hasNA = false;
-	const concreteValues = new Set<number>();
-
-	if(concrete === undefined) {
-		hasNA = true;
-	} else if(concrete instanceof Set) {
-		hasNA = concrete.has(NA as unknown as number);
-		for(const v of concrete) {
-			if(v !== NA) {
-				concreteValues.add(v as number);
-			}
-		}
-	}
-
-	const inner = intervalFactory(concreteValues.size > 0 ? concreteValues : Top);
-	return new NAAwareDomain({ inner, hasNA }, intervalFactory);
-};
+export const naAwareIntervalFactory: DomainFactory<NAAwareDomain<IntervalDomain>> =
+	NAAwareDomain.createSmartFactory(intervalFactory);
 
 /**
  * Helper to create a VectorDomain with NAAwareDomain values.
+ * With the new architecture, VectorDomain<IntervalDomain> automatically has
+ * NAAwareDomain<IntervalDomain> in its values field.
  */
 export function createNAAwareVector(
 	length: [number, number],
 	values: Array<{ range: [number, number]; hasNA: boolean }>,
 	summary?: { range: [number, number]; hasNA: boolean }
-): VectorDomain<NAAwareDomain<IntervalDomain>> {
+): VectorDomain<IntervalDomain> {
 	const len = new PosIntervalDomain(length);
+	// Values are automatically wrapped in NAAwareDomain by the VectorDomain type
 	const vals = new KnownInitialPositionsDomain(
 		values.map(v => new NAAwareDomain(
 			{ inner: new IntervalDomain(v.range), hasNA: v.hasNA },
@@ -100,29 +83,24 @@ export function createNAAwareVector(
 		naAwareIntervalFactory
 	);
 
-	// The summary field is NAAwareDomain<Domain> where Domain = NAAwareDomain<IntervalDomain>
-	// So we need NAAwareDomain<NAAwareDomain<IntervalDomain>>
-	const innerSummary = summary === undefined
-		? NAAwareDomain.bottom(intervalFactory)
-		: new NAAwareDomain(
-			{ inner: new IntervalDomain(summary.range), hasNA: summary.hasNA },
-			intervalFactory
-		);
-	// Wrap in outer NAAwareDomain for the summary field
-	const sum = new NAAwareDomain({ inner: innerSummary, hasNA: false }, naAwareIntervalFactory);
+	// Summary is NAAwareDomain<IntervalDomain>
+	const sumInner = summary === undefined
+		? IntervalDomain.bottom()
+		: new IntervalDomain(summary.range);
+	const sum = new NAAwareDomain({ inner: sumInner, hasNA: summary?.hasNA ?? false }, intervalFactory);
 
 	return new VectorDomain({
 		length:     len,
 		values:     vals,
 		summary:    sum,
 		attributes: VectorAttrDomain.top()
-	}, naAwareIntervalFactory);
+	}, intervalFactory);
 }
 
 /**
  * Create a pure NA vector (all positions are NA).
  */
-export function createPureNAVector(length: [number, number]): VectorDomain<NAAwareDomain<IntervalDomain>> {
+export function createPureNAVector(length: [number, number]): VectorDomain<IntervalDomain> {
 	return createNAAwareVector(
 		length,
 		[{ range: [0, 0], hasNA: true }],
@@ -132,9 +110,11 @@ export function createPureNAVector(length: [number, number]): VectorDomain<NAAwa
 
 /**
  * Assertion helper to check if a vector contains NA values.
+ * Supports both VectorDomain<IntervalDomain> (where values are NAAwareDomain wrapped internally)
+ * and VectorDomain<NAAwareDomain<IntervalDomain>> (explicit NA-aware domain).
  */
 export function assertContainsNA(
-	vector: VectorDomain<NAAwareDomain<IntervalDomain>> | undefined,
+	vector: VectorDomain<IntervalDomain> | VectorDomain<NAAwareDomain<IntervalDomain>> | undefined,
 	expected: boolean,
 	message?: string
 ): void {
@@ -144,22 +124,19 @@ export function assertContainsNA(
 
 	let containsNA = false;
 	if(vector.values.isValue()) {
-		const values = vector.values.value as readonly NAAwareDomain<IntervalDomain>[];
+		const values = vector.values.value;
 		for(const val of values) {
-			if(val.containsNA()) {
+			const naVal = val as NAAwareDomain<IntervalDomain>;
+			if(naVal.containsNA()) {
 				containsNA = true;
 				break;
 			}
 		}
 	}
 
-	if(!containsNA && !vector.summary.isBottom() && vector.summary.isValue()) {
-		// The summary is NAAwareDomain<Domain> where Domain = NAAwareDomain<IntervalDomain>
-		// So summary.value is NAAwareDomain<IntervalDomain> which has containsNA()
-		const summary = vector.summary.value as unknown as NAAwareDomain<IntervalDomain>;
-		if(typeof summary.containsNA === 'function') {
-			containsNA = summary.containsNA();
-		}
+	if(!containsNA && !vector.summary.isBottom()) {
+		const summary = vector.summary as NAAwareDomain<IntervalDomain>;
+		containsNA = summary.containsNA();
 	}
 
 	if(containsNA !== expected) {

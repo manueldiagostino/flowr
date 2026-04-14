@@ -4,7 +4,7 @@ import type {
 	ConcreteDomain,
 } from '../domains/abstract-domain';
 import { AbstractDomain } from '../domains/abstract-domain';
-import { Top, NA, BottomSymbol, NASymbol } from '../domains/lattice';
+import { Top, Bottom, NA, BottomSymbol, NASymbol } from '../domains/lattice';
 import type { DomainFactory } from './known-initial-positions-domain';
 
 /**
@@ -105,6 +105,82 @@ export class NAAwareDomain<
 	): NAAwareDomain<Domain, NAAwareInnerValue<Domain>> {
 		const innerBottom = factory(new Set<ConcreteDomain<Domain>>());
 		return new NAAwareDomain({ inner: innerBottom, hasNA: true }, factory);
+	}
+
+	/**
+	 * Creates a smart factory that properly handles NA values in concrete sets.
+	 *
+	 * This factory detects when NA is present in the concrete representation and
+	 * automatically sets the hasNA flag accordingly. It handles:
+	 * - typeof NA (pure NA value)
+	 * - undefined (treated as NA)
+	 * - Sets containing NA (NA separated from concrete values)
+	 * - Sets without NA (hasNA: false)
+	 *
+	 * @param innerFactory - Factory for creating the inner domain values
+	 * @returns A factory that creates NAAwareDomain values with proper NA detection
+	 *
+	 * @example
+	 * ```typescript
+	 * const smartFactory = NAAwareDomain.createSmartFactory(IntervalDomain.abstract);
+	 *
+	 * // Creates NAAwareDomain with hasNA: false
+	 * const noNA = smartFactory(new Set([1, 2, 3]));
+	 *
+	 * // Creates NAAwareDomain with hasNA: true
+	 * const withNA = smartFactory(new Set([1, NA, 3]));
+	 *
+	 * // Creates pure NA value
+	 * const pureNA = smartFactory(NA);
+	 * ```
+	 */
+	public static createSmartFactory<Inner extends AnyAbstractDomain>(
+		innerFactory: DomainFactory<Inner>
+	): DomainFactory<NAAwareDomain<Inner>> {
+		return (
+			concrete: ReadonlySet<ConcreteDomain<Inner> | typeof NA> | typeof Top | typeof Bottom | typeof NA | undefined
+		): NAAwareDomain<Inner> => {
+			// Handle Top
+			if(concrete === Top) {
+				return NAAwareDomain.top(innerFactory);
+			}
+
+			// Handle pure NA or undefined
+			if(concrete === NA || concrete === undefined) {
+				return NAAwareDomain.na(innerFactory);
+			}
+
+			// Handle Bottom (empty set)
+			if(concrete === Bottom || (concrete instanceof Set && concrete.size === 0)) {
+				return NAAwareDomain.bottom(innerFactory);
+			}
+
+			// Handle sets - separate NA from concrete values
+			if(concrete instanceof Set) {
+				let hasNA = false;
+				const concreteValues = new Set<ConcreteDomain<Inner>>();
+
+				for(const value of concrete) {
+					if(value === NA) {
+						hasNA = true;
+					} else {
+						// TypeScript doesn't narrow the union type in the else branch,
+						// but we know value is ConcreteDomain<Inner> since it's not NA
+						concreteValues.add(value as ConcreteDomain<Inner>);
+					}
+				}
+
+				// Create inner domain from concrete values (or Bottom if only NA)
+				const inner = concreteValues.size > 0
+					? innerFactory(concreteValues)
+					: innerFactory(Bottom);
+
+				return new NAAwareDomain({ inner, hasNA }, innerFactory);
+			}
+
+			// Should not reach here with valid inputs
+			throw new Error(`Invalid concrete value for NAAwareDomain: ${String(concrete)}`);
+		};
 	}
 
 	public top(): this & NAAwareDomain<Domain, NAAwareTop<Domain>>;

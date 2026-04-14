@@ -161,9 +161,10 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		summary: NAAwareDomain<Domain>,
 		attributes: VectorAttrDomain
 	): VectorDomain<Domain> {
+		const smartFactory = NAAwareDomain.createSmartFactory(factory);
 		const knownPositions = new KnownInitialPositionsDomain(
 			values,
-			factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+			smartFactory
 		);
 		return VectorDomain.create(factory, length, knownPositions, summary, attributes);
 	}
@@ -175,11 +176,12 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	public static top<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
+		const smartFactory = NAAwareDomain.createSmartFactory(factory);
 		const summaryTop = NAAwareDomain.top(factory);
 		return new VectorDomain({
 			length: PosIntervalDomain.top(),
 			values: KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
-				factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+				smartFactory
 			),
 			summary:    summaryTop,
 			attributes: VectorAttrDomain.top()
@@ -193,8 +195,9 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	public static bottom<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
+		const smartFactory = NAAwareDomain.createSmartFactory(factory);
 		const valuesBottom = KnownInitialPositionsDomain.bottom<NAAwareDomain<Domain>>(
-			factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+			smartFactory
 		);
 		const summaryBottom = NAAwareDomain.bottom(factory);
 		return new VectorDomain({
@@ -295,8 +298,9 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		let newValues: KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
 
 		if(this.values.isTop() || other.values.isTop()) {
+			const smartFactory = NAAwareDomain.createSmartFactory(this._factory);
 			newValues = KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
-				this._factory as unknown as DomainFactory<NAAwareDomain<Domain>>
+				smartFactory
 			);
 		} else if(this.values.isBottom()) {
 			newValues = other.values;

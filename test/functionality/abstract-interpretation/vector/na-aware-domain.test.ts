@@ -1,7 +1,7 @@
 import { describe, test, assert } from 'vitest';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
+import { Top, Bottom, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import { intervalFactory, createNAAwareInterval, wrapIntervalWithNA } from '../_helper/na-aware-helpers';
 
 describe('NAAwareDomain', () => {
@@ -265,6 +265,65 @@ describe('NAAwareDomain', () => {
 			const value = createNAAwareInterval([1, 10], false);
 			const str = value.toString();
 			assert.ok(!str.includes('+NA'));
+		});
+	});
+
+	describe('createSmartFactory', () => {
+		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
+
+		test('creates value with hasNA: false when no NA in set', () => {
+			const result = smartFactory(new Set([1, 2, 3]));
+			assert.strictEqual(result.containsNA(), false);
+			assert.strictEqual(result.isNA(), false);
+			assert.strictEqual(result.getInner().toString(), '[1, 3]');
+		});
+
+		test('creates value with hasNA: true when NA in set', () => {
+			const result = smartFactory(new Set([1, NA, 3]));
+			assert.strictEqual(result.containsNA(), true);
+			assert.strictEqual(result.isNA(), false);
+			assert.strictEqual(result.getInner().toString(), '[1, 3]');
+		});
+
+		test('creates pure NA when concrete is NA', () => {
+			const result = smartFactory(NA);
+			assert.strictEqual(result.isNA(), true);
+			assert.strictEqual(result.containsNA(), true);
+		});
+
+		test('creates pure NA when concrete is undefined', () => {
+			const result = smartFactory(undefined);
+			assert.strictEqual(result.isNA(), true);
+			assert.strictEqual(result.containsNA(), true);
+		});
+
+		test('creates bottom when empty set', () => {
+			const result = smartFactory(new Set());
+			assert.strictEqual(result.isBottom(), true);
+			assert.strictEqual(result.containsNA(), false);
+		});
+
+		test('creates top when concrete is Top', () => {
+			const result = smartFactory(Top);
+			assert.strictEqual(result.isTop(), true);
+			assert.strictEqual(result.containsNA(), true);
+		});
+
+		test('creates bottom when concrete is Bottom', () => {
+			const result = smartFactory(Bottom);
+			assert.strictEqual(result.isBottom(), true);
+			assert.strictEqual(result.containsNA(), false);
+		});
+
+		test('factory produces consistent results with manual construction', () => {
+			const smartResult = smartFactory(new Set([5, 10]));
+			const manualResult = new NAAwareDomain(
+				{ inner: new IntervalDomain([5, 10]), hasNA: false },
+				intervalFactory
+			);
+
+			assert.strictEqual(smartResult.containsNA(), manualResult.containsNA());
+			assert.strictEqual(smartResult.getInner().toString(), manualResult.getInner().toString());
 		});
 	});
 });

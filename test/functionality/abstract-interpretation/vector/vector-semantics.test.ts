@@ -2,7 +2,7 @@ import { assert, test, describe } from 'vitest';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
-import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
+import { KnownInitialPositionsDomain, type DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
@@ -122,7 +122,9 @@ describe('Vector Semantics', () => {
 
 		test('squash with empty values returns summary', () => {
 			const len = new PosIntervalDomain([0, 3]);
-			const vals = KnownInitialPositionsDomain.top(intervalFactory);
+			const vals = KnownInitialPositionsDomain.top<NAAwareDomain<IntervalDomain>>(
+				naAwareIntervalFactory
+			);
 			const sumDomain = new IntervalDomain([5, 10]);
 			const sum = new NAAwareDomain({ inner: sumDomain, hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
@@ -183,8 +185,8 @@ describe('Vector Semantics', () => {
 			values: [number, number][]
 		): VectorDomain<IntervalDomain> => {
 			const len = new PosIntervalDomain(length);
-			const vals = values.map(([l, u]) => new IntervalDomain([l, u]));
-			const sum = IntervalDomain.bottom();
+			const vals = values.map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory));
+			const sum = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
 			return VectorDomain.fromValues(intervalFactory, len, vals, sum, attrs);
 		};
@@ -317,7 +319,7 @@ describe('Vector Semantics', () => {
 				new IntervalDomain([3, 3])
 			];
 			const naValue = new IntervalDomain([NaN, NaN]);
-			const result = initKnownPositions(positions, 2, 3, 5, naValue);
+			const result = initKnownPositions<IntervalDomain>(positions, 2, 3, 5, naValue);
 
 			// First 2: keep as-is
 			// Positions 2-3: join with NA
@@ -393,7 +395,7 @@ describe('Vector Semantics', () => {
 	describe('Helper: accessPosition', () => {
 		test('accessPosition returns correct value at position', () => {
 			const vector = mkVector([3, 3], [[10, 10], [20, 20], [30, 30]]);
-			const naValue = new IntervalDomain([NaN, NaN]);
+			const naValue = new NAAwareDomain({ inner: new IntervalDomain([NaN, NaN]), hasNA: true }, intervalFactory);
 
 			const pos0 = accessPosition(vector, 0, naValue);
 			assert.strictEqual(pos0.toString(), '[10, 10]');
@@ -407,7 +409,7 @@ describe('Vector Semantics', () => {
 
 		test('accessPosition returns NA for out of bounds', () => {
 			const vector = mkVector([2, 2], [[10, 10], [20, 20]]);
-			const naValue = new IntervalDomain([99, 99]);
+			const naValue = new NAAwareDomain({ inner: new IntervalDomain([99, 99]), hasNA: false }, intervalFactory);
 
 			const result = accessPosition(vector, 5, naValue);
 			assert.strictEqual(result.toString(), '[99, 99]');
@@ -415,7 +417,7 @@ describe('Vector Semantics', () => {
 
 		test('accessPosition with bottom returns bottom', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
-			const naValue = new IntervalDomain([NaN, NaN]);
+			const naValue = new NAAwareDomain({ inner: new IntervalDomain([NaN, NaN]), hasNA: true }, intervalFactory);
 
 			const result = accessPosition(bottom, 0, naValue);
 			assert.strictEqual(result.isBottom(), true);
@@ -423,7 +425,7 @@ describe('Vector Semantics', () => {
 
 		test('accessPosition with top returns top', () => {
 			const top = VectorDomain.top(intervalFactory);
-			const naValue = new IntervalDomain([NaN, NaN]);
+			const naValue = new NAAwareDomain({ inner: new IntervalDomain([NaN, NaN]), hasNA: true }, intervalFactory);
 
 			const result = accessPosition(top, 0, naValue);
 			assert.strictEqual(result.isTop(), true);
@@ -456,11 +458,11 @@ describe('Vector Semantics', () => {
 				posIntervalFactory2,
 				vector.length,
 				[
-					new PosIntervalDomain([1, 1]),
-					new PosIntervalDomain([2, 2]),
-					new PosIntervalDomain([3, 3])
+					new NAAwareDomain({ inner: new PosIntervalDomain([1, 1]), hasNA: false }, posIntervalFactory2),
+					new NAAwareDomain({ inner: new PosIntervalDomain([2, 2]), hasNA: false }, posIntervalFactory2),
+					new NAAwareDomain({ inner: new PosIntervalDomain([3, 3]), hasNA: false }, posIntervalFactory2)
 				],
-				new PosIntervalDomain([0, 0]),
+				new NAAwareDomain({ inner: new PosIntervalDomain([0, 0]), hasNA: false }, posIntervalFactory2),
 				vector.attributes
 			);
 			const result = countZerosInIntervalVector(posVector);
@@ -485,11 +487,11 @@ describe('Vector Semantics', () => {
 				posIntervalFactory2,
 				new PosIntervalDomain([3, 3]),
 				[
-					new PosIntervalDomain([0, 0]),
-					new PosIntervalDomain([0, 0]),
-					new PosIntervalDomain([1, 1])
+					new NAAwareDomain({ inner: new PosIntervalDomain([0, 0]), hasNA: false }, posIntervalFactory2),
+					new NAAwareDomain({ inner: new PosIntervalDomain([0, 0]), hasNA: false }, posIntervalFactory2),
+					new NAAwareDomain({ inner: new PosIntervalDomain([1, 1]), hasNA: false }, posIntervalFactory2)
 				],
-				new PosIntervalDomain([0, 0]),
+				new NAAwareDomain({ inner: new PosIntervalDomain([0, 0]), hasNA: false }, posIntervalFactory2),
 				VectorAttrDomain.top()
 			);
 			const result = countZerosInIntervalVector(posVector);
