@@ -1155,12 +1155,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 	/**
 	 * Applies the update operation to modify elements in a vector based on a selector.
-	 * Dispatcher that routes to the appropriate selector-type-specific method.
+	 * For numeric selectors, uses value-based classification to handle positive/negative positions.
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The selector for positions to update
 	 * @param values - The values to assign to selected positions
 	 * @param naValue - The NA value for out-of-bounds positions
-	 * @param selectorType - The type of selector (positive, negative, or logical)
+	 * @param selectorKind - The kind of selector (logical or numeric)
 	 * @returns The resulting VectorDomain after update
 	 */
 	private applyUpdate(
@@ -1173,13 +1173,79 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
 			return value.bottom();
 		}
+
 		// Logical selector: use logical update
 		if(selectorKind === 'logical') {
 			return this.applyUpdateLogical(value, selector as VectorDomain<Domain>, values, naValue);
 		}
-		// Numeric selector: for now, dispatch to positive update
-		// (Full value-based classification will be implemented in next commit)
-		return this.applyUpdatePositive(value, selector as VectorDomain<PosIntervalDomain>, values, naValue);
+
+		// Numeric selector: classify positions from evaluated value
+		const numericSelector = selector as VectorDomain<PosIntervalDomain>;
+
+		if(!numericSelector.values.isValue() || !Array.isArray(numericSelector.values.value)) {
+			// Cannot enumerate selector values, apply positive update conservatively
+			return this.applyUpdatePositive(value, numericSelector, values, naValue);
+		}
+
+		const selectorValues = numericSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
+		const positivePositions: PosIntervalDomain[] = [];
+		const negativePositions: PosIntervalDomain[] = [];
+
+		for(const pos of selectorValues) {
+			if(pos.isBottom()) {
+				continue;
+			}
+			const inner = pos.inner as PosIntervalDomain;
+			const classification = classifyPosition(inner);
+			switch(classification) {
+				case 'positive':
+					positivePositions.push(inner);
+					break;
+				case 'negative':
+					negativePositions.push(inner);
+					break;
+				case 'ambiguous': {
+					const { positive, negative } = splitAmbiguousPosition(inner);
+					if(!positive.isBottom()) {
+						positivePositions.push(positive);
+					}
+					if(!negative.isBottom()) {
+						negativePositions.push(negative);
+					}
+					break;
+				}
+				case 'bottom':
+					break;
+			}
+		}
+
+		const posIntervalFactory = (c: unknown) => {
+			if(c === undefined || c === Bottom) {
+				return PosIntervalDomain.bottom();
+			}
+			if(c === Top) {
+				return PosIntervalDomain.top();
+			}
+			const vals = [...(c as Set<number>)];
+			return new PosIntervalDomain([Math.min(...vals), Math.max(...vals)]);
+		};
+
+		const posSelector = createFilteredSelector(numericSelector, positivePositions, posIntervalFactory);
+		const negSelector = createFilteredSelector(numericSelector, negativePositions, posIntervalFactory);
+
+		let result = value.bottom();
+
+		// Apply positive update if there are positive positions
+		if(!posSelector.isBottom()) {
+			result = result.join(this.applyUpdatePositive(value, posSelector, values, naValue));
+		}
+
+		// Apply negative update if there are negative positions
+		if(!negSelector.isBottom()) {
+			result = result.join(this.applyUpdateNegative(value, negSelector, values, naValue));
+		}
+
+		return result;
 	}
 
 	/**
