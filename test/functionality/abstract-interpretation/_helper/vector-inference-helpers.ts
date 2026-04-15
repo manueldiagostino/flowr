@@ -1,7 +1,6 @@
 import { VectorInferenceVisitor } from '../../../../src/abstract-interpretation/vector/vector-inference';
-import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
-import type { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import type { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
+import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { FlowrConfig } from '../../../../src/config';
 import { extractCfg } from '../../../../src/control-flow/extract-cfg';
 import { createDataflowPipeline } from '../../../../src/core/steps/pipeline/default-pipelines';
@@ -38,7 +37,7 @@ export interface VectorInferenceResult<Domain extends AnyAbstractDomain> {
 	/** Get all abstract values that were inferred (for debugging) */
 	getAllValues(): Map<string, VectorDomain<Domain> | undefined>;
 	/** The underlying visitor for advanced use cases */
-	visitor: VectorInferenceVisitor<Domain>;
+	visitor:        VectorInferenceVisitor<Domain>;
 	/** The pipeline result with dataflow graph and normalized AST */
 	pipelineResult: unknown;
 }
@@ -47,13 +46,11 @@ export interface VectorInferenceResult<Domain extends AnyAbstractDomain> {
  * Runs vector inference on the given R code and returns a result object
  * that can be used to query multiple abstract values without re-running
  * the analysis.
- *
  * @param shell - The RShell instance for parsing
  * @param code - The R code to analyze
  * @param factory - Domain factory function (e.g., intervalFactory or naAwareIntervalFactory)
  * @param valueConverter - Function to convert concrete values to domain sets
  * @returns A result object with methods to get abstract values for different criteria
- *
  * @example
  * ```typescript
  * const result = await runVectorInference(shell, 'x <- c(1, 2, 3)', intervalFactory, defaultValueToDomain);
@@ -89,13 +86,13 @@ export async function runVectorInference<Domain extends AnyAbstractDomain>(
 				throw new Error(`slicing criterion ${criterion} does not refer to an AST node`);
 			}
 
-			const value = visitor.getAbstractValue(node) as VectorDomain<Domain> | undefined;
+			const value = visitor.getAbstractValue(node);
 			valueCache.set(criterion, value);
 			return value;
 		},
 
 		getForNode(node: RNode<ParentInformation>): VectorDomain<Domain> | undefined {
-			return visitor.getAbstractValue(node) as VectorDomain<Domain> | undefined;
+			return visitor.getAbstractValue(node);
 		},
 
 		getAllValues(): Map<string, VectorDomain<Domain> | undefined> {
@@ -112,14 +109,12 @@ export async function runVectorInference<Domain extends AnyAbstractDomain>(
  * This is a convenience wrapper around runVectorInference for single-criterion queries.
  * If you need to query multiple criteria, use runVectorInference directly to avoid
  * re-running the analysis multiple times.
- *
  * @param shell - The RShell instance for parsing
  * @param code - The R code to analyze
  * @param criterion - The slicing criterion (e.g., '1@x')
  * @param factory - Domain factory function (e.g., intervalFactory or naAwareIntervalFactory)
  * @param valueConverter - Function to convert concrete values to domain sets
  * @returns The VectorDomain for the given criterion, or undefined
- *
  * @example
  * ```typescript
  * const vector = await getVectorForCriterion(shell, 'x <- c(1, 2, 3)', '1@x', intervalFactory, defaultValueToDomain);
@@ -139,11 +134,9 @@ export async function getVectorForCriterion<Domain extends AnyAbstractDomain>(
 
 /**
  * Assertion helper: Assert that a vector has a specific length interval.
- *
  * @param vector - The VectorDomain to check (may be undefined)
  * @param expected - Tuple of [min, max] for the expected length
  * @throws AssertionError if the vector is undefined or has unexpected length
- *
  * @example
  * ```typescript
  * const vector = await getVectorForCriterion(...);
@@ -167,10 +160,8 @@ export function assertLength<Domain extends AnyAbstractDomain>(
 /**
  * Assertion helper: Assert that a vector exists (is not undefined).
  * Use this when you only care that inference returned a result, not the specific length.
- *
  * @param vector - The VectorDomain to check (may be undefined)
  * @throws AssertionError if the vector is undefined
- *
  * @example
  * ```typescript
  * const vector = await getVectorForCriterion(...);
@@ -185,12 +176,10 @@ export function assertLengthOrTop<Domain extends AnyAbstractDomain>(
 
 /**
  * Assertion helper: Assert that a vector's length is within an expected range.
- *
  * @param vector - The VectorDomain to check (may be undefined)
  * @param min - Minimum expected length
  * @param max - Maximum expected length
  * @throws AssertionError if the vector is undefined or length is outside range
- *
  * @example
  * ```typescript
  * const vector = await getVectorForCriterion(...);
@@ -217,11 +206,9 @@ export function assertLengthRange<Domain extends AnyAbstractDomain>(
 /**
  * Assertion helper: Assert that a vector has specific known position values.
  * Checks that the values domain matches expected intervals at given positions.
- *
  * @param vector - The VectorDomain to check (may be undefined)
  * @param expectedValues - Array of expected [min, max] intervals for positions 1..N
  * @throws AssertionError if values don't match
- *
  * @example
  * ```typescript
  * const vector = await getVectorForCriterion(...);
@@ -263,12 +250,10 @@ export function assertKnownPositions<Domain extends AnyAbstractDomain>(
 /**
  * Assertion helper: Assert that a selection result has expected properties.
  * Combines length and known position checks for selection operations.
- *
  * @param vector - The VectorDomain to check (may be undefined)
  * @param expectedLength - Expected [min, max] length
  * @param expectedPositions - Optional: expected values at known positions
  * @throws AssertionError if selection doesn't match expectations
- *
  * @example
  * ```typescript
  * // Check only length

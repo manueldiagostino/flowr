@@ -109,7 +109,7 @@ describe('NAAwareDomain', () => {
 			const pureNA = NAAwareDomain.na(intervalFactory);
 
 			const joined = pureValue.join(pureNA);
-			const inner = joined.getInner();
+			const inner = joined.inner;
 
 			assert.notStrictEqual(inner, undefined);
 			assert.strictEqual(inner?.isValue(), true);
@@ -275,14 +275,14 @@ describe('NAAwareDomain', () => {
 			const result = smartFactory(new Set([1, 2, 3]));
 			assert.strictEqual(result.containsNA(), false);
 			assert.strictEqual(result.isNA(), false);
-			assert.strictEqual(result.getInner().toString(), '[1, 3]');
+			assert.strictEqual(result.inner.toString(), '[1, 3]');
 		});
 
 		test('creates value with hasNA: true when NA in set', () => {
 			const result = smartFactory(new Set([1, NA, 3]));
 			assert.strictEqual(result.containsNA(), true);
 			assert.strictEqual(result.isNA(), false);
-			assert.strictEqual(result.getInner().toString(), '[1, 3]');
+			assert.strictEqual(result.inner.toString(), '[1, 3]');
 		});
 
 		test('creates pure NA when concrete is NA', () => {
@@ -323,7 +323,7 @@ describe('NAAwareDomain', () => {
 			);
 
 			assert.strictEqual(smartResult.containsNA(), manualResult.containsNA());
-			assert.strictEqual(smartResult.getInner().toString(), manualResult.getInner().toString());
+			assert.strictEqual(smartResult.inner.toString(), manualResult.inner.toString());
 		});
 	});
 });

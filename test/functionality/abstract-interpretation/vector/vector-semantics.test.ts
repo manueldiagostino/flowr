@@ -6,6 +6,7 @@ import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpreta
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
+import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { mkVector } from '../_helper/vector-helpers';
 import { intervalFactory, naAwareIntervalFactory } from '../_helper/na-aware-helpers';
 import {
@@ -188,7 +189,7 @@ describe('Vector Semantics', () => {
 			const vals = values.map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory));
 			const sum = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
-			return VectorDomain.fromValues(intervalFactory, len, vals, sum, attrs);
+			return VectorDomain.fromValues(intervalFactory, len, vals, sum, attrs, RVectorTypeDomain.top());
 		};
 
 		test('adjustForZeros with bottom vector returns bottom', () => {
@@ -243,8 +244,8 @@ describe('Vector Semantics', () => {
 
 		test('propagate with definite zero increments counter', () => {
 			const positions = [
-				new IntervalDomain([0, 0]),
-				new IntervalDomain([5, 5])
+				new NAAwareDomain({ inner: new IntervalDomain([0, 0]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
 			];
 			const summaryDomain = new IntervalDomain([5, 5]);
 			const summary = new NAAwareDomain({ inner: summaryDomain, hasNA: false }, intervalFactory);
@@ -256,8 +257,8 @@ describe('Vector Semantics', () => {
 
 		test('propagate with possible zero joins with propagated value', () => {
 			const positions = [
-				new IntervalDomain([-1, 1]),
-				new IntervalDomain([5, 5])
+				new NAAwareDomain({ inner: new IntervalDomain([-1, 1]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
 			];
 			const summary = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
 			const result = propagate(positions, summary, 0);
@@ -268,8 +269,8 @@ describe('Vector Semantics', () => {
 		test('propagate with k>0 joins first with propagated rest (paper L411)', () => {
 		// Case: 0 ∉ γ(c₁) and k > 0  →  c₁ ⊔ Propagate(rest, s, k-1)
 			const positions = [
-				new IntervalDomain([3, 3]),
-				new IntervalDomain([5, 5])
+				new NAAwareDomain({ inner: new IntervalDomain([3, 3]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
 			];
 			const summaryDomain = new IntervalDomain([10, 10]);
 			const summary = new NAAwareDomain({ inner: summaryDomain, hasNA: false }, intervalFactory);
@@ -284,8 +285,8 @@ describe('Vector Semantics', () => {
 		test('propagate with k=0 returns first value unchanged (paper L414)', () => {
 		// Case: 0 ∉ γ(c₁) and k = 0  →  c₁
 			const positions = [
-				new IntervalDomain([3, 3]),
-				new IntervalDomain([5, 5])
+				new NAAwareDomain({ inner: new IntervalDomain([3, 3]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
 			];
 			const summaryDomain = new IntervalDomain([10, 10]);
 			const summary = new NAAwareDomain({ inner: summaryDomain, hasNA: false }, intervalFactory);
@@ -297,8 +298,8 @@ describe('Vector Semantics', () => {
 		test('propagate with possible zero joins first with propagated (paper L409-410)', () => {
 		// Case: 0 ∈ γ(c₁) and γ(c₁) ≠ {0}  →  c₁ ⊔ Propagate(rest, s, k)
 			const positions = [
-				new IntervalDomain([0, 2]),
-				new IntervalDomain([5, 5])
+				new NAAwareDomain({ inner: new IntervalDomain([0, 2]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
 			];
 			const summaryDomain = new IntervalDomain([10, 10]);
 			const summary = new NAAwareDomain({ inner: summaryDomain, hasNA: false }, intervalFactory);
@@ -463,7 +464,8 @@ describe('Vector Semantics', () => {
 					new NAAwareDomain({ inner: new PosIntervalDomain([3, 3]), hasNA: false }, posIntervalFactory2)
 				],
 				new NAAwareDomain({ inner: new PosIntervalDomain([0, 0]), hasNA: false }, posIntervalFactory2),
-				vector.attributes
+				vector.attributes,
+				RVectorTypeDomain.top()
 			);
 			const result = countZerosInIntervalVector(posVector);
 			assert.strictEqual(result.toString(), '[0, 0]');
@@ -492,7 +494,8 @@ describe('Vector Semantics', () => {
 					new NAAwareDomain({ inner: new PosIntervalDomain([1, 1]), hasNA: false }, posIntervalFactory2)
 				],
 				new NAAwareDomain({ inner: new PosIntervalDomain([0, 0]), hasNA: false }, posIntervalFactory2),
-				VectorAttrDomain.top()
+				VectorAttrDomain.top(),
+				RVectorTypeDomain.top()
 			);
 			const result = countZerosInIntervalVector(posVector);
 			assert.strictEqual(result.toString(), '[2, 2]');

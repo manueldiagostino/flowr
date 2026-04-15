@@ -147,7 +147,7 @@ export class RVectorTypeDomain<Value extends RVectorTypeLift = RVectorTypeLift>
 		const otherValue = other instanceof RVectorTypeDomain ? other.value : other;
 
 		if(this.isBottom()) {
-			return this.create(otherValue as RVectorTypeLift);
+			return this.create(otherValue);
 		}
 		if(otherValue === Bottom) {
 			return this.create(this.value);
@@ -157,11 +157,11 @@ export class RVectorTypeDomain<Value extends RVectorTypeLift = RVectorTypeLift>
 			return this.create(RVectorTypeTop as RVectorTypeLift);
 		}
 		const thisType = this.value as RVectorType;
-		const otherType = otherValue as RVectorType;
+		const otherType = otherValue;
 		const thisIdx = typeIndex(thisType);
 		const otherIdx = typeIndex(otherType);
 		const result = thisIdx >= otherIdx ? this.value : otherValue;
-		return this.create(result as RVectorTypeLift);
+		return this.create(result);
 	}
 
 	/**
@@ -185,11 +185,11 @@ export class RVectorTypeDomain<Value extends RVectorTypeLift = RVectorTypeLift>
 			return this.create(this.value);
 		}
 		const thisType = this.value as RVectorType;
-		const otherType = otherValue as RVectorType;
+		const otherType = otherValue;
 		const thisIdx = typeIndex(thisType);
 		const otherIdx = typeIndex(otherType);
 		const result = thisIdx <= otherIdx ? this.value : otherValue;
-		return this.create(result as RVectorTypeLift);
+		return this.create(result);
 	}
 
 	/**
@@ -234,7 +234,7 @@ export class RVectorTypeDomain<Value extends RVectorTypeLift = RVectorTypeLift>
 		for(const type of concrete) {
 			if(result === RVectorTypeTop) {
 				result = type;
-			} else if(typeIndex(type) > typeIndex(result as RVectorType)) {
+			} else if(typeIndex(type) > typeIndex(result)) {
 				result = type;
 			}
 		}

@@ -2,8 +2,7 @@ import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorDomain } from './vector-domain';
-import { NAAwareDomain } from './na-aware-domain';
-import type { DomainFactory } from './known-initial-positions-domain';
+import type { NAAwareDomain } from './na-aware-domain';
 import { ConstraintType } from '../data-frame/semantics';
 import { assert } from 'ts-essentials';
 import { vectorLogger } from './logger';
@@ -263,10 +262,10 @@ export function adjustForZeros(
 				}
 			}
 
-			const innerValues = knownPositionValues.slice(i).map(v => v.inner);
-			const propagated = propagate(innerValues, summary, zerosBefore);
+			const remainingValues = knownPositionValues.slice(i);
+			const propagated = propagate(remainingValues, summary, zerosBefore);
 			if(!propagated.isBottom()) {
-				newKnownPositionValues.push(new NAAwareDomain({ inner: propagated, hasNA: summary.containsNA() }, summary.factory));
+				newKnownPositionValues.push(propagated);
 			}
 		}
 	}
@@ -588,142 +587,5 @@ export function countZerosInIntervalVector(
 
 	const result = selector.length.create([definiteZeros, possibleZeros]);
 	expensiveTrace(vectorLogger, () => `Semantic: countZerosInIntervalVector result = ${result.toString()}`);
-	return result;
-}
-
-/**
- * Classification of an abstract position interval by its sign.
- * Used for abstract filtering in vector selection (paper section 4.7).
- */
-export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bottom';
-
-/**
- * Classifies an abstract position interval by its sign.
- * Per paper section 4.7: positions are filtered into positive (≥ 0) and negative (≤ 0) sets.
- * @param position - The PosIntervalDomain to classify
- * @returns The classification: 'positive' if definitely > 0, 'negative' if definitely < 0,
- *          'ambiguous' if spans 0 or includes 0, 'bottom' if Bottom
- */
-export function classifyPosition(position: PosIntervalDomain): PositionClassification {
-	vectorLogger.debug('Semantic: classifyPosition');
-	if(position.isBottom()) {
-		vectorLogger.debug("Decision: classification = 'bottom'");
-		return 'bottom';
-	}
-	if(position.isTop()) {
-		vectorLogger.debug("Decision: classification = 'ambiguous' (top)");
-		// [0, +Infinity] - spans both sides
-		return 'ambiguous';
-	}
-	if(!position.isValue()) {
-		vectorLogger.debug("Decision: classification = 'ambiguous' (not value)");
-		return 'ambiguous';
-	}
-
-	const [lower, upper] = position.value;
-
-	if(lower > 0) {
-		// Definitely positive (strictly greater than 0)
-		vectorLogger.debug("Decision: classification = 'positive'");
-		return 'positive';
-	}
-	if(upper < 0) {
-		// Definitely negative (strictly less than 0)
-		vectorLogger.debug("Decision: classification = 'negative'");
-		return 'negative';
-	}
-	// Spans 0 or includes 0: [lower ≤ 0 ≤ upper]
-	vectorLogger.debug("Decision: classification = 'ambiguous' (spans zero)");
-	return 'ambiguous';
-}
-
-/**
- * Result of splitting an ambiguous position into positive and negative parts.
- */
-export interface SplitPosition {
-	/** The positive part (≥ 0), or Bottom if no positive values */
-	positive: PosIntervalDomain;
-	/** The negative part (≤ 0), or Bottom if no negative values */
-	negative: PosIntervalDomain;
-}
-
-/**
- * Splits an ambiguous position (one that spans or includes 0) into positive and negative parts.
- * Per paper section 4.7: ambiguous positions contribute to both positive and negative filters.
- *
- * Examples:
- * - [-2, 3] → positive: [0, 3], negative: [-2, 0]
- * - [0, 5] → positive: [0, 5], negative: [0, 0] (just zero)
- * - [-5, 0] → positive: [0, 0], negative: [-5, 0]
- * - [1, 5] → positive: [1, 5], negative: Bottom (no negative values)
- * - [-5, -1] → positive: Bottom, negative: [-5, -1]
- * @param position - The position to split (must not be Bottom)
- * @returns Object with positive and negative parts
- */
-export function splitAmbiguousPosition(position: PosIntervalDomain): SplitPosition {
-	vectorLogger.debug('Semantic: splitAmbiguousPosition');
-	const bottom = position.bottom();
-
-	if(position.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'position is bottom'));
-		return { positive: bottom, negative: bottom };
-	}
-	if(!position.isValue()) {
-		expensiveTrace(vectorLogger, () => `Semantic: splitAmbiguousPosition result (non-value) = { positive: ${position.toString()}, negative: ${position.toString()} }`);
-		// Top or other non-specific value - return as-is for both
-		return { positive: position, negative: position };
-	}
-
-	const [lower, upper] = position.value;
-
-	// Positive part: [max(lower, 0), upper] if upper >= 0
-	let positive: PosIntervalDomain;
-	if(upper >= 0) {
-		positive = position.create([Math.max(lower, 0), upper]);
-	} else {
-		positive = bottom;
-	}
-
-	// Negative part: [lower, min(upper, 0)] if lower <= 0
-	let negative: PosIntervalDomain;
-	if(lower <= 0) {
-		negative = position.create([lower, Math.min(upper, 0)]);
-	} else {
-		negative = bottom;
-	}
-
-	expensiveTrace(vectorLogger, () => `Semantic: splitAmbiguousPosition result = { positive: ${positive.toString()}, negative: ${negative.toString()} }`);
-	return { positive, negative };
-}
-
-/**
- * Creates a new selector VectorDomain with filtered/split positions.
- * Used in abstract filtering to build positive and negative filtered selectors.
- * @param selector - The original selector VectorDomain
- * @param positions - The new positions array (already filtered and split)
- * @param factory - The domain factory for creating PosIntervalDomain values
- * @returns A new VectorDomain with the given positions
- */
-export function createFilteredSelector<Domain extends AnyAbstractDomain>(
-	selector: VectorDomain<PosIntervalDomain>,
-	positions: readonly PosIntervalDomain[],
-	factory: DomainFactory<PosIntervalDomain>
-): VectorDomain<PosIntervalDomain> {
-	vectorLogger.debug(`Semantic: createFilteredSelector [positions=${positions.length}]`);
-	if(positions.length === 0) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'no positions'));
-		return selector.bottom();
-	}
-
-	// Wrap positions in NAAwareDomain
-	const naAwarePositions = positions.map(pos => new NAAwareDomain({ inner: pos, hasNA: false }, factory));
-
-	const result = selector.create({
-		length:     selector.length,
-		values:     selector.values.create(naAwarePositions),
-		summary:    selector.summary,
-		attributes: selector.attributes
-	});
-	expensiveTrace(vectorLogger, () => `Semantic: createFilteredSelector result = ${formatVectorDomain(result)}`);
 	return result;
 }

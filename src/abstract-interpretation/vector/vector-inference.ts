@@ -4,8 +4,8 @@ import type { ParentInformation } from '../../r-bridge/lang-4.x/ast/model/proces
 import type { NodeId } from '../../r-bridge/lang-4.x/ast/model/processing/node-id';
 import { AbstractInterpretationVisitor, type AbsintVisitorConfiguration } from '../absint-visitor';
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
-import { VectorDomain } from './vector-domain';
-import type { NAAwareDomain } from './na-aware-domain';
+import { VectorDomain, type DomainFactory } from './vector-domain';
+import { NAAwareDomain } from './na-aware-domain';
 import { vectorLogger } from './logger';
 import { expensiveTrace } from '../../util/log';
 import { formatVectorDomain, formatExtremeResult } from './log-utils';
@@ -17,10 +17,7 @@ import {
 	initKnownPositions,
 	updateKnownPositions,
 	generateCyclicKnownPositions,
-	accessPosition,
-	classifyPosition,
-	splitAmbiguousPosition,
-	createFilteredSelector
+	accessPosition
 } from './vector-semantics';
 import { NA, Top, Bottom } from '../domains/lattice';
 import type { IntervalDomain } from '../domains/interval-domain';
@@ -939,11 +936,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 	/**
 	 * Applies the select operation to choose elements from a vector based on a selector.
-	 * Uses abstract filtering for numeric selectors and AST-based detection for logical selectors.
+	 * Uses abstract filtering (paper Section 4.7) for numeric selectors and AST-based
+	 * detection for logical selectors.
+	 *
+	 * For numeric selectors, applies `abstractFilter` to classify positions into
+	 * positive (≥ 0 or NA) and negative (≤ 0), then computes:
+	 * `select(ν₁, ν₂) = select_pos(ν₁, ν₂⁺) ⊔ select_neg(ν₁, ν₂⁻)`
 	 * @param value - The source VectorDomain to select from
 	 * @param selector - The selector VectorDomain (interval or value domain)
 	 * @param naValue - The NA value for out-of-bounds access
-	 * @param selectorType - Optional selector type from AST detection (used for logical detection)
+	 * @param selectorKind - Optional selector type from AST detection (used for logical detection)
 	 * @returns The resulting VectorDomain after selection
 	 */
 	private applySelect(
@@ -970,66 +972,34 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const numericSelector = selector as VectorDomain<IntervalDomain>;
 
 		if(!numericSelector.values.isValue() || !Array.isArray(numericSelector.values.value)) {
-			// Cannot enumerate selector values, apply positive selection conservatively
-			return this.applySelectPositive(value, numericSelector as unknown as VectorDomain<PosIntervalDomain>, naValue);
+			// Cannot enumerate selector values, treat all positions as positive (conservative)
+			const conservativeSelector = buildPosIntervalSelectorFromSource(numericSelector);
+			return this.applySelectPositive(value, conservativeSelector, naValue);
 		}
 
-		const selectorValues = numericSelector.values.value as readonly NAAwareDomain<IntervalDomain>[];
-		const positivePositions: IntervalDomain[] = [];
-		const negativePositions: IntervalDomain[] = [];
+		// Paper Section 4.7: abstract filter classifies selector positions
+		const selectorPositions = numericSelector.values.value as readonly NAAwareDomain<IntervalDomain>[];
+		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.factory);
 
-		for(const pos of selectorValues) {
-			if(pos.isBottom()) {
-				continue;
-			}
-
-			const classification = classifyPosition(pos as PosIntervalDomain);
-
-			switch(classification) {
-				case 'positive':
-					positivePositions.push(pos);
-					break;
-				case 'negative':
-					negativePositions.push(pos);
-					break;
-				case 'ambiguous': {
-					const { positive, negative } = splitAmbiguousPosition(pos as PosIntervalDomain);
-					if(!positive.isBottom()) {
-						positivePositions.push(positive as IntervalDomain);
-					}
-					if(!negative.isBottom()) {
-						negativePositions.push(negative as IntervalDomain);
-					}
-					break;
-				}
-				case 'bottom':
-					break;
-			}
+		// Handle bottom propagation: if both groups have bottom elements, result is bottom
+		if(filterResult.positiveHasBottom && filterResult.negativeHasBottom) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'both positive and negative have bottom'));
+			return value.bottom();
 		}
-
-		// Factory for PosIntervalDomain
-		const posIntervalFactory = (c: unknown) => {
-			if(c === undefined || c === Bottom) {
-				return PosIntervalDomain.bottom();
-			}
-			if(c === Top) {
-				return PosIntervalDomain.top();
-			}
-			const values = [...(c as Set<number>)];
-			return new PosIntervalDomain([Math.min(...values), Math.max(...values)]);
-		};
-		const posSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, positivePositions as unknown as PosIntervalDomain[], posIntervalFactory);
-		const negSelector = createFilteredSelector(numericSelector as unknown as VectorDomain<PosIntervalDomain>, negativePositions as unknown as PosIntervalDomain[], posIntervalFactory);
 
 		let result = value.bottom();
 
-		if(!posSelector.isBottom()) {
-			const resultPos = this.applySelectPositive(value, posSelector, naValue);
+		// Build positive selector and apply select_pos (paper Section 4.7)
+		if(filterResult.positive.length > 0 && !filterResult.positiveHasBottom) {
+			const positiveSelector = buildPosIntervalSelector(numericSelector, filterResult.positive);
+			const resultPos = this.applySelectPositive(value, positiveSelector, naValue);
 			result = result.join(resultPos);
 		}
 
-		if(!negSelector.isBottom()) {
-			const resultNeg = this.applySelectNegative(value, negSelector, naValue);
+		// Build negative selector and apply select_neg (paper Section 4.7)
+		if(filterResult.negative.length > 0 && !filterResult.negativeHasBottom) {
+			const negativeSelector = buildPosIntervalSelector(numericSelector, filterResult.negative);
+			const resultNeg = this.applySelectNegative(value, negativeSelector, naValue);
 			result = result.join(resultNeg);
 		}
 
@@ -1278,7 +1248,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 	/**
 	 * Applies the update operation to modify elements in a vector based on a selector.
-	 * For numeric selectors, uses value-based classification to handle positive/negative positions.
+	 * Uses abstract filtering (paper Section 4.8) for numeric selectors and AST-based
+	 * detection for logical selectors.
+	 *
+	 * For numeric selectors, applies `abstractFilter` to classify positions into
+	 * positive (≥ 0 or NA) and negative (≤ 0), then computes:
+	 * `update(ν₁, ν₂, ν₃) = update_pos(ν₁, ν₂⁺, ν₃) ⊔ update_neg(ν₁, ν₂⁻, ν₃)`
+	 *
+	 * Paper Section 4.8: Vector Update
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The selector for positions to update
 	 * @param values - The values to assign to selected positions
@@ -1288,7 +1265,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applyUpdate(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<PosIntervalDomain> | VectorDomain<Domain>,
+		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>,
 		selectorKind: SelectorKind
@@ -1304,70 +1281,38 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return this.applyUpdateLogical(value, selector as VectorDomain<Domain>, values, naValue);
 		}
 
-		// Numeric selector: classify positions from evaluated value
-		const numericSelector = selector as VectorDomain<PosIntervalDomain>;
+		const numericSelector = selector as VectorDomain<IntervalDomain>;
 
 		if(!numericSelector.values.isValue() || !Array.isArray(numericSelector.values.value)) {
 			// Cannot enumerate selector values, apply positive update conservatively
-			return this.applyUpdatePositive(value, numericSelector, values, naValue);
+			const conservativeSelector = buildPosIntervalSelectorFromSource(numericSelector);
+			return this.applyUpdatePositive(value, conservativeSelector, values, naValue);
 		}
 
-		const selectorValues = numericSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
-		const positivePositions: PosIntervalDomain[] = [];
-		const negativePositions: PosIntervalDomain[] = [];
+		// Paper Section 4.8: abstract filter classifies selector positions
+		const selectorPositions = numericSelector.values.value as readonly NAAwareDomain<IntervalDomain>[];
+		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.factory);
 
-		for(const pos of selectorValues) {
-			if(pos.isBottom()) {
-				continue;
-			}
-			const inner = pos.inner;
-			const classification = classifyPosition(inner);
-			switch(classification) {
-				case 'positive':
-					positivePositions.push(inner);
-					break;
-				case 'negative':
-					negativePositions.push(inner);
-					break;
-				case 'ambiguous': {
-					const { positive, negative } = splitAmbiguousPosition(inner);
-					if(!positive.isBottom()) {
-						positivePositions.push(positive);
-					}
-					if(!negative.isBottom()) {
-						negativePositions.push(negative);
-					}
-					break;
-				}
-				case 'bottom':
-					break;
-			}
+		// Handle bottom propagation: if both groups have bottom elements, result is bottom
+		if(filterResult.positiveHasBottom && filterResult.negativeHasBottom) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'both positive and negative have bottom'));
+			return value.bottom();
 		}
-
-		const posIntervalFactory = (c: unknown) => {
-			if(c === undefined || c === Bottom) {
-				return PosIntervalDomain.bottom();
-			}
-			if(c === Top) {
-				return PosIntervalDomain.top();
-			}
-			const vals = [...(c as Set<number>)];
-			return new PosIntervalDomain([Math.min(...vals), Math.max(...vals)]);
-		};
-
-		const posSelector = createFilteredSelector(numericSelector, positivePositions, posIntervalFactory);
-		const negSelector = createFilteredSelector(numericSelector, negativePositions, posIntervalFactory);
 
 		let result = value.bottom();
 
-		// Apply positive update if there are positive positions
-		if(!posSelector.isBottom()) {
-			result = result.join(this.applyUpdatePositive(value, posSelector, values, naValue));
+		// Build positive selector and apply update_pos (paper Section 4.8)
+		if(filterResult.positive.length > 0 && !filterResult.positiveHasBottom) {
+			const positiveSelector = buildPosIntervalSelector(numericSelector, filterResult.positive);
+			const resultPos = this.applyUpdatePositive(value, positiveSelector, values, naValue);
+			result = result.join(resultPos);
 		}
 
-		// Apply negative update if there are negative positions
-		if(!negSelector.isBottom()) {
-			result = result.join(this.applyUpdateNegative(value, negSelector, values, naValue));
+		// Build negative selector and apply update_neg (paper Section 4.8)
+		if(filterResult.negative.length > 0 && !filterResult.negativeHasBottom) {
+			const negativeSelector = buildPosIntervalSelector(numericSelector, filterResult.negative);
+			const resultNeg = this.applyUpdateNegative(value, negativeSelector, values, naValue);
+			result = result.join(resultNeg);
 		}
 
 		expensiveTrace(vectorLogger, () => `Operation: update result = ${formatVectorDomain(result)}`);
@@ -1687,4 +1632,109 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		expensiveTrace(vectorLogger, () => `Operation: updateLogical result = ${formatVectorDomain(result)}`);
 		return result;
 	}
+}
+
+/**
+ * Builds a PosIntervalDomain-typed selector vector from filtered positions.
+ * Converts NAAwareDomain<IntervalDomain> positions (guaranteed to be in Z≥0 ∪ {NA}
+ * for positive, or Z≤0 for negative) into NAAwareDomain<PosIntervalDomain>
+ * by wrapping each inner IntervalDomain as a PosIntervalDomain.
+ */
+function buildPosIntervalSelector(
+	source: VectorDomain<IntervalDomain>,
+	positions: readonly NAAwareDomain<IntervalDomain>[]
+): VectorDomain<PosIntervalDomain> {
+	if(positions.length === 0) {
+		return source.bottom();
+	}
+	const posIntervalFactory: DomainFactory<PosIntervalDomain> = (c: unknown) => {
+		if(c === undefined) {
+			return PosIntervalDomain.bottom();
+		}
+		if(c === Bottom) {
+			return PosIntervalDomain.bottom();
+		}
+		if(c === Top) {
+			return PosIntervalDomain.top();
+		}
+		const values = [...(c as Set<number>)];
+		return new PosIntervalDomain([Math.min(...values), Math.max(...values)]);
+	};
+	const naAwarePositions = positions.map(pos => {
+		if(pos.isBottom()) {
+			return NAAwareDomain.bottom(posIntervalFactory);
+		}
+		if(pos.isTop()) {
+			return NAAwareDomain.top(posIntervalFactory);
+		}
+		// Convert inner IntervalDomain to PosIntervalDomain
+		// (safe because abstractFilter guarantees lower ≥ 0 for positive, upper ≤ 0 for negative)
+		const innerInterval = pos.inner;
+		const posInner = new PosIntervalDomain(innerInterval.value);
+		return new NAAwareDomain({ inner: posInner, hasNA: pos.containsNA() }, posIntervalFactory);
+	});
+	const naAwareSummary = source.summary.isBottom()
+		? NAAwareDomain.bottom(posIntervalFactory)
+		: source.summary.isTop()
+			? NAAwareDomain.top(posIntervalFactory)
+			: new NAAwareDomain(
+				{ inner: new PosIntervalDomain(source.summary.inner.value), hasNA: source.summary.containsNA() },
+				posIntervalFactory
+			);
+	return VectorDomain.fromValues(
+		posIntervalFactory,
+		source.length,
+		naAwarePositions,
+		naAwareSummary,
+		source.attributes,
+		source.type
+	);
+}
+
+/**
+ * Converts an entire VectorDomain<IntervalDomain> selector to VectorDomain<PosIntervalDomain>
+ * by converting all inner domains. Used as a conservative fallback when selector values
+ * cannot be enumerated for abstract filtering.
+ */
+function buildPosIntervalSelectorFromSource(
+	source: VectorDomain<IntervalDomain>
+): VectorDomain<PosIntervalDomain> {
+	const posIntervalFactory: DomainFactory<PosIntervalDomain> = (c: unknown) => {
+		if(c === undefined) {
+			return PosIntervalDomain.bottom();
+		}
+		if(c === Bottom) {
+			return PosIntervalDomain.bottom();
+		}
+		if(c === Top) {
+			return PosIntervalDomain.top();
+		}
+		const values = [...(c as Set<number>)];
+		return new PosIntervalDomain([Math.min(...values), Math.max(...values)]);
+	};
+	const convertNAAware = (naAware: NAAwareDomain<IntervalDomain>): NAAwareDomain<PosIntervalDomain> => {
+		if(naAware.isBottom()) {
+			return NAAwareDomain.bottom(posIntervalFactory);
+		}
+		if(naAware.isTop()) {
+			return NAAwareDomain.top(posIntervalFactory);
+		}
+		const posInner = new PosIntervalDomain(naAware.inner.value);
+		return new NAAwareDomain({ inner: posInner, hasNA: naAware.containsNA() }, posIntervalFactory);
+	};
+	let positions: readonly NAAwareDomain<PosIntervalDomain>[];
+	if(source.values.isValue() && Array.isArray(source.values.value)) {
+		positions = (source.values.value as readonly NAAwareDomain<IntervalDomain>[]).map(convertNAAware);
+	} else {
+		positions = [];
+	}
+	const summary = convertNAAware(source.summary);
+	return VectorDomain.fromValues(
+		posIntervalFactory,
+		source.length,
+		positions,
+		summary,
+		source.attributes,
+		source.type
+	);
 }

@@ -7,8 +7,209 @@ import type { DomainFactory } from './known-initial-positions-domain';
 import { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import { RVectorTypeDomain } from '../domains/vector-type-domain';
+import { IntervalDomain } from '../domains/interval-domain';
 
 export type { DomainFactory } from './known-initial-positions-domain';
+
+/**
+ * The result of classifying positions in a selector vector into
+ * positive and negative groups for abstract filtering (paper Section 4.7).
+ *
+ * - `positive`: positions where γ(p) ⊆ Z≥0 ∪ {NA} (used for positive indexing like `x[c]` where c ≥ 0)
+ * - `negative`: positions where γ(p) ⊆ Z≤0 (used for negative indexing like `x[c]` where c ≤ 0, excluding NA)
+ * - `positiveHasBottom`: true if any position was bottom and omitted from the positive array
+ * - `negativeHasBottom`: true if any position was bottom and omitted from the negative array
+ */
+export interface AbstractFilterResult {
+	/** Positions classified as positive (Z≥0 ∪ {NA}) */
+	positive:          NAAwareDomain<IntervalDomain>[];
+	/** Positions classified as negative (Z≤0, excluding NA) */
+	negative:          NAAwareDomain<IntervalDomain>[];
+	/** Whether any bottom position was omitted from the positive group */
+	positiveHasBottom: boolean;
+	/** Whether any bottom position was omitted from the negative group */
+	negativeHasBottom: boolean;
+}
+
+/**
+ * Classification result for an NAAware interval position.
+ *
+ * - `'positive'`: all values are in Z≥0 ∪ {NA} → goes to positive filter only
+ * - `'negative'`: all values are in Z≤0 and no NA → goes to negative filter only
+ * - `'ambiguous'`: spans both positive and negative (or negative+NA) → needs splitting
+ * - `'bottom'`: impossible position → skipped with bottom flag set
+ */
+export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bottom';
+
+/**
+ * Classifies an NA-aware interval position for abstract filtering (paper Section 4.7).
+ *
+ * Classification rules:
+ * 1. Pure NA (isNA) → 'positive' (NA is in Z≥0 ∪ {NA})
+ * 2. Pure positive interval (lower ≥ 0) → 'positive' (all values in Z≥0)
+ * 3. Pure negative interval (upper ≤ 0, no NA) → 'negative' (all values in Z≤0)
+ * 4. Negative interval with NA → 'ambiguous' (NA goes to positive, interval to negative)
+ * 5. Interval spanning zero (lower < 0 and upper > 0) → 'ambiguous'
+ * 6. Bottom → 'bottom' (skipped with flag)
+ * 7. Top → 'ambiguous' (spans everything)
+ * @param pos - The NA-aware interval position to classify
+ * @returns The classification result
+ */
+export function classifyNAAwarePosition(
+	pos: NAAwareDomain<IntervalDomain>
+): PositionClassification {
+	// Case 9: bottom position
+	if(pos.isBottom()) {
+		return 'bottom';
+	}
+
+	// Case 1: pure NA → positive (NA is in Z≥0 ∪ {NA})
+	if(pos.isNA()) {
+		return 'positive';
+	}
+
+	// Case 10: top position → ambiguous (spans everything)
+	if(pos.isTop()) {
+		return 'ambiguous';
+	}
+
+	// pos.isValue() is true here
+	const inner = pos.inner;
+	const hasNA = pos.containsNA();
+
+	if(inner.isBottom()) {
+		return 'bottom';
+	}
+
+	// Case: inner is Top (but hasNA is false, so pos itself is not Top)
+	// Top interval spans everything → ambiguous
+	if(inner.isTop()) {
+		return 'ambiguous';
+	}
+
+	const [lower, upper] = inner.value;
+
+	// Case 2 + 4 + 5: all values ≥ 0 → positive (includes zero)
+	if(lower >= 0) {
+		return 'positive';
+	}
+
+	// Case 3: all values ≤ 0 and no NA → negative
+	if(upper <= 0 && !hasNA) {
+		return 'negative';
+	}
+
+	// Case 6: all values ≤ 0 but has NA → ambiguous (need to split NA to positive)
+	// Case 7: interval spans zero (lower < 0 and upper > 0) → ambiguous
+	// Case 8: interval spans zero with NA → ambiguous
+	return 'ambiguous';
+}
+
+/**
+ * Splits an ambiguous NA-aware interval position into its positive and negative components.
+ *
+ * Splitting rules (paper Section 4.7):
+ * - NA always goes to the positive part (NA ∈ Z≥0 ∪ {NA})
+ * - Positive interval part: [max(0, lower), upper] if upper ≥ 0
+ * - Negative interval part: [lower, min(0, upper)] if lower ≤ 0
+ * @param pos - The NA-aware interval position to split (must be classified as 'ambiguous')
+ * @param factory - Domain factory for creating NAAwareDomain values
+ * @returns Object with positive and/or negative components (null if that component would be empty)
+ */
+export function splitNAAwarePosition(
+	pos: NAAwareDomain<IntervalDomain>,
+	factory: DomainFactory<IntervalDomain>
+): { positive: NAAwareDomain<IntervalDomain> | null; negative: NAAwareDomain<IntervalDomain> | null } {
+	// Case 10: Top splits into [0, +∞] with NA and [-∞, 0] without NA
+	if(pos.isTop()) {
+		const positiveInterval = new IntervalDomain([0, Infinity]);
+		const negativeInterval = new IntervalDomain([-Infinity, 0]);
+
+		if(positiveInterval.isBottom() && negativeInterval.isBottom()) {
+			return { positive: null, negative: null };
+		}
+
+		const positive = positiveInterval.isBottom()
+			? null
+			: new NAAwareDomain({ inner: positiveInterval, hasNA: true }, factory);
+		const negative = negativeInterval.isBottom()
+			? null
+			: new NAAwareDomain({ inner: negativeInterval, hasNA: false }, factory);
+
+		return { positive, negative };
+	}
+
+	if(pos.isBottom() || pos.isNA()) {
+		if(pos.isNA()) {
+			return { positive: NAAwareDomain.na(factory), negative: null };
+		}
+		return { positive: null, negative: null };
+	}
+
+	const inner = pos.inner;
+	const hasNA = pos.containsNA();
+
+	if(inner.isBottom()) {
+		return { positive: null, negative: null };
+	}
+
+	// Case: inner is Top (but hasNA is false, so pos itself is not Top)
+	// Top interval spans everything → split like Top case
+	if(inner.isTop()) {
+		const positiveInterval = new IntervalDomain([0, Infinity]);
+		const negativeInterval = new IntervalDomain([-Infinity, 0]);
+		const positive = positiveInterval.isBottom()
+			? null
+			: new NAAwareDomain({ inner: positiveInterval, hasNA: false }, factory);
+		const negative = negativeInterval.isBottom()
+			? null
+			: new NAAwareDomain({ inner: negativeInterval, hasNA: false }, factory);
+		return { positive, negative };
+	}
+
+	const [lower, upper] = inner.value;
+
+	const positiveParts: NAAwareDomain<IntervalDomain>[] = [];
+	const negativeParts: NAAwareDomain<IntervalDomain>[] = [];
+
+	// Case 1/5/6/8: NA always goes to the positive part (NA ∈ Z≥0 ∪ {NA})
+	if(hasNA) {
+		positiveParts.push(NAAwareDomain.na(factory));
+	}
+
+	if(upper >= 0 && lower >= 0) {
+		positiveParts.push(new NAAwareDomain({ inner, hasNA: false }, factory));
+	} else if(upper >= 0) {
+		// Positive half: [0, upper]
+		const positiveInterval = new IntervalDomain([0, upper]);
+		if(!positiveInterval.isBottom()) {
+			positiveParts.push(new NAAwareDomain({ inner: positiveInterval, hasNA: false }, factory));
+		}
+	}
+
+	if(lower <= 0 && upper <= 0) {
+		negativeParts.push(new NAAwareDomain({ inner, hasNA: false }, factory));
+	} else if(lower <= 0) {
+		// Negative half: [lower, 0]
+		const negativeInterval = new IntervalDomain([lower, 0]);
+		if(!negativeInterval.isBottom()) {
+			negativeParts.push(new NAAwareDomain({ inner: negativeInterval, hasNA: false }, factory));
+		}
+	}
+
+	const positive = positiveParts.length === 0
+		? null
+		: positiveParts.length === 1
+			? positiveParts[0]
+			: positiveParts.reduce((a, b) => a.join(b));
+	const negative = negativeParts.length === 0
+		? null
+		: negativeParts.length === 1
+			? negativeParts[0]
+			: negativeParts.reduce((a, b) => a.join(b));
+
+	return { positive, negative };
+}
 
 /**
  * The abstract product representing the abstraction of an R vector.
@@ -359,5 +560,58 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			attributes: newAttributes,
 			type:       newType
 		});
+	}
+
+	/**
+	 * Abstract filtering of selector positions into positive and negative groups
+	 * per paper Section 4.7.
+	 *
+	 * Given a sequence of NA-aware interval positions (representing a selector vector),
+	 * classifies each position as positive (Z≥0 ∪ {NA}), negative (Z≤0), or ambiguous,
+	 * and splits ambiguous positions into their positive and negative components.
+	 *
+	 * Result: `selectSharp(ν₁, ν₂) = selectSharp_pos(ν₁, ν₂⁺) ⊔ selectSharp_neg(ν₁, ν₂⁻)`
+	 * where ν₂⁺ = positions in positive and ν₂⁻ = positions in negative.
+	 * @param positions - The selector vector positions to filter
+	 * @param factory - Domain factory for creating IntervalDomain values
+	 * @returns The filtered positive and negative position arrays, with bottom flags
+	 */
+	public static abstractFilter(
+		positions: readonly NAAwareDomain<IntervalDomain>[],
+		factory: DomainFactory<IntervalDomain>
+	): AbstractFilterResult {
+		const positive: NAAwareDomain<IntervalDomain>[] = [];
+		const negative: NAAwareDomain<IntervalDomain>[] = [];
+		let positiveHasBottom = false;
+		let negativeHasBottom = false;
+
+		for(const pos of positions) {
+			const classification = classifyNAAwarePosition(pos);
+
+			switch(classification) {
+				case 'bottom':
+					positiveHasBottom = true;
+					negativeHasBottom = true;
+					break;
+				case 'positive':
+					positive.push(pos);
+					break;
+				case 'negative':
+					negative.push(pos);
+					break;
+				case 'ambiguous': {
+					const { positive: posPart, negative: negPart } = splitNAAwarePosition(pos, factory);
+					if(posPart !== null) {
+						positive.push(posPart);
+					}
+					if(negPart !== null) {
+						negative.push(negPart);
+					}
+					break;
+				}
+			}
+		}
+
+		return { positive, negative, positiveHasBottom, negativeHasBottom };
 	}
 }
