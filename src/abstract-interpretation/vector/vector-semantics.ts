@@ -6,6 +6,9 @@ import { NAAwareDomain } from './na-aware-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
 import { ConstraintType } from '../data-frame/semantics';
 import { assert } from 'ts-essentials';
+import { vectorLogger } from './logger';
+import { expensiveTrace } from '../../util/log';
+import { formatVectorDomain, formatExtremeResult } from './log-utils';
 
 export { ConstraintType };
 
@@ -55,10 +58,13 @@ export function isEnumerable(interval: PosIntervalDomain, threshold = 50): boole
 export function squash<Domain extends AnyAbstractDomain>(
 	value: VectorDomain<Domain>
 ): NAAwareDomain<Domain> {
+	vectorLogger.debug('Semantic: squash');
 	if(value.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
 		return value.summary.bottom();
 	}
 	if(value.isTop()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
 		return value.summary;
 	}
 
@@ -68,6 +74,7 @@ export function squash<Domain extends AnyAbstractDomain>(
 		result = result.join(elem);
 	}
 
+	expensiveTrace(vectorLogger, () => `Semantic: squash result = ${result.toString()}`);
 	return result;
 }
 
@@ -90,10 +97,13 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 	value: VectorDomain<Domain>,
 	excludedIndices: ReadonlySet<number>
 ): NAAwareDomain<Domain> {
+	vectorLogger.debug(`Semantic: squashedExcept [excluded=${excludedIndices.size}]`);
 	if(value.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
 		return value.summary.bottom();
 	}
 	if(value.isTop()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
 		return value.summary.top();
 	}
 
@@ -108,6 +118,7 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 		}
 	}
 
+	expensiveTrace(vectorLogger, () => `Semantic: squashedExcept result = ${result.toString()}`);
 	return result;
 }
 
@@ -128,7 +139,9 @@ export function propagate(
 	summary: NAAwareDomain<IntervalDomain>,
 	k: number
 ): NAAwareDomain<IntervalDomain> {
+	vectorLogger.debug(`Semantic: propagate [knownPositions=${knownPositions.length}, k=${k}]`);
 	if(knownPositions.length === 0) {
+		expensiveTrace(vectorLogger, () => `Semantic: propagate base case result = ${summary.toString()}`);
 		return summary;
 	}
 
@@ -184,16 +197,20 @@ export function propagate(
 export function adjustForZeros(
 	vector: VectorDomain<IntervalDomain>
 ): VectorDomain<IntervalDomain> {
+	vectorLogger.debug('Semantic: adjustForZeros');
 	if(vector.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
 		return vector;
 	}
 	if(vector.isTop()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
 		return vector;
 	}
 
 	const { length, values, summary, attributes } = vector;
 
 	if(!length.isValue()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'length is not value'));
 		return vector.top();
 	}
 
@@ -256,12 +273,14 @@ export function adjustForZeros(
 
 	const newValues = values.create(newKnownPositionValues);
 
-	return vector.create({
+	const result = vector.create({
 		length:  newLength,
 		values:  newValues,
 		summary: summary,
 		attributes
 	});
+	expensiveTrace(vectorLogger, () => `Semantic: adjustForZeros result = ${formatVectorDomain(result)}`);
+	return result;
 }
 
 /**
@@ -283,6 +302,7 @@ export function initKnownPositions<Domain extends AnyAbstractDomain>(
 	uR: number,
 	naValue: Domain
 ): Domain[] {
+	vectorLogger.debug(`Semantic: initKnownPositions [l=${l}, u=${u}, uR=${uR}]`);
 	const result: Domain[] = [];
 
 	// First l elements: keep as-is (positions 1 to l)
@@ -300,6 +320,7 @@ export function initKnownPositions<Domain extends AnyAbstractDomain>(
 		result.push(naValue);
 	}
 
+	expensiveTrace(vectorLogger, () => `Semantic: initKnownPositions result length=${result.length}`);
 	return result;
 }
 
@@ -321,7 +342,9 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 	selectorPositions: readonly PosIntervalDomain[],
 	values: readonly Domain[]
 ): Domain[] {
+	vectorLogger.debug(`Semantic: updateKnownPositions [selectorPositions=${selectorPositions.length}]`);
 	if(selectorPositions.length === 0 || values.length === 0) {
+		expensiveTrace(vectorLogger, () => `Semantic: updateKnownPositions early return`);
 		return knownPositions;
 	}
 
@@ -375,6 +398,7 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 		}
 	}
 
+	expensiveTrace(vectorLogger, () => `Semantic: updateKnownPositions result length=${result.length}`);
 	return result;
 }
 
@@ -392,9 +416,11 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	targetLength: number
 ): Domain[] {
+	vectorLogger.debug(`Semantic: generateCyclicKnownPositions [targetLength=${targetLength}]`);
 	const result: Domain[] = [];
 
 	if(vector.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
 		return result;
 	}
 
@@ -415,6 +441,7 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 		}
 	}
 
+	expensiveTrace(vectorLogger, () => `Semantic: generateCyclicKnownPositions result length=${result.length}`);
 	return result;
 }
 
@@ -428,24 +455,33 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 	pos: number,
 	naValue: NAAwareDomain<Domain>
 ): NAAwareDomain<Domain> {
+	vectorLogger.debug(`Semantic: accessPosition [pos=${pos}]`);
 	if(vector.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
 		return vector.summary.bottom();
 	}
 	if(vector.isTop()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
 		return vector.summary.top();
 	}
 
 	const lengthUpperBound = getLengthUpperBound(vector.length);
 
 	if(lengthUpperBound === undefined) {
-		return squash(vector);
+		const result = squash(vector);
+		expensiveTrace(vectorLogger, () => `Semantic: accessPosition result (squash) = ${result.toString()}`);
+		return result;
 	}
 
 	if(lengthUpperBound === +Infinity) {
-		return accessFromInfiniteLengthVector(vector, pos, naValue);
+		const result = accessFromInfiniteLengthVector(vector, pos, naValue);
+		expensiveTrace(vectorLogger, () => `Semantic: accessPosition result (infinite) = ${result.toString()}`);
+		return result;
 	}
 
-	return accessFromFiniteLengthVector(vector, pos, naValue, lengthUpperBound);
+	const result = accessFromFiniteLengthVector(vector, pos, naValue, lengthUpperBound);
+	expensiveTrace(vectorLogger, () => `Semantic: accessPosition result (finite) = ${result.toString()}`);
+	return result;
 }
 
 function getLengthUpperBound(length: PosIntervalDomain): number | undefined {
@@ -503,10 +539,13 @@ function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
 export function countZerosInIntervalVector(
 	selector: VectorDomain<PosIntervalDomain>
 ): PosIntervalDomain {
+	vectorLogger.debug('Semantic: countZerosInIntervalVector');
 	if(selector.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'selector is bottom'));
 		return selector.length.bottom();
 	}
 	if(selector.isTop()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'selector is top'));
 		return selector.length.create([0, +Infinity]);
 	}
 
@@ -547,7 +586,9 @@ export function countZerosInIntervalVector(
 		}
 	}
 
-	return selector.length.create([definiteZeros, possibleZeros]);
+	const result = selector.length.create([definiteZeros, possibleZeros]);
+	expensiveTrace(vectorLogger, () => `Semantic: countZerosInIntervalVector result = ${result.toString()}`);
+	return result;
 }
 
 /**
@@ -564,14 +605,18 @@ export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bo
  *          'ambiguous' if spans 0 or includes 0, 'bottom' if Bottom
  */
 export function classifyPosition(position: PosIntervalDomain): PositionClassification {
+	vectorLogger.debug('Semantic: classifyPosition');
 	if(position.isBottom()) {
+		vectorLogger.debug("Decision: classification = 'bottom'");
 		return 'bottom';
 	}
 	if(position.isTop()) {
+		vectorLogger.debug("Decision: classification = 'ambiguous' (top)");
 		// [0, +Infinity] - spans both sides
 		return 'ambiguous';
 	}
 	if(!position.isValue()) {
+		vectorLogger.debug("Decision: classification = 'ambiguous' (not value)");
 		return 'ambiguous';
 	}
 
@@ -579,13 +624,16 @@ export function classifyPosition(position: PosIntervalDomain): PositionClassific
 
 	if(lower > 0) {
 		// Definitely positive (strictly greater than 0)
+		vectorLogger.debug("Decision: classification = 'positive'");
 		return 'positive';
 	}
 	if(upper < 0) {
 		// Definitely negative (strictly less than 0)
+		vectorLogger.debug("Decision: classification = 'negative'");
 		return 'negative';
 	}
 	// Spans 0 or includes 0: [lower ≤ 0 ≤ upper]
+	vectorLogger.debug("Decision: classification = 'ambiguous' (spans zero)");
 	return 'ambiguous';
 }
 
@@ -613,12 +661,15 @@ export interface SplitPosition {
  * @returns Object with positive and negative parts
  */
 export function splitAmbiguousPosition(position: PosIntervalDomain): SplitPosition {
+	vectorLogger.debug('Semantic: splitAmbiguousPosition');
 	const bottom = position.bottom();
 
 	if(position.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'position is bottom'));
 		return { positive: bottom, negative: bottom };
 	}
 	if(!position.isValue()) {
+		expensiveTrace(vectorLogger, () => `Semantic: splitAmbiguousPosition result (non-value) = { positive: ${position.toString()}, negative: ${position.toString()} }`);
 		// Top or other non-specific value - return as-is for both
 		return { positive: position, negative: position };
 	}
@@ -641,6 +692,7 @@ export function splitAmbiguousPosition(position: PosIntervalDomain): SplitPositi
 		negative = bottom;
 	}
 
+	expensiveTrace(vectorLogger, () => `Semantic: splitAmbiguousPosition result = { positive: ${positive.toString()}, negative: ${negative.toString()} }`);
 	return { positive, negative };
 }
 
@@ -657,17 +709,21 @@ export function createFilteredSelector<Domain extends AnyAbstractDomain>(
 	positions: readonly PosIntervalDomain[],
 	factory: DomainFactory<PosIntervalDomain>
 ): VectorDomain<PosIntervalDomain> {
+	vectorLogger.debug(`Semantic: createFilteredSelector [positions=${positions.length}]`);
 	if(positions.length === 0) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'no positions'));
 		return selector.bottom();
 	}
 
 	// Wrap positions in NAAwareDomain
 	const naAwarePositions = positions.map(pos => new NAAwareDomain({ inner: pos, hasNA: false }, factory));
 
-	return selector.create({
+	const result = selector.create({
 		length:     selector.length,
 		values:     selector.values.create(naAwarePositions),
 		summary:    selector.summary,
 		attributes: selector.attributes
 	});
+	expensiveTrace(vectorLogger, () => `Semantic: createFilteredSelector result = ${formatVectorDomain(result)}`);
+	return result;
 }
