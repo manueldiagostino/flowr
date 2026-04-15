@@ -45,6 +45,13 @@
     "performance-test": "func() { cd test/performance/ && bash run-all-suites.sh $1 $2 $3 $4; cd ../../; }; func",
     "test:performance": "npm run performance-test --",
     "detect-circular-deps": "npx madge  --extensions ts,tsx --circular src/",
+    "test:vector": "npx vitest run test/functionality/abstract-interpretation/vector",
+    "test:vector:debug": "LOG_LEVEL=debug npx vitest run test/functionality/abstract-interpretation/vector --reporter=verbose",
+    "test:vector:trace": "LOG_LEVEL=trace npx vitest run test/functionality/abstract-interpretation/vector --reporter=verbose",
+    "test:file": "npx vitest run --sequence.concurrent=false --maxWorkers=1 --pool=forks",
+    "test:file:debug": "LOG_LEVEL=debug npx vitest run --reporter=verbose --sequence.concurrent=false --maxWorkers=1 --pool=forks",
+    "test:file:trace": "LOG_LEVEL=trace npx vitest run --reporter=verbose --sequence.concurrent=false --maxWorkers=1 --pool=forks",
+    "lint:file": "npm run lint-local -- --fix",
     "checkup": "npm run flowr -- --execute \":version\" && npm run lint && npm run test-full -- --allowOnly=false && npm run test:system -- --no-watch && docker build -t test-flowr -f scripts/Dockerfile . && npm run doc && npm run gen:readme && npm-run-all wiki:*"
   },
   "keywords": [
