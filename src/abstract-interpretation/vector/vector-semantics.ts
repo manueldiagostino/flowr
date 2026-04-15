@@ -344,7 +344,7 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 ): Domain[] {
 	vectorLogger.debug(`Semantic: updateKnownPositions [selectorPositions=${selectorPositions.length}]`);
 	if(selectorPositions.length === 0 || values.length === 0) {
-		expensiveTrace(vectorLogger, () => `Semantic: updateKnownPositions early return`);
+		expensiveTrace(vectorLogger, () => 'Semantic: updateKnownPositions early return');
 		return knownPositions;
 	}
 

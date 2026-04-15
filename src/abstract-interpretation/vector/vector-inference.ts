@@ -771,7 +771,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		attrs: VectorAttrDomain
 	): VectorDomain<Domain> {
-		vectorLogger.debug(`Operation: setAttr`);
+		vectorLogger.debug('Operation: setAttr');
 		if(!attrs.isEmpty()) {
 			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'attrs not empty', { attrs: attrs.toString() }));
 			return value.top();
@@ -798,7 +798,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		other: VectorDomain<Domain>
 	): VectorDomain<Domain> {
-		vectorLogger.debug(`Operation: recycle`);
+		vectorLogger.debug('Operation: recycle');
 		const len1 = value.length;
 		const len2 = other.length;
 		if(len1.isBottom() || len2.isBottom()) {
@@ -868,7 +868,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		other: VectorDomain<Domain> | undefined
 	): VectorDomain<Domain> {
-		vectorLogger.debug(`Operation: concatenate`);
+		vectorLogger.debug('Operation: concatenate');
 		if(other === undefined) {
 			expensiveTrace(vectorLogger, () => `Operation: concatenate result = ${formatVectorDomain(value)} (other is undefined)`);
 			return value;
