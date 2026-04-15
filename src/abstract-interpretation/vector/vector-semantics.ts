@@ -4,8 +4,8 @@ import type { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorDomain } from './vector-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
-import { Bottom } from '../domains/lattice';
 import { ConstraintType } from '../data-frame/semantics';
+import { assert } from 'ts-essentials';
 
 export { ConstraintType };
 
@@ -68,14 +68,6 @@ export function squash<Domain extends AnyAbstractDomain>(
 		result = result.join(elem);
 	}
 
-	// if(value.values.isValue()) {
-	// 	const valuesArray = value.values.value as readonly Domain[];
-	// 	for(const elem of valuesArray) {
-	// 		const elemHasNA = elementMayContainNA(elem, value.summary);
-	// 		result = result.join(result.create({ inner: elem, hasNA: elemHasNA }));
-	// 	}
-	// }
-
 	return result;
 }
 
@@ -121,30 +113,30 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 
 /**
  * Propagates values forward through positions containing zero.
- * Per paper Section 4.8: Propagate : V_Itv^* × V_Itv × N → V_Itv
+ * Per paper Section 4.8: Propagate : Itv^* × Itv × N → Itv
  * The counter k tracks pending zeros to absorb.
  *
  * Note: Uses IntervalDomain (not PosIntervalDomain) as the paper specifies
- * V_Itv for the general interval domain allowing negative values.
+ * Itv for the general interval domain allowing negative values.
  * @param knownPositions - The remaining known positions to process
  * @param summary - The summary value for positions beyond the known positions
  * @param k - The count of pending zeros
  * @returns The propagated abstract value
  */
 export function propagate(
-	knownPositions: readonly IntervalDomain[],
+	knownPositions: readonly NAAwareDomain<IntervalDomain>[],
 	summary: NAAwareDomain<IntervalDomain>,
 	k: number
-): IntervalDomain {
+): NAAwareDomain<IntervalDomain> {
 	if(knownPositions.length === 0) {
-		return summary.value.inner;
+		return summary;
 	}
 
 	const first = knownPositions[0];
 	const rest = knownPositions.slice(1);
 
-	if(first.isValue()) {
-		const [l, u] = first.value;
+	if(first.inner.isValue()) {
+		const [l, u] = first.inner.value;
 
 		// Check if definitely zero: γ(c₁) = {0}
 		if(l === 0 && u === 0) {
@@ -156,16 +148,18 @@ export function propagate(
 		if(l <= 0 && u >= 0) {
 			// Join with propagated value from rest (paper specifies ⊔)
 			const propagated = propagate(rest, summary, k);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			return (first as any).join(propagated);
+			return first.join(propagated);
 		}
+	} else {
+		// position is a pure NA
+		assert(first.isNA());
 	}
 
 	// Non-zero value
 	if(k > 0) {
 		// Decrement counter and continue, joining with first (per paper L411)
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return (first as any).join(propagate(rest, summary, k - 1));
+		return first.join(propagate(rest, summary, k - 1));
 	}
 
 	// k = 0, return this value

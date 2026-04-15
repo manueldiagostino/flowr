@@ -6,6 +6,7 @@ import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
 import { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { NAAwareDomain } from './na-aware-domain';
+import { RVectorTypeDomain } from '../domains/vector-type-domain';
 
 export type { DomainFactory } from './known-initial-positions-domain';
 
@@ -15,6 +16,7 @@ export type { DomainFactory } from './known-initial-positions-domain';
  * - values: a sequence of abstract values for the known positions (positions 0 to k-1)
  * - summary: a single abstract value summarizing ALL positions from k onwards (if any)
  * - attributes: abstraction of the R vector attributes (names, dim, class, other)
+ * - type: the R vector type (logical, integer, double, complex, character)
  *
  * Invariants maintained by reduce():
  * 1. values.length ≤ length.upper (if length.upper is finite)
@@ -31,6 +33,8 @@ export type VectorProduct<Domain extends AnyAbstractDomain> = {
 	summary:    NAAwareDomain<Domain>;
 	/** Abstraction of R vector attributes (names, dim, class, other) */
 	attributes: VectorAttrDomain;
+	/** The R vector type (logical, integer, double, complex, character) */
+	type:       RVectorTypeDomain;
 };
 
 /**
@@ -94,6 +98,13 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
+	 * The type abstraction representing the R vector type (logical, integer, double, complex, character).
+	 */
+	public get type(): VectorProduct<Domain>['type'] {
+		return this.value.type;
+	}
+
+	/**
 	 * Gets the domain factory used to create this VectorDomain.
 	 */
 	public get factory(): DomainFactory<Domain> {
@@ -130,13 +141,15 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		length: PosIntervalDomain,
 		values: KnownInitialPositionsDomain<NAAwareDomain<Domain>>,
 		summary: NAAwareDomain<Domain>,
-		attributes: VectorAttrDomain
+		attributes: VectorAttrDomain,
+		type: RVectorTypeDomain
 	): VectorDomain<Domain> {
 		return new VectorDomain({
 			length,
 			values,
 			summary,
-			attributes
+			attributes,
+			type
 		}, factory);
 	}
 
@@ -166,14 +179,15 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		length: PosIntervalDomain,
 		values: readonly NAAwareDomain<Domain>[],
 		summary: NAAwareDomain<Domain>,
-		attributes: VectorAttrDomain
+		attributes: VectorAttrDomain,
+		type: RVectorTypeDomain
 	): VectorDomain<Domain> {
 		const smartFactory = NAAwareDomain.createSmartFactory(factory);
 		const knownPositions = new KnownInitialPositionsDomain(
 			values,
 			smartFactory
 		);
-		return VectorDomain.create(factory, length, knownPositions, summary, attributes);
+		return VectorDomain.create(factory, length, knownPositions, summary, attributes, type);
 	}
 
 	/**
@@ -191,7 +205,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 				smartFactory
 			),
 			summary:    summaryTop,
-			attributes: VectorAttrDomain.top()
+			attributes: VectorAttrDomain.top(),
+			type:       RVectorTypeDomain.top()
 		}, factory);
 	}
 
@@ -211,7 +226,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			length:     PosIntervalDomain.bottom(),
 			values:     valuesBottom,
 			summary:    summaryBottom,
-			attributes: VectorAttrDomain.bottom()
+			attributes: VectorAttrDomain.bottom(),
+			type:       RVectorTypeDomain.bottom()
 		}, factory);
 	}
 
@@ -240,7 +256,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			return value;
 		}
 
-		const { length, attributes } = value;
+		const { length, attributes, type } = value;
 		let { values, summary } = value;
 		let modified = false;
 
@@ -278,7 +294,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			}
 		}
 
-		return modified ? { length, values, summary, attributes } : value;
+		return modified ? { length, values, summary, attributes, type } : value;
 	}
 
 	/**
@@ -302,6 +318,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const newLength = this.length.widen(other.length);
 		let newSummary = this.summary.join(other.summary);
 		const newAttributes = this.attributes.join(other.attributes);
+		const newType = this.type.join(other.type);
 		let newValues: KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
 
 		if(this.values.isTop() || other.values.isTop()) {
@@ -339,7 +356,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			length:     newLength,
 			values:     newValues,
 			summary:    newSummary,
-			attributes: newAttributes
+			attributes: newAttributes,
+			type:       newType
 		});
 	}
 }

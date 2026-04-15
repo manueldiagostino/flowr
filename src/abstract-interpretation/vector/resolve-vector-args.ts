@@ -15,6 +15,7 @@ import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import { RNa } from '../../r-bridge/lang-4.x/convert-values';
 import { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
+import { RVectorTypeDomain } from '../domains/vector-type-domain';
 
 /**
  * Converts a primitive value (string, number, boolean) to the domain's concrete type.
@@ -150,7 +151,8 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 		length:     new PosIntervalDomain([domainValueSets.length, domainValueSets.length]),
 		values:     knownPositions,
 		summary:    summaryBottom,
-		attributes: VectorAttrDomain.top()
+		attributes: VectorAttrDomain.top(),
+		type:       RVectorTypeDomain.top()
 	}, factory);
 }
 
@@ -182,7 +184,8 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 			length:     new PosIntervalDomain([1, 1]),
 			values:     knownPositions,
 			summary:    summaryBottom,
-			attributes: VectorAttrDomain.top()
+			attributes: VectorAttrDomain.top(),
+			type:       RVectorTypeDomain.of('logical')
 		}, factory);
 	}
 

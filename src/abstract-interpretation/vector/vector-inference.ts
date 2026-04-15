@@ -27,9 +27,9 @@ import { type ValueToDomainConverter, buildVectorFromLiteral } from './resolve-v
 import type { RNumber } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import type { RString } from '../../r-bridge/lang-4.x/ast/model/nodes/r-string';
 import type { RLogical } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
-import type { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
+import { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 import { FunctionArgument as FunctionArgumentUtil } from '../../dataflow/graph/graph';
-import { EmptyArgument } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
+import { EmptyArgument, RFunctionCall } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
 import { VertexType } from '../../dataflow/graph/vertex';
 import { RType } from '../../r-bridge/lang-4.x/ast/model/type';
 import { Identifier } from '../../dataflow/environments/identifier';
@@ -39,7 +39,6 @@ import { RBinaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
 import { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import { RNumber as RNumberNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import { RLogical as RLogicalNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
-import { RFunctionCall } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
 
@@ -260,6 +259,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 			// For other function calls, conservatively assume numeric
 			return 'numeric';
+		}
+
+		// For symbols, try to get the vector type from abstract interpretation state
+		if(RSymbol.is(node)) {
+			const nodeId = (node.info as ParentInformation).id;
+			const vectorValue = this.getVectorDomainValue(nodeId);
+			if(vectorValue !== undefined && !vectorValue.type.isTop()) {
+				const type = vectorValue.type.getType();
+				if(type === 'logical') {
+					return 'logical';
+				}
+				// For numeric types (integer, double, complex, character), use numeric selection
+				return 'numeric';
+			}
 		}
 
 		// For symbols and other nodes, we can't determine from AST alone
@@ -741,7 +754,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     value.length,
 			values:     value.values,
 			summary:    value.summary,
-			attributes: attrs
+			attributes: attrs,
+			type:       value.type
 		});
 	}
 
@@ -767,7 +781,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     len1.top(),
 				values:     value.values.top(),
 				summary:    combinedSummary,
-				attributes: value.attributes.join(other.attributes)
+				attributes: value.attributes.join(other.attributes),
+				type:       value.type
 			});
 		}
 		if(!len1.isValue() || !len2.isValue()) {
@@ -775,7 +790,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     len1.top(),
 				values:     value.values.top(),
 				summary:    combinedSummary,
-				attributes: value.attributes.join(other.attributes)
+				attributes: value.attributes.join(other.attributes),
+				type:       value.type
 			});
 		}
 		const [l1, u1] = len1.value;
@@ -788,7 +804,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     len1.top(),
 				values:     value.values.top(),
 				summary:    combinedSummary,
-				attributes: value.attributes.join(other.attributes)
+				attributes: value.attributes.join(other.attributes),
+				type:       value.type
 			});
 		}
 		const recycledLength = len1.create([newLower, newUpper]);
@@ -797,7 +814,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     recycledLength,
 			values:     combinedValues,
 			summary:    combinedSummary,
-			attributes: value.attributes.join(other.attributes)
+			attributes: value.attributes.join(other.attributes),
+			type:       value.type
 		});
 	}
 
@@ -869,7 +887,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     concatenatedLength,
 			values:     concatenatedValues,
 			summary:    combinedSummary,
-			attributes: value.attributes.join(other.attributes)
+			attributes: value.attributes.join(other.attributes),
+			type:       value.type
 		});
 	}
 
@@ -1014,7 +1033,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     adjustedSelector.length,
 			values:     resultValues,
 			summary:    resultSummary,
-			attributes: value.attributes
+			attributes: value.attributes,
+			type:       value.type
 		});
 	}
 
@@ -1092,7 +1112,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     resultLength,
 				values:     value.values.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 		const resultLength = value.length.create([newUpper, newUpper]);
@@ -1107,7 +1128,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     resultLength,
 			values:     value.values.create(resultKnownPositions),
 			summary:    value.summary.bottom(),
-			attributes: value.attributes
+			attributes: value.attributes,
+			type:       value.type
 		});
 	}
 
@@ -1140,7 +1162,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length.create([0, 0]),
 				values:     value.values.create([]),
 				summary:    value.summary.bottom(),
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 		if(sourceLen === +Infinity || selectorLen === +Infinity) {
@@ -1148,7 +1171,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length.create([0, +Infinity]),
 				values:     value.values.top(),
 				summary:    squash(value),
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 		const maxLen = Math.max(sourceLen, selectorLen);
@@ -1179,7 +1203,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     value.length.create([0, resultKnownPositions.length]),
 			values:     value.values.create(resultKnownPositions),
 			summary:    isInfinite ? squash(value) : value.summary.bottom(),
-			attributes: value.attributes
+			attributes: value.attributes,
+			type:       value.type
 		});
 	}
 
@@ -1301,7 +1326,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
 				values:     value.values.create([]),
 				summary:    vAll,
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 		let sourceLower = 0, sourceUpper = 0;
@@ -1340,7 +1366,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length.create([sourceLower, +Infinity]),
 				values:     value.values.create(resultKnownPositions),
 				summary:    resultSummary,
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		} else {
 			let uR = 0;
@@ -1365,7 +1392,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length.create([sourceLower, uR]),
 				values:     value.values.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 	}
@@ -1453,7 +1481,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length,
 				values:     value.values.create(resultKnownPositions),
 				summary:    resultSummary,
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 		const isInfinite = adjustedSelector.length.isValue() && adjustedSelector.length.value[1] === +Infinity;
@@ -1493,13 +1522,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, uR]),
 				values:     value.values.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
-				attributes: value.attributes
+				attributes: value.attributes,
+				type:       value.type
 			});
 		}
 	}
 
 	/**
-	 * Applies logical indexing update: x[c] \&lt;- v where c is a logical vector.
+	 * Applies logical indexing update: x[c] \\&lt;- v where c is a logical vector.
 	 * Values are assigned to positions where the selector is TRUE.
 	 * Uses cyclic recycling when selector is shorter than the source.
 	 * @param value - The target VectorDomain to update
@@ -1562,7 +1592,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			length:     value.length.create([sourceLower, resultUpper]),
 			values:     value.values.create(resultKnownPositions),
 			summary:    resultSummary,
-			attributes: value.attributes
+			attributes: value.attributes,
+			type:       value.type
 		});
 	}
 }
