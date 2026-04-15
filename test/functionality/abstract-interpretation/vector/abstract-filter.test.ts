@@ -1,4 +1,5 @@
 import { assert, test, describe } from 'vitest';
+import './log-config';
 import { VectorDomain, classifyNAAwarePosition, splitNAAwarePosition } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import type { AbstractFilterResult } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';

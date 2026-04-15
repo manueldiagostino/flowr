@@ -1,4 +1,5 @@
 import { assert, test, describe } from 'vitest';
+import './log-config';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom, Top } from '../../../../src/abstract-interpretation/domains/lattice';

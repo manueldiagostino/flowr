@@ -1,4 +1,5 @@
 import { describe, test, assert } from 'vitest';
+import './log-config';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Top, Bottom, NA } from '../../../../src/abstract-interpretation/domains/lattice';

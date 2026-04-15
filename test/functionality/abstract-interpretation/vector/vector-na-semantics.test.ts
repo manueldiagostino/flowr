@@ -1,4 +1,5 @@
 import { describe, test, assert } from 'vitest';
+import './log-config';
 import type { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { withShell } from '../../_helper/shell';

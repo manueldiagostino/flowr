@@ -1,4 +1,5 @@
 import { assert, test, describe } from 'vitest';
+import './log-config';
 import { VectorAttrDomain, VectorAttrs, type VectorAttr, type VectorAttrSet } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Bottom, Top } from '../../../../src/abstract-interpretation/domains/lattice';
 import { assertAbstractDomain } from '../domains/domain';

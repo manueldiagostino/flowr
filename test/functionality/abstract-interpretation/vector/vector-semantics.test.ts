@@ -1,4 +1,5 @@
 import { assert, test, describe } from 'vitest';
+import './log-config';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
