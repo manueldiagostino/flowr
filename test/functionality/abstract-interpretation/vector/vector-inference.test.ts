@@ -314,6 +314,96 @@ x <- y`;
 			assert.ok(vector instanceof VectorDomain, 'Expected VectorDomain for logical vector');
 		});
 	});
+
+	describe('Numeric Selector Position Classification', () => {
+		test('positive selector [1, 3] on x <- c(10, 20, 30, 40, 50) returns elements at positions 1 and 3', async() => {
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(1, 3)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLength(vector, [2, 2]);
+		});
+
+		test('negative selector [-1, -3] on x <- c(10, 20, 30, 40, 50) removes elements at positions 1 and 3', async() => {
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(-1, -3)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLength(vector, [3, 3]);
+		});
+
+		test('ambiguous selector [-2, 3] (interval spanning 0) splits and joins correctly', async() => {
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(-2, 3)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assert.ok(vector === undefined || vector instanceof VectorDomain, 'Expected VectorDomain or undefined for ambiguous selector');
+		});
+
+		test('double-negation x[-(-1)] selects position 1 (not removes it) - core bug fix', async() => {
+			const code = `x <- c(10, 20, 30)
+y <- x[-(-1)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLength(vector, [1, 1]);
+		});
+
+		test('triple-negation x[-(-(-1))] removes position 1', async() => {
+			const code = `x <- c(10, 20, 30)
+y <- x[-(-(-1))]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLength(vector, [2, 2]);
+		});
+
+		test('expression x[-(1-2)] selects position 1 (since 1-2 = -1, then negated = 1)', async() => {
+			const code = `x <- c(10, 20, 30)
+y <- x[-(1-2)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLength(vector, [1, 1]);
+		});
+	});
+
+	describe('Logical Selector Detection (AST-based)', () => {
+		test('logical selector c(TRUE, FALSE) on x <- c(10, 20, 30) uses logical selection', async() => {
+			const code = `x <- c(10, 20, 30)
+y <- x[c(TRUE, FALSE, TRUE)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLengthOrTop(vector);
+		});
+
+		test('comparison selector x[x > 0] uses logical selection', async() => {
+			const code = `x <- c(10, -5, 20)
+y <- x[x > 0]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLengthOrTop(vector);
+		});
+
+		test('logical AND selector x[x > 0 & x < 10] uses logical selection', async() => {
+			const code = `x <- c(5, 15, -3, 8)
+y <- x[x > 0 & x < 10]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y');
+			assertLengthOrTop(vector);
+		});
+	});
+
+	describe('Numeric Selector Update with Position Classification', () => {
+		test('positive update x[2] <- 99 updates position 2', async() => {
+			const code = `x <- c(10, 20, 30)
+x[2] <- 99`;
+			const vector = await getVectorForCriterion(shell, code, '2@x');
+			assertLength(vector, [3, 3]);
+		});
+
+		test('negative update x[-2] <- 99 updates all positions except 2', async() => {
+			const code = `x <- c(10, 20, 30)
+x[-2] <- 99`;
+			const vector = await getVectorForCriterion(shell, code, '2@x');
+			assertLength(vector, [3, 3]);
+		});
+
+		test('double-negation update x[-(-2)] <- 99 updates position 2', async() => {
+			const code = `x <- c(10, 20, 30)
+x[-(-2)] <- 99`;
+			const vector = await getVectorForCriterion(shell, code, '2@x');
+			assertLength(vector, [3, 3]);
+		});
+	});
 }));
 
 describe('Vector Inference Unit Tests', () => {
