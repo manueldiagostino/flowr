@@ -449,37 +449,50 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
  * Per paper: ν*♯(j) = p_ν,j if 1 ≤ j ≤ u_ν, otherwise α(NA)
  * Note: Uses 0-based indexing internally.
  */
+/**
+ * Squashes a vector into a single Domain value (for use in accessPosition).
+ * Unlike `sweep` which returns NAAwareDomain<Domain>, this returns Domain directly.
+ */
+function squashFromVector<Domain extends AnyAbstractDomain>(
+	value: VectorDomain<Domain>
+): Domain {
+	let result = value.summary;
+	for(const elem of value.values.toArray()) {
+		result = result.join(elem);
+	}
+	return result;
+}
+
+/**
+ *
+ */
 export function accessPosition<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: NAAwareDomain<Domain>
-): NAAwareDomain<Domain> {
+	naValue: Domain
+): Domain {
 	vectorLogger.debug(`Semantic: accessPosition [pos=${pos}]`);
 	if(vector.isBottom()) {
 		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
-		return vector.summary.bottom();
+		return vector.summary;
 	}
 	if(vector.isTop()) {
 		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
-		return vector.summary.top();
+		return vector.summary;
 	}
 
 	const lengthUpperBound = getLengthUpperBound(vector.length);
 
 	if(lengthUpperBound === undefined) {
-		const result = squash(vector);
-		expensiveTrace(vectorLogger, () => `Semantic: accessPosition result (squash) = ${result.toString()}`);
-		return result;
+		return squashFromVector(vector);
 	}
 
 	if(lengthUpperBound === +Infinity) {
 		const result = accessFromInfiniteLengthVector(vector, pos, naValue);
-		expensiveTrace(vectorLogger, () => `Semantic: accessPosition result (infinite) = ${result.toString()}`);
 		return result;
 	}
 
 	const result = accessFromFiniteLengthVector(vector, pos, naValue, lengthUpperBound);
-	expensiveTrace(vectorLogger, () => `Semantic: accessPosition result (finite) = ${result.toString()}`);
 	return result;
 }
 
@@ -493,13 +506,12 @@ function getLengthUpperBound(length: PosIntervalDomain): number | undefined {
 function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: NAAwareDomain<Domain>
-): NAAwareDomain<Domain> {
+	naValue: Domain
+): Domain {
 	if(vector.values.isValue()) {
 		const values = vector.values.value as readonly Domain[];
 		if(pos < values.length) {
-			const hasNA = vector.summary.containsNA();
-			return naValue.create({ inner: values[pos], hasNA });
+			return values[pos];
 		}
 	}
 	return vector.summary;
@@ -508,9 +520,9 @@ function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: NAAwareDomain<Domain>,
+	naValue: Domain,
 	lengthUpperBound: number
-): NAAwareDomain<Domain> {
+): Domain {
 	const oneIndexedPos = pos + 1;
 	if(oneIndexedPos < 1 || oneIndexedPos > lengthUpperBound) {
 		return naValue;
@@ -519,8 +531,7 @@ function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
 	if(vector.values.isValue()) {
 		const values = vector.values.value as readonly Domain[];
 		if(pos < values.length) {
-			const hasNA = vector.summary.containsNA();
-			return naValue.create({ inner: values[pos], hasNA });
+			return values[pos];
 		}
 	}
 
