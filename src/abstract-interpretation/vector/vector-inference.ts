@@ -39,6 +39,7 @@ import { RBinaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
 import { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import { RNumber as RNumberNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import { RLogical as RLogicalNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
+import { RFunctionCall } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
 
@@ -194,6 +195,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 	/**
 	 * Recursively analyzes a node to determine if it produces logical or numeric output.
+	 * For vectors (e.g., `c(TRUE, 1, 2, FALSE)`), if ANY element is numeric, the selector
+	 * is numeric (R coerces all to numeric). Only if ALL elements are logical is it logical.
 	 * @param node - The AST node to analyze
 	 * @returns The selector kind: 'logical' or 'numeric'
 	 */
@@ -229,6 +232,33 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// Numeric literals are numeric selectors
 		if(RNumberNode.is(node)) {
+			return 'numeric';
+		}
+
+		// For function calls (e.g., `c(TRUE, 1, 2, FALSE)`), check all arguments recursively
+		// If ANY argument is numeric, the whole vector is numeric (R coercion rules)
+		if(RFunctionCall.is(node)) {
+			// For concatenation functions like c(), check all arguments
+			// For other functions, conservatively assume numeric
+			const functionName = RFunctionCall.isNamed(node) ? node.functionName.content : '';
+			if(functionName === 'c') {
+				let hasLogical = false;
+				for(const arg of node.arguments) {
+					if(arg !== undefined && arg !== EmptyArgument) {
+						const argNode = RArgument.is(arg) ? arg.value : arg;
+						if(argNode !== undefined) {
+							const kind = this.detectSelectorKindFromNode(argNode);
+							if(kind === 'numeric') {
+								return 'numeric';
+							}
+							hasLogical = true;
+						}
+					}
+				}
+				// All arguments were logical (or empty)
+				return hasLogical ? 'logical' : 'numeric';
+			}
+			// For other function calls, conservatively assume numeric
 			return 'numeric';
 		}
 
@@ -357,14 +387,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selectorArg = args[0];
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 
-		const selectorKind = this.detectSelectorKind(selectorArg);
+			const selectorKind = this.detectSelectorKind(selectorArg);
 
-		return [{
-			operation: 'select',
-			operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-			selector:  selector !== undefined ? String(selector) : undefined,
-			selectorKind
-		}];
+			return [{
+				operation: 'select',
+				operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+				selector:  selector !== undefined ? String(selector) : undefined,
+				selectorKind
+			}];
 		}
 
 		// Two arguments: x[i, j] - matrix/array access (not supported yet)
@@ -392,16 +422,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 			const values = source?.info.id;
 
-		// Detect selector kind from AST (logical vs numeric)
-		const selectorKind = this.detectSelectorKind(selectorArg);
+			// Detect selector kind from AST (logical vs numeric)
+			const selectorKind = this.detectSelectorKind(selectorArg);
 
-		return [{
-			operation: 'update',
-			operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-			selector:  selector !== undefined ? String(selector) : undefined,
-			values:    values !== undefined ? String(values) : undefined,
-			selectorKind
-		}];
+			return [{
+				operation: 'update',
+				operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+				selector:  selector !== undefined ? String(selector) : undefined,
+				values:    values !== undefined ? String(values) : undefined,
+				selectorKind
+			}];
 		}
 
 		return [{ operation: 'unknown', operand: undefined }];
@@ -679,15 +709,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return this.applyRecycle(value, args.other as VectorDomain<Domain>);
 			case 'concatenate':
 				return this.applyConcatenate(value, args.other as VectorDomain<Domain> | undefined);
-		case 'select':
-			return this.applySelect(
-				value,
-				args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
-				args.naValue as NAAwareDomain<Domain>,
-				args.selectorKind as SelectorKind | undefined
-			);
-		case 'update':
-			return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
+			case 'select':
+				return this.applySelect(
+					value,
+					args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
+					args.naValue as NAAwareDomain<Domain>,
+					args.selectorKind as SelectorKind | undefined
+				);
+			case 'update':
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
 			default:
 				return value.top();
 		}
@@ -1195,7 +1225,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(pos.isBottom()) {
 				continue;
 			}
-			const inner = pos.inner as PosIntervalDomain;
+			const inner = pos.inner;
 			const classification = classifyPosition(inner);
 			switch(classification) {
 				case 'positive':

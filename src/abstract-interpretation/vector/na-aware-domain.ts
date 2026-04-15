@@ -123,10 +123,8 @@ export class NAAwareDomain<
 	 * - undefined (treated as NA)
 	 * - Sets containing NA (NA separated from concrete values)
 	 * - Sets without NA (hasNA: false)
-	 *
 	 * @param innerFactory - Factory for creating the inner domain values
 	 * @returns A factory that creates NAAwareDomain values with proper NA detection
-	 *
 	 * @example
 	 * ```typescript
 	 * const smartFactory = NAAwareDomain.createSmartFactory(IntervalDomain.abstract);
