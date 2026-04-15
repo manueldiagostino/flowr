@@ -6,6 +6,9 @@ import { AbstractInterpretationVisitor, type AbsintVisitorConfiguration } from '
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import { VectorDomain } from './vector-domain';
 import type { NAAwareDomain } from './na-aware-domain';
+import { vectorLogger } from './logger';
+import { expensiveTrace } from '../../util/log';
+import { formatVectorDomain, formatExtremeResult } from './log-utils';
 import {
 	card,
 	isEnumerable,
@@ -140,6 +143,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private detectFunctionType(node: RNode<ParentInformation>): VectorFunctionType {
 		if(node.type !== RType.FunctionCall && node.type !== RType.BinaryOp) {
+			vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}'`);
 			return 'unknown';
 		}
 
@@ -153,19 +157,24 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		if(functionName === undefined) {
+			vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (no function name)`);
 			return 'unknown';
 		}
 
 		if(functionName === 'c') {
+			vectorLogger.debug(`Decision: function type 'concatenate' for node type '${node.type}'`);
 			return 'concatenate';
 		}
 		if(['+', '-', '*', '/'].includes(functionName)) {
+			vectorLogger.debug(`Decision: function type 'arithmetic' for node type '${node.type}'`);
 			return 'arithmetic';
 		}
 		if(functionName === 'length') {
+			vectorLogger.debug(`Decision: function type 'length' for node type '${node.type}'`);
 			return 'length';
 		}
 
+		vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
 		return 'unknown';
 	}
 
@@ -180,16 +189,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private detectSelectorKind(selectorNode: RNode<ParentInformation> | typeof EmptyArgument | undefined): SelectorKind {
 		if(selectorNode === undefined || selectorNode === EmptyArgument) {
+			vectorLogger.debug(`Decision: selector kind 'numeric' for node type '${selectorNode?.type ?? 'undefined'}' (empty/undefined)`);
 			return 'numeric';
 		}
 
 		// Get the actual value from the argument wrapper
 		const node = RArgument.is(selectorNode) ? selectorNode.value : selectorNode;
 		if(node === undefined) {
+			vectorLogger.debug(`Decision: selector kind 'numeric' for node type '${selectorNode?.type ?? 'undefined'}' (undefined value)`);
 			return 'numeric';
 		}
 
-		return this.detectSelectorKindFromNode(node);
+		const kind = this.detectSelectorKindFromNode(node);
+		vectorLogger.debug(`Decision: selector kind '${kind}' for node type '${node.type}'`);
+		return kind;
 	}
 
 	/**
@@ -459,6 +472,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onFunctionCall({ call }: { call: DataflowGraphVertexFunctionCall }): void {
 		super.onFunctionCall({ call });
+		vectorLogger.debug(`Handler: onFunctionCall [nodeId=${call.id}]`);
 
 		const node = this.getNormalizedAst(call.id);
 
@@ -503,6 +517,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				break;
 			case 'unknown':
 			default:
+				vectorLogger.warn(`Unknown function type '${funcType}' in onFunctionCall [nodeId=${call.id}]`);
 				operations = undefined;
 				break;
 		}
@@ -519,6 +534,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onReplacementCall({ call, target, source }: { call: DataflowGraphVertexFunctionCall, target?: NodeId, source?: NodeId }): void {
 		super.onReplacementCall({ call, target, source });
+		vectorLogger.debug(`Handler: onReplacementCall [nodeId=${call.id}]`);
 
 		const node = this.getNormalizedAst(target);
 		const sourceNode = source ? this.getNormalizedAst(source) : undefined;
@@ -537,6 +553,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onAccessCall({ call }: { call: DataflowGraphVertexFunctionCall }): void {
 		super.onAccessCall({ call });
+		vectorLogger.debug(`Handler: onAccessCall [nodeId=${call.id}]`);
 
 		const node = this.getNormalizedAst(call.id);
 
@@ -554,6 +571,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onNumberConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RNumber<ParentInformation> }): void {
 		super.onNumberConstant({ vertex, node });
+		vectorLogger.debug(`Handler: onNumberConstant [nodeId=${vertex.id}]`);
 		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
@@ -567,6 +585,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onLogicalConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RLogical<ParentInformation> }): void {
 		super.onLogicalConstant({ vertex, node });
+		vectorLogger.debug(`Handler: onLogicalConstant [nodeId=${vertex.id}]`);
 		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
@@ -580,6 +599,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onStringConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RString<ParentInformation> }): void {
 		super.onStringConstant({ vertex, node });
+		vectorLogger.debug(`Handler: onStringConstant [nodeId=${vertex.id}]`);
 		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
@@ -593,6 +613,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onSymbolConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RSymbol<ParentInformation> }): void {
 		super.onSymbolConstant({ vertex, node });
+		vectorLogger.debug(`Handler: onSymbolConstant [nodeId=${vertex.id}]`);
 		// Handle NA symbol - NA is parsed as RSymbol with content === 'NA'
 		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
 		if(vectorDomain !== undefined) {
@@ -608,6 +629,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param operations - The sequence of operations to apply (undefined if no operations)
 	 */
 	private applyVectorExpression(node: RNode<ParentInformation>, operations: VectorOperations): void {
+		vectorLogger.debug(`Operation: applyVectorExpression [nodeId=${node.info.id}, operations=${operations?.length ?? 0}]`);
 		if(operations === undefined) {
 			return;
 		} else if(this.operations !== undefined) {
@@ -650,6 +672,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				this.updateState(node.info.id, value);
 			}
 		}
+		expensiveTrace(vectorLogger, () => `Operation: applyVectorExpression result = ${formatVectorDomain(value)}`);
 	}
 
 	/**
@@ -732,6 +755,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			case 'update':
 				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
 			default:
+				vectorLogger.warn(`Unknown operation '${operation}' in applyOperation, returning top`);
 				return value.top();
 		}
 	}
@@ -747,16 +771,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		attrs: VectorAttrDomain
 	): VectorDomain<Domain> {
+		vectorLogger.debug(`Operation: setAttr`);
 		if(!attrs.isEmpty()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'attrs not empty', { attrs: attrs.toString() }));
 			return value.top();
 		}
-		return value.create({
+		const result = value.create({
 			length:     value.length,
 			values:     value.values,
 			summary:    value.summary,
 			attributes: attrs,
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: setAttr result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 
 	/**
@@ -770,29 +798,35 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		other: VectorDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug(`Operation: recycle`);
 		const len1 = value.length;
 		const len2 = other.length;
 		if(len1.isBottom() || len2.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'length is bottom'));
 			return value.bottom();
 		}
 		const combinedSummary = value.summary.join(other.summary);
 		if(len1.isTop() || len2.isTop()) {
-			return value.create({
+			const result = value.create({
 				length:     len1.top(),
 				values:     value.values.top(),
 				summary:    combinedSummary,
 				attributes: value.attributes.join(other.attributes),
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: recycle result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		if(!len1.isValue() || !len2.isValue()) {
-			return value.create({
+			const result = value.create({
 				length:     len1.top(),
 				values:     value.values.top(),
 				summary:    combinedSummary,
 				attributes: value.attributes.join(other.attributes),
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: recycle result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		const [l1, u1] = len1.value;
 		const [l2, u2] = len2.value;
@@ -800,23 +834,27 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const newLower = Math.max(l1, l2);
 		const incompatible = u1 !== +Infinity && u2 !== +Infinity && (u1 % u2 !== 0) && (u2 % u1 !== 0);
 		if(incompatible) {
-			return value.create({
+			const result = value.create({
 				length:     len1.top(),
 				values:     value.values.top(),
 				summary:    combinedSummary,
 				attributes: value.attributes.join(other.attributes),
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: recycle result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		const recycledLength = len1.create([newLower, newUpper]);
 		const combinedValues = value.values.join(other.values);
-		return value.create({
+		const result = value.create({
 			length:     recycledLength,
 			values:     combinedValues,
 			summary:    combinedSummary,
 			attributes: value.attributes.join(other.attributes),
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: recycle result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 
 	/**
@@ -830,18 +868,23 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		other: VectorDomain<Domain> | undefined
 	): VectorDomain<Domain> {
+		vectorLogger.debug(`Operation: concatenate`);
 		if(other === undefined) {
+			expensiveTrace(vectorLogger, () => `Operation: concatenate result = ${formatVectorDomain(value)} (other is undefined)`);
 			return value;
 		}
 		const len1 = value.length;
 		const len2 = other.length;
 		if(len1.isBottom() || len2.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'length is bottom'));
 			return value.bottom();
 		}
 		if(len1.isTop() || len2.isTop()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'length is top'));
 			return value.top();
 		}
 		if(!len1.isValue() || !len2.isValue()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'length is not value'));
 			return value.top();
 		}
 		const [l1, u1] = len1.value;
@@ -883,13 +926,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			concatenatedValues = value.values.top();
 		}
 		const combinedSummary = value.summary.join(other.summary);
-		return value.create({
+		const result = value.create({
 			length:     concatenatedLength,
 			values:     concatenatedValues,
 			summary:    combinedSummary,
 			attributes: value.attributes.join(other.attributes),
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: concatenate result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 
 	/**
@@ -907,11 +952,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: NAAwareDomain<Domain>,
 		selectorKind?: SelectorKind
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: select');
 		if(value.isBottom() || selector.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'value or selector is bottom'));
 			return value.bottom();
 		}
 
 		if(selector.isTop()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'selector is top'));
 			return value.top();
 		}
 
@@ -985,6 +1033,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			result = result.join(resultNeg);
 		}
 
+		expensiveTrace(vectorLogger, () => `Operation: select result = ${formatVectorDomain(result)}`);
 		return result;
 	}
 
@@ -1001,6 +1050,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		selector: VectorDomain<PosIntervalDomain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: selectPositive');
 		const adjustedSelector = adjustForZeros(selector);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		if(adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
@@ -1029,13 +1079,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
 		const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
 		const resultValues = value.values.create(resultKnownPositions);
-		return value.create({
+		const result = value.create({
 			length:     adjustedSelector.length,
 			values:     resultValues,
 			summary:    resultSummary,
 			attributes: value.attributes,
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: selectPositive result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 
 	/**
@@ -1051,16 +1103,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		selector: VectorDomain<PosIntervalDomain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: selectNegative');
 		if(value.isBottom() || selector.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'value or selector is bottom'));
 			return value.bottom();
 		}
 		let sourceUpper: number;
 		if(value.length.isValue()) {
 			sourceUpper = value.length.value[1];
 			if(sourceUpper === +Infinity) {
+				expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'source length is infinite'));
 				return value.top();
 			}
 		} else {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'source length is not value'));
 			return value.top();
 		}
 		const _adjustedSelector = adjustForZeros(selector);
@@ -1108,13 +1164,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					resultKnownPositions.push(accessed);
 				}
 			}
-			return value.create({
+			const result = value.create({
 				length:     resultLength,
 				values:     value.values.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: selectNegative result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		const resultLength = value.length.create([newUpper, newUpper]);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
@@ -1124,13 +1182,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				resultKnownPositions.push(accessed);
 			}
 		}
-		return value.create({
+		const result = value.create({
 			length:     resultLength,
 			values:     value.values.create(resultKnownPositions),
 			summary:    value.summary.bottom(),
 			attributes: value.attributes,
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: selectNegative result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 
 	/**
@@ -1146,7 +1206,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		selector: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: selectLogical');
 		if(value.isBottom() || selector.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'value or selector is bottom'));
 			return value.bottom();
 		}
 		let sourceLen = 0;
@@ -1158,22 +1220,26 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			selectorLen = selector.length.value[1];
 		}
 		if(selectorLen === 0) {
-			return value.create({
+			const result = value.create({
 				length:     value.length.create([0, 0]),
 				values:     value.values.create([]),
 				summary:    value.summary.bottom(),
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: selectLogical result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		if(sourceLen === +Infinity || selectorLen === +Infinity) {
-			return value.create({
+			const result = value.create({
 				length:     value.length.create([0, +Infinity]),
 				values:     value.values.top(),
 				summary:    squash(value),
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: selectLogical result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		const maxLen = Math.max(sourceLen, selectorLen);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
@@ -1199,13 +1265,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 		}
 		const isInfinite = selector.length.isValue() && selector.length.value[1] === +Infinity;
-		return value.create({
+		const result = value.create({
 			length:     value.length.create([0, resultKnownPositions.length]),
 			values:     value.values.create(resultKnownPositions),
 			summary:    isInfinite ? squash(value) : value.summary.bottom(),
 			attributes: value.attributes,
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: selectLogical result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 
 	/**
@@ -1225,7 +1293,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: NAAwareDomain<Domain>,
 		selectorKind: SelectorKind
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: update');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'value, selector, or values is bottom'));
 			return value.bottom();
 		}
 
@@ -1300,6 +1370,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			result = result.join(this.applyUpdateNegative(value, negSelector, values, naValue));
 		}
 
+		expensiveTrace(vectorLogger, () => `Operation: update result = ${formatVectorDomain(result)}`);
 		return result;
 	}
 
@@ -1318,17 +1389,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: updatePositive');
 		const adjustedSelector = adjustForZeros(selector);
 		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
 		if(hasNonEnumerable) {
 			const vAll = squash(value).join(squash(values));
-			return value.create({
+			const result = value.create({
 				length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
 				values:     value.values.create([]),
 				summary:    vAll,
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: updatePositive result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		let sourceLower = 0, sourceUpper = 0;
 		if(value.length.isValue()) {
@@ -1362,13 +1436,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				}
 			}
 			const resultSummary = value.summary.join(squash(values));
-			return value.create({
+			const result = value.create({
 				length:     value.length.create([sourceLower, +Infinity]),
 				values:     value.values.create(resultKnownPositions),
 				summary:    resultSummary,
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: updatePositive result = ${formatVectorDomain(result)}`);
+			return result;
 		} else {
 			let uR = 0;
 			if(adjustedSelector.values.isValue()) {
@@ -1388,13 +1464,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 			const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
 			const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
-			return value.create({
+			const result = value.create({
 				length:     value.length.create([sourceLower, uR]),
 				values:     value.values.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: updatePositive result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 	}
 
@@ -1413,16 +1491,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: updateNegative');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'value, selector, or values is bottom'));
 			return value.bottom();
 		}
 		let sourceUpper = 0;
 		if(value.length.isValue()) {
 			sourceUpper = value.length.value[1];
 			if(sourceUpper === +Infinity) {
+				expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'source length is infinite'));
 				return value.top();
 			}
 		} else {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'source length is not value'));
 			return value.top();
 		}
 		const adjustedSelector = adjustForZeros(selector);
@@ -1477,16 +1559,19 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				resultKnownPositions.push(val);
 			}
 			const resultSummary = value.summary.join(v);
-			return value.create({
+			const result = value.create({
 				length:     value.length,
 				values:     value.values.create(resultKnownPositions),
 				summary:    resultSummary,
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: updateNegative result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 		const isInfinite = adjustedSelector.length.isValue() && adjustedSelector.length.value[1] === +Infinity;
 		if(isInfinite) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'selector length is infinite'));
 			return value.top();
 		} else {
 			let selectorUpper = 0;
@@ -1518,13 +1603,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					resultKnownPositions[idx] = cyclicValues[valueIdx];
 				}
 			}
-			return value.create({
+			const result = value.create({
 				length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, uR]),
 				values:     value.values.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
 				attributes: value.attributes,
 				type:       value.type
 			});
+			expensiveTrace(vectorLogger, () => `Operation: updateNegative result = ${formatVectorDomain(result)}`);
+			return result;
 		}
 	}
 
@@ -1544,7 +1631,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: updateLogical');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
+			expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'value, selector, or values is bottom'));
 			return value.bottom();
 		}
 		let sourceLower = 0, sourceUpper = 0;
@@ -1588,12 +1677,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const resultUpper = isInfinite ? +Infinity : Math.max(sourceUpper, selectorUpper);
 		const resultSummary = isInfinite ? squash(values) : value.summary.bottom();
-		return value.create({
+		const result = value.create({
 			length:     value.length.create([sourceLower, resultUpper]),
 			values:     value.values.create(resultKnownPositions),
 			summary:    resultSummary,
 			attributes: value.attributes,
 			type:       value.type
 		});
+		expensiveTrace(vectorLogger, () => `Operation: updateLogical result = ${formatVectorDomain(result)}`);
+		return result;
 	}
 }
