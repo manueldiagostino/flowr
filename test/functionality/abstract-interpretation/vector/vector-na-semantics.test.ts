@@ -1,10 +1,8 @@
 import { describe, test, assert } from 'vitest';
-import type { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import type { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { withShell } from '../../_helper/shell';
-import type { RShell } from '../../../../src/r-bridge/shell';
-import { getVectorForCriterion, assertLengthOrTop } from '../_helper/vector-inference-helpers';
+import { getVectorForCriterion } from '../_helper/vector-inference-helpers';
 import { naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA } from '../_helper/na-aware-helpers';
 import type { ValueToDomainConverter } from '../../../../src/abstract-interpretation/vector/resolve-vector-args';
 

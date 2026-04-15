@@ -1,5 +1,4 @@
 import { assert, test, describe } from 'vitest';
-import { VectorInferenceVisitor } from '../../../../src/abstract-interpretation/vector/vector-inference';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
@@ -7,7 +6,6 @@ import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpreta
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { withShell } from '../../_helper/shell';
-import type { RShell } from '../../../../src/r-bridge/shell';
 import { intervalFactory } from '../_helper/interval-factory';
 import {
 	getVectorForCriterion,
@@ -414,7 +412,7 @@ z <- x + y`;
 		});
 
 		test('caching works - second query returns cached value', async() => {
-			const code = `x <- c(10, 20, 30)`;
+			const code = 'x <- c(10, 20, 30)';
 			const result = await runVectorInference(shell, code, intervalFactory, valueToDomain);
 
 			const first = result.getForCriterion('1@x');

@@ -2,7 +2,7 @@ import { assert, test, describe } from 'vitest';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
-import { KnownInitialPositionsDomain, type DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
+import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Bottom, Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';

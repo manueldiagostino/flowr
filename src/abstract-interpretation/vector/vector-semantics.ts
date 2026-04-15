@@ -158,7 +158,7 @@ export function propagate(
 	// Non-zero value
 	if(k > 0) {
 		// Decrement counter and continue, joining with first (per paper L411)
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 		return first.join(propagate(rest, summary, k - 1));
 	}
 
