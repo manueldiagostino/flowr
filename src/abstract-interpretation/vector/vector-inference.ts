@@ -42,7 +42,7 @@ import { RLogical as RLogicalNode } from '../../r-bridge/lang-4.x/ast/model/node
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
 
-type SelectorType = 'positive' | 'negative' | 'logical';
+type SelectorKind = 'logical' | 'numeric';
 
 type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'unknown';
 
@@ -172,68 +172,69 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	// ==================== Selector Type Detection ====================
 
 	/**
-	 * Detects the selector type by analyzing the AST of the selector expression.
+	 * Detects whether a selector is logical or numeric from AST.
+	 * Logical selectors come from: logical literals, comparisons, logical operators.
+	 * Everything else is treated as numeric (including arithmetic expressions).
 	 * @param selectorNode - The selector argument node from the AST
-	 * @returns The selector type: 'positive' (non-negative indices), 'negative' (negative indices), or 'logical' (boolean)
+	 * @returns The selector kind: 'logical' or 'numeric'
 	 */
-	private detectSelectorType(selectorNode: RNode<ParentInformation> | typeof EmptyArgument | undefined): SelectorType {
+	private detectSelectorKind(selectorNode: RNode<ParentInformation> | typeof EmptyArgument | undefined): SelectorKind {
 		if(selectorNode === undefined || selectorNode === EmptyArgument) {
-			return 'positive';
+			return 'numeric';
 		}
 
 		// Get the actual value from the argument wrapper
 		const node = RArgument.is(selectorNode) ? selectorNode.value : selectorNode;
 		if(node === undefined) {
-			return 'positive';
+			return 'numeric';
 		}
 
-		return this.detectSelectorTypeFromNode(node);
+		return this.detectSelectorKindFromNode(node);
 	}
 
 	/**
-	 * Recursively analyzes a node to determine the selector type.
-	 * Checks for logical literals, comparisons, negative numbers, and unary minus.
+	 * Recursively analyzes a node to determine if it produces logical or numeric output.
 	 * @param node - The AST node to analyze
-	 * @returns The selector type based on the node's structure
+	 * @returns The selector kind: 'logical' or 'numeric'
 	 */
-	private detectSelectorTypeFromNode<Info>(node: RNode<Info>): SelectorType {
-		// Logical literals or comparisons indicate logical selector
+	private detectSelectorKindFromNode<Info>(node: RNode<Info>): SelectorKind {
+		// Logical literals indicate logical selector
 		if(RLogicalNode.is(node)) {
 			return 'logical';
 		}
 
-		// Check for comparison operators (indicates logical selector like x[x > 0])
+		// Check for comparison or logical operators (indicates logical selector)
 		if(RBinaryOp.is(node)) {
 			// Comparison operators create logical vectors
 			if(['>', '<', '>=', '<=', '==', '!='].includes(node.operator)) {
 				return 'logical';
 			}
-			// For all other operators (including '-', ':', 'c'), check operands
-			// Note: binary '-' does NOT imply negative selection (e.g., x[x-1] is positive)
-			const lhsType = this.detectSelectorTypeFromNode(node.lhs);
-			const rhsType = this.detectSelectorTypeFromNode(node.rhs);
-			// If any operand is negative or logical, propagate that
-			if(lhsType === 'logical' || rhsType === 'logical') {
+			// Logical operators create logical vectors
+			if(['&', '|', '&&', '||'].includes(node.operator)) {
 				return 'logical';
 			}
-			if(lhsType === 'negative' || rhsType === 'negative') {
-				return 'negative';
-			}
-			return 'positive';
+			// All other binary operators (+, -, *, /, etc.) are numeric
+			return 'numeric';
 		}
 
-		// Check for unary minus (negative numbers like -1, -c(1,2))
-		if(RUnaryOp.is(node) && node.operator === '-') {
-			return 'negative';
+		// Check for unary NOT (logical operator)
+		if(RUnaryOp.is(node) && node.operator === '!') {
+			return 'logical';
 		}
 
-		// Check for negative number literals directly
-		if(RNumberNode.is(node) && typeof node.content.num === 'number' && node.content.num < 0) {
-			return 'negative';
+		// All unary operators (+, -) are numeric
+		if(RUnaryOp.is(node)) {
+			return 'numeric';
 		}
 
-		// Default: assume positive indexing
-		return 'positive';
+		// Numeric literals are numeric selectors
+		if(RNumberNode.is(node)) {
+			return 'numeric';
+		}
+
+		// For symbols and other nodes, we can't determine from AST alone
+		// Conservative assumption: numeric (will be evaluated to abstract value anyway)
+		return 'numeric';
 	}
 
 
@@ -356,14 +357,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selectorArg = args[0];
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 
-			const selectorType = this.detectSelectorType(selectorArg);
+		const selectorKind = this.detectSelectorKind(selectorArg);
 
-			return [{
-				operation: 'select',
-				operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-				selector:  selector !== undefined ? String(selector) : undefined,
-				selectorType
-			}];
+		return [{
+			operation: 'select',
+			operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+			selector:  selector !== undefined ? String(selector) : undefined,
+			selectorKind
+		}];
 		}
 
 		// Two arguments: x[i, j] - matrix/array access (not supported yet)
@@ -391,16 +392,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 			const values = source?.info.id;
 
-			// Detect selector type from AST
-			const selectorType = this.detectSelectorType(selectorArg);
+		// Detect selector kind from AST (logical vs numeric)
+		const selectorKind = this.detectSelectorKind(selectorArg);
 
-			return [{
-				operation: 'update',
-				operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
-				selector:  selector !== undefined ? String(selector) : undefined,
-				values:    values !== undefined ? String(values) : undefined,
-				selectorType
-			}];
+		return [{
+			operation: 'update',
+			operand:   operand !== undefined ? this.getVectorDomainValue(operand) : undefined,
+			selector:  selector !== undefined ? String(selector) : undefined,
+			values:    values !== undefined ? String(values) : undefined,
+			selectorKind
+		}];
 		}
 
 		return [{ operation: 'unknown', operand: undefined }];
@@ -678,15 +679,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return this.applyRecycle(value, args.other as VectorDomain<Domain>);
 			case 'concatenate':
 				return this.applyConcatenate(value, args.other as VectorDomain<Domain> | undefined);
-			case 'select':
-				return this.applySelect(
-					value,
-					args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
-					args.naValue as NAAwareDomain<Domain>,
-					args.selectorType as SelectorType | undefined
-				);
-			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorType as SelectorType);
+		case 'select':
+			return this.applySelect(
+				value,
+				args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
+				args.naValue as NAAwareDomain<Domain>,
+				args.selectorKind as SelectorKind | undefined
+			);
+		case 'update':
+			return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
 			default:
 				return value.top();
 		}
@@ -855,7 +856,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>,
-		selectorType?: SelectorType
+		selectorKind?: SelectorKind
 	): VectorDomain<Domain> {
 		if(value.isBottom() || selector.isBottom()) {
 			return value.bottom();
@@ -865,7 +866,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return value.top();
 		}
 
-		if(selectorType === 'logical') {
+		if(selectorKind === 'logical') {
 			return this.applySelectLogical(value, selector as VectorDomain<Domain>, naValue);
 		}
 
@@ -1167,18 +1168,18 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		selector: VectorDomain<PosIntervalDomain> | VectorDomain<Domain>,
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>,
-		selectorType: SelectorType
+		selectorKind: SelectorKind
 	): VectorDomain<Domain> {
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
 			return value.bottom();
 		}
-		if(selectorType === 'positive') {
-			return this.applyUpdatePositive(value, selector as VectorDomain<PosIntervalDomain>, values, naValue);
+		// Logical selector: use logical update
+		if(selectorKind === 'logical') {
+			return this.applyUpdateLogical(value, selector as VectorDomain<Domain>, values, naValue);
 		}
-		if(selectorType === 'negative') {
-			return this.applyUpdateNegative(value, selector as VectorDomain<PosIntervalDomain>, values, naValue);
-		}
-		return this.applyUpdateLogical(value, selector as VectorDomain<Domain>, values, naValue);
+		// Numeric selector: for now, dispatch to positive update
+		// (Full value-based classification will be implemented in next commit)
+		return this.applyUpdatePositive(value, selector as VectorDomain<PosIntervalDomain>, values, naValue);
 	}
 
 	/**
