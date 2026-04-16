@@ -698,7 +698,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		// Create the NA value representation for this domain
 		// NA is a special abstract value representing missing data
 		// naValue is Domain (e.g., NAAwareDomain<IntervalDomain>), representing the NA element
-		const naValue = this.factory(NA) as unknown as Domain;
+		const naValue = this.factory(NA) as unknown as NAAwareDomain<Domain>;
 
 		for(const { operation, operand, ...args } of operations) {
 			// operand is now VectorDomain<Domain> | undefined
@@ -769,7 +769,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private injectNaValueIfNeeded(
 		operation: string,
 		args: Record<string, unknown>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): Record<string, unknown> {
 		const operationsNeedingNaValue = new Set([
 			'select',
@@ -806,11 +806,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return this.applySelect(
 					value,
 					args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
-					args.naValue as Domain,
+					args.naValue as NAAwareDomain<Domain>,
 					args.selectorKind as SelectorKind | undefined
 				);
 			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as Domain, args.selectorKind as SelectorKind);
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.values as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
 			default:
 				vectorLogger.warn(`Unknown operation '${operation}' in applyOperation, returning top`);
 				return value.top();
@@ -979,7 +979,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				const concatenated = [...values1, ...values2];
 				concatenatedValues = value.values.create(concatenated);
 			} else {
-				const result: Domain[] = [...values1, ...values2];
+				const result: NAAwareDomain<Domain>[] = [...values1, ...values2];
 				for(let len_a = u1 - 1; len_a >= l1; len_a--) {
 					const v2Start = len_a;
 					for(let i = 0; i < values2.length; i++) {
@@ -1024,7 +1024,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private applySelect(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
-		naValue: Domain,
+		naValue: NAAwareDomain<Domain>,
 		selectorKind?: SelectorKind
 	): VectorDomain<Domain> {
 		vectorLogger.debug(`Operation: select [selectorKind=${selectorKind ?? 'numeric'}]`);
@@ -1101,13 +1101,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private applySelectPositive(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<PosIntervalDomain>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectPositive');
 		vectorLogger.debug(`  selector [length=${selector.length.toString()}, values=${selector.values.toString()}]`);
 		const adjustedSelector = adjustForZeros(selector);
 		vectorLogger.debug(`  adjustedSelector [length=${adjustedSelector.length.toString()}, values=${adjustedSelector.values.toString()}]`);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		if(adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
 			const selectorValues = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorValues) {
@@ -1124,16 +1124,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 							resultKnownPositions.push(accessed);
 						}
 					} else {
-						resultKnownPositions.push(squash(value) as unknown as Domain);
+						resultKnownPositions.push(squash(value));
 					}
 				} else {
-					resultKnownPositions.push(squash(value) as unknown as Domain);
+					resultKnownPositions.push(squash(value));
 				}
 			}
 		}
 		const selectorLen = adjustedSelector.length;
 		const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
-		const resultSummary = isInfinite ? squash(value) as unknown as Domain : value.summary.bottom();
+		const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
 		const resultValues = value.values.create(resultKnownPositions);
 		const result = value.create({
 			length:     adjustedSelector.length,
@@ -1156,7 +1156,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private applySelectNegative(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<PosIntervalDomain>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectNegative');
 		if(value.isBottom() || selector.isBottom()) {
@@ -1209,7 +1209,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const newUpper = Math.max(0, sourceUpper - numMustDeleted);
 		if(hasNonEnumerable || mayDeleted.length > 0) {
 			const resultLength = value.length.create([0, newUpper]);
-			const resultKnownPositions: Domain[] = [];
+			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			const numPositions = Math.min(newUpper, sourceUpper);
 			for(let i = 1; i <= numPositions; i++) {
 				if(!mustDeleted.includes(i)) {
@@ -1227,7 +1227,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return result;
 		}
 		const resultLength = value.length.create([newUpper, newUpper]);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 1; i <= sourceUpper; i++) {
 			if(!mustDeleted.includes(i)) {
 				const accessed = accessPosition(value, i - 1, naValue);
@@ -1255,7 +1255,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private applySelectLogical(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<Domain>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectLogical');
 		if(value.isBottom() || selector.isBottom()) {
@@ -1283,26 +1283,26 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const result = value.create({
 				length:     value.length.create([0, +Infinity]),
 				values:     value.values.top(),
-				summary:    squash(value) as unknown as Domain,
+				summary:    squash(value),
 				attributes: value.attributes,
 				type:       value.type
 			});
 			return result;
 		}
 		const maxLen = Math.max(sourceLen, selectorLen);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 0; i < maxLen; i++) {
 			const selectorPos = i % selectorLen;
-			let selectorVal: Domain;
+			let selectorVal: NAAwareDomain<Domain>;
 			if(selector.values.isValue()) {
 				const selectorValues = selector.values.value as readonly NAAwareDomain<Domain>[];
 				if(selectorPos < selectorValues.length) {
 					selectorVal = selectorValues[selectorPos];
 				} else {
-					selectorVal = selector.summary.inner;
+					selectorVal = selector.summary;
 				}
 			} else {
-				selectorVal = selector.summary.inner;
+				selectorVal = selector.summary;
 			}
 			const sourceVal = accessPosition(value, i, naValue);
 			if(selectorVal.isValue()) {
@@ -1343,7 +1343,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
 		values: VectorDomain<Domain>,
-		naValue: Domain,
+		naValue: NAAwareDomain<Domain>,
 		selectorKind: SelectorKind
 	): VectorDomain<Domain> {
 		vectorLogger.debug(`Operation: update [selectorKind=${selectorKind}]`);
@@ -1418,7 +1418,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<PosIntervalDomain>,
 		values: VectorDomain<Domain>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updatePositive');
 		const adjustedSelector = adjustForZeros(selector);
@@ -1450,7 +1450,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : 0;
 			const uR = Math.max(selectorUpper === +Infinity ? 0 : selectorUpper, summaryLower);
 			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
-			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue.inner);
+			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as NAAwareDomain<Domain>[], sourceLower, sourceUpper, uR, naValue);
 			let valuesUpper = 0;
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
@@ -1462,7 +1462,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				const squashValuesInner = squashValues.inner;
 				const lS2 = summaryInner.value[0];
 				for(let i = Math.max(0, lS2 - 1); i < resultKnownPositions.length; i++) {
-					resultKnownPositions[i] = resultKnownPositions[i].join(squashValuesInner ?? naValue.top().inner);
+					resultKnownPositions[i] = resultKnownPositions[i].join(squashValuesInner !== undefined ? squashValues : naValue.top());
 				}
 			}
 			const resultSummary = value.summary.join(squash(values));
@@ -1486,7 +1486,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 			uR = Math.max(uR, sourceUpper);
 			const selectorKnownPositions = adjustedSelector.values.isValue() ? (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
-			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as Domain[], sourceLower, sourceUpper, uR, naValue.inner);
+			const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as NAAwareDomain<Domain>[], sourceLower, sourceUpper, uR, naValue);
 			let valuesUpper = 0;
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
@@ -1517,7 +1517,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<PosIntervalDomain>,
 		values: VectorDomain<Domain>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updateNegative');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
@@ -1567,20 +1567,19 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
 		const v = squash(values);
-		const vInner = v.inner;
 		if(hasNonEnumerable) {
 			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
-			const resultKnownPositions: Domain[] = [];
+			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			for(let i = 1; i <= sourceUpper; i++) {
 				const idx = i - 1;
-				let val: Domain;
+				let val: NAAwareDomain<Domain>;
 				if(idx < sourceKnownPositions.length) {
 					val = sourceKnownPositions[idx];
 				} else {
-					val = value.summary.inner;
+					val = value.summary;
 				}
 				if(!mustNotUpdated.includes(i)) {
-					val = val.join(vInner ?? naValue.top().inner);
+					val = val.join(v);
 				}
 				resultKnownPositions.push(val);
 			}
@@ -1609,14 +1608,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 			const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
 			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
-			const resultKnownPositions: Domain[] = [];
+			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			for(let i = 0; i < uR; i++) {
 				if(i < sourceKnownPositions.length) {
 					resultKnownPositions.push(sourceKnownPositions[i]);
 				} else if(i < sourceUpper) {
-					resultKnownPositions.push(value.summary.inner);
+					resultKnownPositions.push(value.summary);
 				} else {
-					resultKnownPositions.push(naValue.inner);
+					resultKnownPositions.push(naValue);
 				}
 			}
 			const updatedPositions = new Set([...mustNotUpdated, ...mayNotUpdated]);
@@ -1652,7 +1651,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<Domain>,
 		values: VectorDomain<Domain>,
-		naValue: Domain
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updateLogical');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
@@ -1671,25 +1670,25 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
 		const selectorKnownPositions = selector.values.isValue() ? (selector.values.value as readonly NAAwareDomain<Domain>[]) : [];
 		const maxLen = Math.max(sourceKnownPositions.length, selectorKnownPositions.length);
-		const resultKnownPositions: Domain[] = [];
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 0; i < maxLen; i++) {
 			if(i < sourceKnownPositions.length) {
 				resultKnownPositions.push(sourceKnownPositions[i]);
 			} else if(i < sourceUpper) {
-				resultKnownPositions.push(value.summary.inner);
+				resultKnownPositions.push(value.summary);
 			} else {
-				resultKnownPositions.push(naValue.inner);
+				resultKnownPositions.push(naValue);
 			}
 		}
 		const cyclicValues = generateCyclicKnownPositions(values, selectorUpper);
 		for(let i = 0; i < maxLen && i < cyclicValues.length; i++) {
-			let selectorVal: Domain;
+			let selectorVal: NAAwareDomain<Domain>;
 			if(i < selectorKnownPositions.length) {
 				selectorVal = selectorKnownPositions[i];
 			} else if(i < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {
-				selectorVal = selector.summary.inner;
+				selectorVal = selector.summary;
 			} else {
-				selectorVal = selector.summary.top().inner;
+				selectorVal = selector.summary.top();
 			}
 			if(selectorVal.isValue()) {
 				resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];

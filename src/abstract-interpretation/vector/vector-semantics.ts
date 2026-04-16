@@ -296,14 +296,14 @@ export function adjustForZeros(
  * @returns Initialized known positions array
  */
 export function initKnownPositions<Domain extends AnyAbstractDomain>(
-	knownPositions: readonly Domain[],
+	knownPositions: readonly NAAwareDomain<Domain>[],
 	l: number,
 	u: number,
 	uR: number,
-	naValue: Domain
-): Domain[] {
+	naValue: NAAwareDomain<Domain>
+): NAAwareDomain<Domain>[] {
 	vectorLogger.debug(`Semantic: initKnownPositions [l=${l}, u=${u}, uR=${uR}]`);
-	const result: Domain[] = [];
+	const result: NAAwareDomain<Domain>[] = [];
 
 	// First l elements: keep as-is (positions 1 to l)
 	for(let i = 0; i < Math.min(l, knownPositions.length); i++) {
@@ -338,10 +338,10 @@ export function initKnownPositions<Domain extends AnyAbstractDomain>(
  * @returns Updated known positions array
  */
 export function updateKnownPositions<Domain extends AnyAbstractDomain>(
-	knownPositions: Domain[],
+	knownPositions: NAAwareDomain<Domain>[],
 	selectorPositions: readonly PosIntervalDomain[],
-	values: readonly Domain[]
-): Domain[] {
+	values: readonly NAAwareDomain<Domain>[]
+): NAAwareDomain<Domain>[] {
 	vectorLogger.debug(`Semantic: updateKnownPositions [selectorPositions=${selectorPositions.length}]`);
 	if(selectorPositions.length === 0 || values.length === 0) {
 		expensiveTrace(vectorLogger, () => 'Semantic: updateKnownPositions early return');
@@ -415,9 +415,9 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	targetLength: number
-): Domain[] {
+): NAAwareDomain<Domain>[] {
 	vectorLogger.debug(`Semantic: generateCyclicKnownPositions [targetLength=${targetLength}]`);
-	const result: Domain[] = [];
+	const result: NAAwareDomain<Domain>[] = [];
 
 	if(vector.isBottom()) {
 		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
@@ -425,7 +425,7 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 	}
 
 	const knownPositions = vector.values.isValue()
-		? (vector.values.value as readonly Domain[])
+		? (vector.values.value as readonly NAAwareDomain<Domain>[])
 		: [];
 
 	for(let i = 0; i < targetLength; i++) {
@@ -436,7 +436,7 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 			if(knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
 				result.push(knownPositions[cyclicIdx]);
 			} else {
-				result.push(vector.summary.inner);
+				result.push(vector.summary);
 			}
 		}
 	}
@@ -451,27 +451,13 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
  * Note: Uses 0-based indexing internally.
  */
 /**
- * Squashes a vector into a single Domain value (for use in accessPosition).
- * Unlike `sweep` which returns NAAwareDomain<Domain>, this returns Domain directly.
- */
-function squashFromVector<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>
-): Domain {
-	let result = value.summary;
-	for(const elem of value.values.toArray()) {
-		result = result.join(elem);
-	}
-	return result;
-}
-
-/**
  *
  */
 export function accessPosition<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: Domain
-): Domain {
+	naValue: NAAwareDomain<Domain>
+): NAAwareDomain<Domain> {
 	vectorLogger.debug(`Semantic: accessPosition [pos=${pos}]`);
 	if(vector.isBottom()) {
 		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
@@ -485,7 +471,7 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 	const lengthUpperBound = getLengthUpperBound(vector.length);
 
 	if(lengthUpperBound === undefined) {
-		return squashFromVector(vector);
+		return squash(vector);
 	}
 
 	if(lengthUpperBound === +Infinity) {
@@ -507,10 +493,10 @@ function getLengthUpperBound(length: PosIntervalDomain): number | undefined {
 function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: Domain
-): Domain {
+	naValue: NAAwareDomain<Domain>
+): NAAwareDomain<Domain> {
 	if(vector.values.isValue()) {
-		const values = vector.values.value as readonly Domain[];
+		const values = vector.values.value as readonly NAAwareDomain<Domain>[];
 		if(pos < values.length) {
 			return values[pos];
 		}
@@ -521,16 +507,16 @@ function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: Domain,
+	naValue: NAAwareDomain<Domain>,
 	lengthUpperBound: number
-): Domain {
+): NAAwareDomain<Domain> {
 	const oneIndexedPos = pos + 1;
 	if(oneIndexedPos < 1 || oneIndexedPos > lengthUpperBound) {
 		return naValue;
 	}
 
 	if(vector.values.isValue()) {
-		const values = vector.values.value as readonly Domain[];
+		const values = vector.values.value as readonly NAAwareDomain<Domain>[];
 		if(pos < values.length) {
 			return values[pos];
 		}
