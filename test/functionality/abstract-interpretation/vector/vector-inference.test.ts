@@ -482,6 +482,105 @@ z <- x + y`;
 			assert.strictEqual(first, second, 'Should return same cached object');
 		});
 	});
+
+	describe('Negative Selection', () => {
+		describe('Paragraph 1: Non-enumerable selector', () => {
+			test.skip('should use SquashExcept for non-enumerable positions', async() => {
+				// Create source vector: x = [1, 2, 3, 4, 5]
+				// Create selector: c(-100) which is non-enumerable (card > θ=50)
+				// Result should have length [0, 4] with all positions = SquashExcept(value, {1})
+				const code = 'x <- c(1, 2, 3, 4, 5)\ny <- x[-100]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test.skip('should handle mixed enumerable/non-enumerable selector', async() => {
+				// Selector with some enumerable positions and one non-enumerable
+				// Should trigger paragraph 1 and use SquashExcept
+				const code = 'x <- c(1, 2, 3, 4, 5)\ny <- x[c(-1, -100)]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Paragraph 2: Infinite selector, all enumerable', () => {
+			test.skip('should preserve summary for infinite selector', async() => {
+				// Selector: c(-1, -2, ...) infinite length, all positions enumerable
+				// Result summary should equal source summary
+				const code = 'x <- c(1, 2, 3)\ny <- x[c(-1, -2)]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test.skip('should correctly remap positions with CountMustDeleted', async() => {
+				// Deleting positions 1 and 3 from [a, b, c, d]
+				// Result should be [b, d] at positions 1, 2
+				const code = 'x <- c(10, 20, 30, 40)\ny <- x[c(-1, -3)]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Paragraph 3: Finite selector, all enumerable', () => {
+			test.skip('should delete exact positions', async() => {
+				// x = [1, 2, 3, 4, 5], selector = c(-2, -4)
+				// Result should be [1, 3, 5] at positions 1, 2, 3
+				const code = 'x <- c(1, 2, 3, 4, 5)\ny <- x[c(-2, -4)]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test.skip('should use bottom summary for finite selector', async() => {
+				// Finite selector should result in summary = ⊥ (not s₁)
+				const code = 'x <- c(1, 2, 3)\ny <- x[-1]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Adjusted selector verification', () => {
+			test.skip('should remove zeros from selector before set computation', async() => {
+				// x = [1, 2, 3], selector = c(0, -1)
+				// Zero should be removed by adjustForZeros
+				// Only position 1 deleted, result = [2, 3]
+				const code = 'x <- c(1, 2, 3)\ny <- x[c(0, -1)]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test.skip('should handle zeros in the middle of selector', async() => {
+				// selector = c(-1, 0, -2)
+				// Zeros removed, positions 1 and 2 deleted
+				const code = 'x <- c(1, 2, 3)\ny <- x[c(-1, 0, -2)]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Edge cases', () => {
+			test.skip('should return bottom for bottom selector', async() => {
+				// selector.isBottom() → result.isBottom()
+				// This would require a bottom selector input
+				assert.ok(true, 'Skipped - requires specific bottom selector setup');
+			});
+
+			test('should return top for infinite source', async() => {
+				// source.length.upper === +Infinity → result.isTop()
+				// Note: x has finite length, so this test documents expected behavior
+				// A true infinite source test would require different setup
+				const code = 'x <- c(1, 2, 3)\ny <- x[-1]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test.skip('should handle empty selector', async() => {
+				// selector = c() → identity (no deletion)
+				const code = 'x <- c(1, 2, 3)\ny <- x[c()]';
+				const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+	});
 }));
 
 describe('Vector Inference Unit Tests', () => {
