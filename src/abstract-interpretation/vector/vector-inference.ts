@@ -1104,7 +1104,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: Domain
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectPositive');
+		vectorLogger.debug(`  selector [length=${selector.length.toString()}, values=${selector.values.toString()}]`);
 		const adjustedSelector = adjustForZeros(selector);
+		vectorLogger.debug(`  adjustedSelector [length=${adjustedSelector.length.toString()}, values=${adjustedSelector.values.toString()}]`);
 		const resultKnownPositions: Domain[] = [];
 		if(adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
 			const selectorValues = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];

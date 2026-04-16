@@ -11,6 +11,7 @@ import { intervalFactory } from '../_helper/interval-factory';
 import {
 	getVectorForCriterion,
 	assertLength,
+	assertLengthRange,
 	assertLengthOrTop,
 	assertSelection,
 	runVectorInference
@@ -149,6 +150,65 @@ y <- x[3]`;
 			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
 			assertSelection(vector, [1, 1], [[77, 77]]);
 		});
+
+		test('positive selection with 0 in selector x[c(0, 1, 2)] - 0 is ignored, returns 2 elements', async() => {
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(0, 1, 2)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			assertLength(vector, [2, 2]);
+		});
+
+		test('positive selection with NA in selector x[c(1, NA, 3)] - NA produces NA value at position 2', async() => {
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(1, NA, 3)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			assertLength(vector, [3, 3]);
+			assert.ok(vector !== undefined, 'Expected vector to be defined');
+			if(vector !== undefined) {
+				assert.ok(vector.values.isValue(), 'Expected concrete values');
+				if(vector.values.isValue()) {
+					const values = vector.values.value;
+					assert.strictEqual(values.length, 3, 'Expected 3 values');
+					assert.ok(values[0].isValue(), 'Position 1 should have concrete value');
+					assert.ok(values[2].isValue(), 'Position 3 should have concrete value');
+				}
+			}
+		});
+
+		test('positive selection with only 0 x[c(0, 0)] returns empty vector', async() => {
+			const code = `x <- c(10, 20, 30)
+y <- x[c(0, 0)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			assertLength(vector, [0, 0]);
+		});
+
+		test('positive selection with 0 at different positions x[c(1, 0, 3, 0, 5)] - 0s ignored, returns 3 elements', async() => {
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(1, 0, 3, 0, 5)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			assertLength(vector, [3, 3]);
+		});
+
+		test('multi-position selector with interval positions and zero - AdjustForZeros propagates interval', async() => {
+			const code = 'x <- c(10, 20, 30, 40, 50, 60, 70, 80); if(runif(1) > 0.5) { a <- 1 } else { a <- 2 }; if(runif(1) > 0.5) { b <- 0 } else { b <- 3 }; if(runif(1) > 0.5) { c <- 2 } else { c <- 4 }; sel <- c(a, b, c); y <- x[sel]';
+			const result = await runVectorInference(shell, code, intervalFactory, valueToDomain);
+			const selVector = result.getForCriterion('1@sel');
+			const yVector = result.getForCriterion('1@y');
+			assert.ok(selVector !== undefined, 'Selector vector should be defined');
+			assert.ok(yVector !== undefined, 'Result vector y should be defined');
+			if(selVector !== undefined) {
+				assertLength(selVector, [3, 3]);
+				assert.ok(selVector.values.isValue(), 'Selector should have concrete values');
+				if(selVector.values.isValue()) {
+					const positions = selVector.values.value;
+					assert.strictEqual(positions.length, 3, 'Should have 3 positions');
+				}
+			}
+			if(yVector !== undefined) {
+				assertLengthRange(yVector, 2, 3);
+			}
+		});
+
 	});
 
 	describe('Vector Update', () => {

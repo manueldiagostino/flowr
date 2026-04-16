@@ -273,10 +273,11 @@ export function adjustForZeros(
 	const newValues = values.create(newKnownPositionValues);
 
 	const result = vector.create({
-		length:  newLength,
-		values:  newValues,
-		summary: summary,
-		attributes
+		length:     newLength,
+		values:     newValues,
+		summary:    summary,
+		attributes: attributes,
+		type:       vector.type
 	});
 	expensiveTrace(vectorLogger, () => `Semantic: adjustForZeros result = ${formatVectorDomain(result)}`);
 	return result;
