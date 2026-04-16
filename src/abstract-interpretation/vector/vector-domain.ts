@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 /* eslint-disable @typescript-eslint/unified-signatures */
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
@@ -149,7 +150,7 @@ export function classifyNAAwarePosition(
 	}
 
 	// After isBottom() and isTop() checks, interval must be a value (concrete interval)
-	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+
 	const [lower, upper] = interval.value as readonly [number, number];
 
 	// Case 2 + 4 + 5: all values ≥ 0 → positive (includes zero)
@@ -256,7 +257,7 @@ export function splitNAAwarePosition(
 		return { positive, negative };
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+
 	const [lower, upper] = interval.value as readonly [number, number];
 
 	const positiveParts: NAAwareDomain<IntervalDomain>[] = [];

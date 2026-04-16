@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
 import type { PosIntervalDomain } from '../domains/positive-interval-domain';

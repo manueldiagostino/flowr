@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 import type {
 	AbstractDomainTop,
 	AnyAbstractDomain,

@@ -37,6 +37,8 @@ import { RBinaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
 import { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import { RNumber as RNumberNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import { RLogical as RLogicalNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
+import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
+import { guard } from '../../util/assert';
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
 
@@ -69,6 +71,7 @@ interface VectorInferenceConfiguration extends AbsintVisitorConfiguration {
 export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends AbstractInterpretationVisitor<VectorDomain<Domain>, VectorInferenceConfiguration> {
 	private readonly operations?:    Map<NodeId, VectorOperations>;
 	private readonly factory:        import('./vector-domain').DomainFactory<Domain>;
+	private readonly naFactory:      import('./vector-domain').DomainFactory<NAAwareDomain<Domain>>;
 	private readonly valueConverter: ValueToDomainConverter<Domain>;
 
 	constructor(
@@ -78,6 +81,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	) {
 		super(config, VectorDomain.top(factory));
 		this.factory = factory;
+		this.naFactory = NAAwareDomain.createSmartFactory(factory);
 		this.valueConverter = valueConverter;
 
 		if(trackOperations) {
@@ -695,10 +699,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		let value: VectorDomain<Domain> = VectorDomain.bottom(this.factory);
 
-		// Create the NA value representation for this domain
-		// NA is a special abstract value representing missing data
-		// naValue is Domain (e.g., NAAwareDomain<IntervalDomain>), representing the NA element
-		const naValue = this.factory(NA) as unknown as NAAwareDomain<Domain>;
+		const naValue = this.naFactory(NA);
 
 		for(const { operation, operand, ...args } of operations) {
 			// operand is now VectorDomain<Domain> | undefined
@@ -1036,8 +1037,18 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		if(selector.isTop()) {
-			vectorLogger.debug('Operation: select returning top (selector is top)');
-			return value.top();
+			vectorLogger.debug('Operation: select returning squashed (selector is top)');
+			const squashedValue = squash(value);
+			const smartFactory = NAAwareDomain.createSmartFactory(value.factory);
+			const valueSquashed = VectorDomain.create(
+				value.factory,
+				PosIntervalDomain.top(),
+				KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(smartFactory),
+				squashedValue,
+				value.attributes,
+				value.type
+			);
+			return valueSquashed;
 		}
 
 		if(selectorKind === 'logical') {
@@ -1110,29 +1121,44 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		if(adjustedSelector.values.isValue() && Array.isArray(adjustedSelector.values.value)) {
 			const selectorValues = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
+
+			let idxNumber = 0;
 			for(const idx of selectorValues) {
-				if(idx.isBottom()) {
-					continue;
-				}
+				guard(!idx.isBottom(), 'applySelectPositive: selector position should not be bottom');
+
 				const innerInterval = idx.inner;
 				if(isEnumerable(innerInterval)) {
 					if(innerInterval.isValue()) {
-						const [l] = innerInterval.value;
-						const pos = l === 0 ? 1 : l;
-						if(pos > 0) {
-							const accessed = accessPosition(value, pos - 1, naValue);
-							resultKnownPositions.push(accessed);
+						const [l, u] = innerInterval.value;
+						vectorLogger.trace(`Subcase: selectPositive - enumerable interval [${l}, ${u}]`);
+						let joinedAccessed: NAAwareDomain<Domain> | undefined;
+						for(let pos = l; pos <= u; pos++) {
+							const adjustedPos = pos === 0 ? 1 : pos;
+							if(adjustedPos > 0) {
+								const accessed = accessPosition(value, adjustedPos - 1, naValue);
+								joinedAccessed = joinedAccessed === undefined ? accessed : joinedAccessed.join(accessed);
+							}
 						}
+						guard(joinedAccessed !== undefined, `applySelectPositive: joinedAccessed undefined for position ${idxNumber}`);
+
+						resultKnownPositions.push(joinedAccessed);
 					} else {
+						vectorLogger.trace('Subcase: selectPositive - enumerable selector with non-value interval, using squash');
 						resultKnownPositions.push(squash(value));
 					}
 				} else {
+					vectorLogger.trace('Subcase: selectPositive - non-enumerable selector, using squash');
 					resultKnownPositions.push(squash(value));
 				}
+
+				idxNumber += 1;
 			}
 		}
 		const selectorLen = adjustedSelector.length;
 		const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
+		if(isInfinite) {
+			vectorLogger.trace('Subcase: selectPositive - infinite selector, valorizing summary');
+		}
 		const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
 		const resultValues = value.values.create(resultKnownPositions);
 		const result = value.create({
@@ -1160,26 +1186,28 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectNegative');
 		if(value.isBottom() || selector.isBottom()) {
+			vectorLogger.trace('Subcase: selectNegative - bottom input');
 			return value.bottom();
 		}
 		let sourceUpper: number;
 		if(value.length.isValue()) {
 			sourceUpper = value.length.value[1];
 			if(sourceUpper === +Infinity) {
+				vectorLogger.trace('Subcase: selectNegative - infinite source, returning top');
 				return value.top();
 			}
 		} else {
+			vectorLogger.trace('Subcase: selectNegative - non-value source length, returning top');
 			return value.top();
 		}
-		const _adjustedSelector = adjustForZeros(selector);
+		const adjustedSelector = adjustForZeros(selector);
 		const mustDeleted: number[] = [];
 		const mayDeleted: number[] = [];
-		if(selector.values.isValue()) {
+		if(adjustedSelector.isValue()) {
 			const selectorValues = selector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorValues) {
-				if(idx.isBottom()) {
-					continue;
-				}
+				guard(!idx.isBottom(), 'applySelectNegative: selector position should not be bottom');
+
 				const innerInterval = idx.inner;
 				if(innerInterval.isValue()) {
 					const [l, u] = innerInterval.value;
@@ -1208,6 +1236,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const numMustDeleted = mustDeleted.length;
 		const newUpper = Math.max(0, sourceUpper - numMustDeleted);
 		if(hasNonEnumerable || mayDeleted.length > 0) {
+			vectorLogger.trace(`Subcase: selectNegative - uncertain deletion [hasNonEnumerable=${hasNonEnumerable}, mayDeleted=${mayDeleted.length}]`);
 			const resultLength = value.length.create([0, newUpper]);
 			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			const numPositions = Math.min(newUpper, sourceUpper);
@@ -1226,6 +1255,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			});
 			return result;
 		}
+		vectorLogger.trace('Subcase: selectNegative - exact must-delete positions');
 		const resultLength = value.length.create([newUpper, newUpper]);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 1; i <= sourceUpper; i++) {
@@ -1259,6 +1289,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectLogical');
 		if(value.isBottom() || selector.isBottom()) {
+			vectorLogger.trace('Subcase: selectLogical - bottom input');
 			return value.bottom();
 		}
 		let sourceLen = 0;
@@ -1270,6 +1301,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			selectorLen = selector.length.value[1];
 		}
 		if(selectorLen === 0) {
+			vectorLogger.trace('Subcase: selectLogical - empty selector');
 			const result = value.create({
 				length:     value.length.create([0, 0]),
 				values:     value.values.create([]),
@@ -1280,6 +1312,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return result;
 		}
 		if(sourceLen === +Infinity || selectorLen === +Infinity) {
+			vectorLogger.trace('Subcase: selectLogical - infinite source or selector');
 			const result = value.create({
 				length:     value.length.create([0, +Infinity]),
 				values:     value.values.top(),
@@ -1289,6 +1322,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			});
 			return result;
 		}
+		vectorLogger.trace('Subcase: selectLogical - finite source and selector with recycling');
 		const maxLen = Math.max(sourceLen, selectorLen);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 0; i < maxLen; i++) {
@@ -1424,6 +1458,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const adjustedSelector = adjustForZeros(selector);
 		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
 		if(hasNonEnumerable) {
+			vectorLogger.trace('Subcase: updatePositive - non-enumerable selector, using squash');
 			const vAll = squash(value).join(squash(values));
 			const result = value.create({
 				length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
@@ -1445,6 +1480,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const isInfinite = selectorUpper === +Infinity;
 		if(isInfinite) {
+			vectorLogger.trace('Subcase: updatePositive - infinite selector');
 			const summaryInner = adjustedSelector.summary.inner;
 			const selectorSummaryEnumerable = summaryInner !== undefined ? isEnumerable(summaryInner) : false;
 			const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : 0;
@@ -1469,14 +1505,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const result = value.create({
 				length:     value.length.create([sourceLower, +Infinity]),
 				values:     value.values.create(resultKnownPositions),
-				summary:    resultSummary,
-				attributes: value.attributes,
-				type:       value.type
-			});
-			return result;
-		} else {
-			let uR = 0;
-			if(adjustedSelector.values.isValue()) {
+			summary:    resultSummary,
+			attributes: value.attributes,
+			type:       value.type
+		});
+		return result;
+	} else {
+		vectorLogger.trace('Subcase: updatePositive - finite selector');
+		let uR = 0;
+		if(adjustedSelector.values.isValue()) {
 				const selectorKnownPositions = adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[];
 				for(const idx of selectorKnownPositions) {
 					if(idx.inner.isValue()) {
@@ -1521,15 +1558,18 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updateNegative');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
+			vectorLogger.trace('Subcase: updateNegative - bottom input');
 			return value.bottom();
 		}
 		let sourceUpper = 0;
 		if(value.length.isValue()) {
 			sourceUpper = value.length.value[1];
 			if(sourceUpper === +Infinity) {
+				vectorLogger.trace('Subcase: updateNegative - infinite source, returning top');
 				return value.top();
 			}
 		} else {
+			vectorLogger.trace('Subcase: updateNegative - non-value source length, returning top');
 			return value.top();
 		}
 		const adjustedSelector = adjustForZeros(selector);
@@ -1568,6 +1608,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const hasNonEnumerable = adjustedSelector.values.isValue() && (adjustedSelector.values.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
 		const v = squash(values);
 		if(hasNonEnumerable) {
+			vectorLogger.trace('Subcase: updateNegative - non-enumerable selector');
 			const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
 			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 			for(let i = 1; i <= sourceUpper; i++) {
@@ -1595,8 +1636,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const isInfinite = adjustedSelector.length.isValue() && adjustedSelector.length.value[1] === +Infinity;
 		if(isInfinite) {
+			vectorLogger.trace('Subcase: updateNegative - infinite selector, returning top');
 			return value.top();
 		} else {
+			vectorLogger.trace('Subcase: updateNegative - finite selector');
 			let selectorUpper = 0;
 			if(adjustedSelector.length.isValue()) {
 				selectorUpper = adjustedSelector.length.value[1];
@@ -1655,6 +1698,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updateLogical');
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
+			vectorLogger.trace('Subcase: updateLogical - bottom input');
 			return value.bottom();
 		}
 		let sourceLower = 0, sourceUpper = 0;
@@ -1667,6 +1711,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			selectorUpper = selector.length.value[1];
 		}
 		const isInfinite = selectorUpper === +Infinity;
+		if(isInfinite) {
+			vectorLogger.trace('Subcase: updateLogical - infinite selector');
+		} else {
+			vectorLogger.trace('Subcase: updateLogical - finite selector');
+		}
 		const sourceKnownPositions = value.values.isValue() ? (value.values.value as readonly NAAwareDomain<Domain>[]) : [];
 		const selectorKnownPositions = selector.values.isValue() ? (selector.values.value as readonly NAAwareDomain<Domain>[]) : [];
 		const maxLen = Math.max(sourceKnownPositions.length, selectorKnownPositions.length);
