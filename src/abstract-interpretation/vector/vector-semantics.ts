@@ -70,7 +70,7 @@ export function squash<Domain extends AnyAbstractDomain>(
 
 	let result = value.summary;
 
-	for(const elem of value.values.toArray()) {
+	for(const elem of value.known.toArray()) {
 		result = result.join(elem);
 	}
 
@@ -109,8 +109,8 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 
 	let result = value.summary;
 
-	if(value.values.isValue()) {
-		const valuesArray = value.values.value as readonly NAAwareDomain<Domain>[];
+	if(value.known.isValue()) {
+		const valuesArray = value.known.value as readonly NAAwareDomain<Domain>[];
 		for(let i = 0; i < valuesArray.length; i++) {
 			if(!excludedIndices.has(i + 1)) {
 				result = result.join(valuesArray[i]);
@@ -207,7 +207,7 @@ export function adjustForZeros(
 		return vector;
 	}
 
-	const { length, values, summary, attributes } = vector;
+	const { length, known, summary, attributes } = vector;
 
 	if(!length.isValue()) {
 		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'length is not value'));
@@ -220,8 +220,8 @@ export function adjustForZeros(
 	let definiteZeros = 0; // |{i : γ(pᵢ) = {0}}|
 	let possibleZeros = 0; // |{i : 0 ∈ γ(pᵢ)}|
 
-	if(values.isValue() && Array.isArray(values.value)) {
-		const knownPositionValues = values.value as readonly NAAwareDomain<IntervalDomain>[];
+	if(known.isValue() && Array.isArray(known.value)) {
+		const knownPositionValues = known.value as readonly NAAwareDomain<IntervalDomain>[];
 		for(const naVal of knownPositionValues) {
 			const val = naVal.inner;
 			if(val.isValue()) {
@@ -247,8 +247,8 @@ export function adjustForZeros(
 	// Build modified known positions using Propagate
 	const newKnownPositionValues: NAAwareDomain<IntervalDomain>[] = [];
 
-	if(values.isValue() && Array.isArray(values.value)) {
-		const knownPositionValues = values.value as readonly NAAwareDomain<IntervalDomain>[];
+	if(known.isValue() && Array.isArray(known.value)) {
+		const knownPositionValues = known.value as readonly NAAwareDomain<IntervalDomain>[];
 
 		for(let i = 0; i < knownPositionValues.length; i++) {
 			// Count zeros before position i
@@ -271,11 +271,11 @@ export function adjustForZeros(
 		}
 	}
 
-	const newValues = values.create(newKnownPositionValues);
+	const newValues = known.create(newKnownPositionValues);
 
 	const result = vector.create({
 		length:     newLength,
-		values:     newValues,
+		known:      newValues,
 		summary:    summary,
 		attributes: attributes,
 		type:       vector.type
@@ -425,8 +425,8 @@ export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
 		return result;
 	}
 
-	const knownPositions = vector.values.isValue()
-		? (vector.values.value as readonly NAAwareDomain<Domain>[])
+	const knownPositions = vector.known.isValue()
+		? (vector.known.value as readonly NAAwareDomain<Domain>[])
 		: [];
 
 	for(let i = 0; i < targetLength; i++) {
@@ -496,8 +496,8 @@ function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 	pos: number,
 	naValue: NAAwareDomain<Domain>
 ): NAAwareDomain<Domain> {
-	if(vector.values.isValue()) {
-		const values = vector.values.value as readonly NAAwareDomain<Domain>[];
+	if(vector.known.isValue()) {
+		const values = vector.known.value as readonly NAAwareDomain<Domain>[];
 		if(pos < values.length) {
 			return values[pos];
 		}
@@ -516,8 +516,8 @@ function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
 		return naValue;
 	}
 
-	if(vector.values.isValue()) {
-		const values = vector.values.value as readonly NAAwareDomain<Domain>[];
+	if(vector.known.isValue()) {
+		const values = vector.known.value as readonly NAAwareDomain<Domain>[];
 		if(pos < values.length) {
 			return values[pos];
 		}
@@ -551,8 +551,8 @@ export function countZerosInIntervalVector(
 	let possibleZeros = 0;
 
 	// Check known position values for zeros
-	if(selector.values.isValue()) {
-		const values = selector.values.value;
+	if(selector.known.isValue()) {
+		const values = selector.known.value;
 		for(const naVal of values) {
 			const val = naVal.inner;
 			if(val.isValue()) {

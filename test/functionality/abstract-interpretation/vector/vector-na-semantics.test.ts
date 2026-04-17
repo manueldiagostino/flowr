@@ -232,9 +232,9 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			if(vector.length.isValue()) {
 				assert.deepStrictEqual(vector.length.value, [3, 3]);
 			}
-			assert.strictEqual(vector.values.isValue(), true);
-			if(vector.values.isValue()) {
-				const vals = vector.values.value as readonly NAAwareDomain<IntervalDomain>[];
+			assert.strictEqual(vector.known.isValue(), true);
+			if(vector.known.isValue()) {
+				const vals = vector.known.value as readonly NAAwareDomain<IntervalDomain>[];
 				assert.strictEqual(vals.length, 3);
 				assert.strictEqual(vals[0].containsNA(), false);
 				assert.strictEqual(vals[1].containsNA(), true);
@@ -263,8 +263,8 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 				]
 			);
 
-			if(vector.values.isValue()) {
-				const vals = vector.values.value as readonly NAAwareDomain<IntervalDomain>[];
+			if(vector.known.isValue()) {
+				const vals = vector.known.value as readonly NAAwareDomain<IntervalDomain>[];
 				assert.strictEqual(vals[1].containsNA(), true);
 				assert.strictEqual(vals[1].isNA(), false);
 			}

@@ -11,7 +11,7 @@ describe('Vector Domain', () => {
 			const top = VectorDomain.top(intervalFactory);
 			assert.strictEqual(top.isTop(), true);
 			assert.strictEqual(top.length.isTop(), true);
-			assert.strictEqual(top.values.isTop(), true);
+			assert.strictEqual(top.known.isTop(), true);
 			assert.strictEqual(top.summary.isTop(), true);
 			assert.strictEqual(top.attributes.isTop(), true);
 		});
@@ -20,7 +20,7 @@ describe('Vector Domain', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
 			assert.strictEqual(bottom.isBottom(), true);
 			assert.strictEqual(bottom.length.isBottom(), true);
-			assert.strictEqual(bottom.values.isBottom(), true);
+			assert.strictEqual(bottom.known.isBottom(), true);
 			assert.strictEqual(bottom.summary.isBottom(), true);
 			assert.strictEqual(bottom.attributes.isBottom(), true);
 		});
@@ -29,7 +29,7 @@ describe('Vector Domain', () => {
 			const vector = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			assert.strictEqual(vector.isValue(), true);
 			assert.strictEqual(vector.length.toString(), '[0, 3]');
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [2, 2], [3, 3]]');
 			assert.strictEqual(vector.summary.isBottom(), true);
 		});
 
@@ -37,7 +37,7 @@ describe('Vector Domain', () => {
 			const vector = mkVector([0, Infinity], [[1, 1], [2, 2]], [1, 10]);
 			assert.strictEqual(vector.isValue(), true);
 			assert.strictEqual(vector.length.toString(), '[0, +∞]');
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [2, 2]]');
 			assert.strictEqual(vector.summary.toString(), '[1, 10]');
 		});
 	});
@@ -71,8 +71,8 @@ describe('Vector Domain', () => {
 
 		test('values accessor returns the known positions domain', () => {
 			const vector = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
-			assert.strictEqual(vector.values.isValue(), true);
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
+			assert.strictEqual(vector.known.isValue(), true);
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [2, 2]]');
 		});
 
 		test('summary accessor returns the summary domain for infinite vectors', () => {
@@ -172,7 +172,7 @@ describe('Vector Domain', () => {
 			const value = mkVector([0, 1], [[1, 1]], undefined);
 			const join = bottom.join(value);
 			assert.strictEqual(join.length.toString(), value.length.toString());
-			assert.strictEqual(join.values.toString(), value.values.toString());
+			assert.strictEqual(join.known.toString(), value.known.toString());
 		});
 
 		test('join combines length intervals', () => {
@@ -186,7 +186,7 @@ describe('Vector Domain', () => {
 			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			const b = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			const result = a.join(b);
-			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
+			assert.strictEqual(result.known.toString(), '[[1, 1], [2, 2], [3, 3]]');
 		});
 
 		test('join is commutative', () => {
@@ -230,7 +230,7 @@ describe('Vector Domain', () => {
 			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const result = a.meet(b);
-			assert.strictEqual(result.values.toString(), '[[1, 1], [2, 2]]');
+			assert.strictEqual(result.known.toString(), '[[1, 1], [2, 2]]');
 		});
 
 		test('meet is commutative', () => {
@@ -254,7 +254,7 @@ describe('Vector Domain', () => {
 			const value = mkVector([0, 1], [[1, 1]], undefined);
 			const result = bottom.widen(value);
 			assert.strictEqual(result.length.toString(), value.length.toString());
-			assert.strictEqual(result.values.toString(), value.values.toString());
+			assert.strictEqual(result.known.toString(), value.known.toString());
 		});
 
 		test('widen widens length interval', () => {
@@ -268,14 +268,14 @@ describe('Vector Domain', () => {
 			const a = mkVector([0, 1], [[1, 3]], undefined);
 			const b = mkVector([0, 1], [[2, 5]], undefined);
 			const result = a.widen(b);
-			assert.strictEqual(result.values.toString(), '[[1, +∞]]');
+			assert.strictEqual(result.known.toString(), '[[1, +∞]]');
 		});
 
 		test('widen collapses different length values into summary for infinite vectors', () => {
 			const a = mkVector([0, Infinity], [[1, 1], [2, 2], [3, 3]], [1, 10]);
 			const b = mkVector([0, Infinity], [[1, 1]], [1, 15]);
 			const result = a.widen(b);
-			assert.strictEqual(result.values.toString(), '[[1, 1]]');
+			assert.strictEqual(result.known.toString(), '[[1, 1]]');
 			assert.strictEqual(result.summary.toString(), '[1, 15]');
 		});
 
@@ -309,7 +309,7 @@ describe('Vector Domain', () => {
 			// Excess values [3,3] and [4,4] are joined into the summary
 			const vector = mkVector([0, 2], [[1, 1], [2, 2], [3, 3], [4, 4]], undefined);
 
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [2, 2]]');
 			// Summary includes joined excess value
 			assert.strictEqual(vector.summary.toString(), '[3, 4]');
 		});
@@ -317,7 +317,7 @@ describe('Vector Domain', () => {
 		test('excess values joined into summary', () => {
 			const vector = mkVector([0, 2], [[1, 1], [5, 5], [10, 10]], undefined);
 
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [5, 5]]');
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [5, 5]]');
 			// Summary includes the last excess value
 			assert.strictEqual(vector.summary.toString(), '[10, 10]');
 		});
@@ -325,14 +325,14 @@ describe('Vector Domain', () => {
 		test('summary becomes bottom when length equals values length', () => {
 			const vector = mkVector([2, 2], [[1, 1], [2, 2]], undefined);
 
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2]]');
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [2, 2]]');
 			assert.strictEqual(vector.summary.isBottom(), true);
 		});
 
 		test('no reduction when values within bounds', () => {
 			const vector = mkVector([3, 10], [[1, 1], [2, 2], [3, 3]], undefined);
 
-			assert.strictEqual(vector.values.toString(), '[[1, 1], [2, 2], [3, 3]]');
+			assert.strictEqual(vector.known.toString(), '[[1, 1], [2, 2], [3, 3]]');
 			assert.strictEqual(vector.summary.isBottom(), true);
 		});
 	});

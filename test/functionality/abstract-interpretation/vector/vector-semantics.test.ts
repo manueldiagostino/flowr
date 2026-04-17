@@ -130,7 +130,7 @@ describe('Vector Semantics', () => {
 			const sumDomain = new IntervalDomain([5, 10]);
 			const sum = new NAAwareDomain({ inner: sumDomain, hasNA: false }, intervalFactory);
 			const attrs = VectorAttrDomain.top();
-			const vector = new VectorDomain({ length: len, values: vals, summary: sum, attributes: attrs }, intervalFactory);
+			const vector = new VectorDomain({ length: len, known: vals, summary: sum, attributes: attrs, type: RVectorTypeDomain.top() }, intervalFactory);
 
 			const result = squash(vector);
 			assert.strictEqual(result.toString(), '[5, 10]');

@@ -9,7 +9,7 @@ export function formatVectorDomain<Domain extends AnyAbstractDomain>(
 	domain: VectorDomain<Domain>
 ): string {
 	const lengthStr = domain.length.toString();
-	const valuesStr = domain.values.toString();
+	const valuesStr = domain.known.toString();
 	const summaryStr = domain.summary.toString();
 	const attrsStr = domain.attributes.toString();
 

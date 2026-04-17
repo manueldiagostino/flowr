@@ -5,6 +5,7 @@ import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
+import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { withShell } from '../../_helper/shell';
 import { intervalFactory } from '../_helper/interval-factory';
@@ -165,9 +166,9 @@ y <- x[c(1, NA, 3)]`;
 			assertLength(vector, [3, 3]);
 			assert.ok(vector !== undefined, 'Expected vector to be defined');
 			if(vector !== undefined) {
-				assert.ok(vector.values.isValue(), 'Expected concrete values');
-				if(vector.values.isValue()) {
-					const values = vector.values.value;
+				assert.ok(vector.known.isValue(), 'Expected concrete values');
+				if(vector.known.isValue()) {
+					const values = vector.known.value;
 					assert.strictEqual(values.length, 3, 'Expected 3 values');
 					assert.ok(values[0].isValue(), 'Position 1 should have concrete value');
 					assert.ok(values[2].isValue(), 'Position 3 should have concrete value');
@@ -198,9 +199,9 @@ y <- x[c(1, 0, 3, 0, 5)]`;
 			assert.ok(yVector !== undefined, 'Result vector y should be defined');
 			if(selVector !== undefined) {
 				assertLength(selVector, [3, 3]);
-				assert.ok(selVector.values.isValue(), 'Selector should have concrete values');
-				if(selVector.values.isValue()) {
-					const positions = selVector.values.value;
+				assert.ok(selVector.known.isValue(), 'Selector should have concrete values');
+				if(selVector.known.isValue()) {
+					const positions = selVector.known.value;
 					assert.strictEqual(positions.length, 3, 'Should have 3 positions');
 				}
 			}
@@ -598,13 +599,14 @@ describe('Vector Inference Unit Tests', () => {
 
 		const vector = new VectorDomain({
 			length:     len,
-			values:     vals,
+			known:      vals,
 			summary:    sum,
-			attributes: attrs
+			attributes: attrs,
+			type:       RVectorTypeDomain.top()
 		}, intervalFactory as any);
 
 		assert.strictEqual(vector.length.toString(), '[3, 3]');
-		assert.ok(vector.values.isValue());
+		assert.ok(vector.known.isValue());
 	});
 
 	test('VectorDomain top has unbounded length', () => {

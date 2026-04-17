@@ -305,23 +305,23 @@ export function splitNAAwarePosition(
 /**
  * The abstract product representing the abstraction of an R vector.
  * - length: the possible range of vector lengths [min, max]
- * - values: a sequence of abstract values for the known positions (positions 0 to k-1)
+ * - known: a sequence of abstract values for the known positions (positions 0 to k-1)
  * - summary: a single abstract value summarizing ALL positions from k onwards (if any)
  * - attributes: abstraction of the R vector attributes (names, dim, class, other)
  * - type: the R vector type (logical, integer, double, complex, character)
  *
  * Invariants maintained by reduce():
- * 1. values.length ≤ length.upper (if length.upper is finite)
- * 2. If length.lower \> values.length, positions [values.length, length.lower-1] are Bottom
+ * 1. known.length ≤ length.upper (if length.upper is finite)
+ * 2. If length.lower \> known.length, positions [known.length, length.lower-1] are Bottom
  * 3. If values array grows beyond a threshold, excess elements are joined into summary
  * @template Domain - The abstract domain for individual vector elements
  */
 export type VectorProduct<Domain extends AnyAbstractDomain> = {
 	/** The possible range of vector lengths as [min, max] interval */
 	length:     PosIntervalDomain;
-	/** Known abstract values for positions 0 to values.length-1 (NAAware wrapped) */
-	values:     KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
-	/** Abstract value summarizing all positions from values.length onwards */
+	/** Known abstract values for positions 0 to known.length-1 (NAAware wrapped) */
+	known:      KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
+	/** Abstract value summarizing all positions from known.length onwards */
 	summary:    NAAwareDomain<Domain>;
 	/** Abstraction of R vector attributes (names, dim, class, other) */
 	attributes: VectorAttrDomain;
@@ -371,8 +371,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	/**
 	 * The current abstract values for the known positions.
 	 */
-	public get values(): VectorProduct<Domain>['values'] {
-		return this.value.values;
+	public get known(): VectorProduct<Domain>['known'] {
+		return this.value.known;
 	}
 
 	/**
@@ -411,8 +411,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * @template Domain - The abstract domain for individual vector elements
 	 * @param factory - The domain factory for creating element domain values
 	 * @param length - The possible range of vector lengths
-	 * @param values - Known abstract values for positions 0 to values.length-1 (NAAware wrapped)
-	 * @param summary - Abstract value summarizing all positions from values.length onwards (NAAware wrapped)
+	 * @param values - Known abstract values for positions 0 to known.length-1 (NAAware wrapped)
+	 * @param summary - Abstract value summarizing all positions from known.length onwards (NAAware wrapped)
 	 * @param attributes - Abstraction of R vector attributes
 	 * @returns A new VectorDomain instance
 	 * @example
@@ -431,14 +431,14 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	public static create<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>,
 		length: PosIntervalDomain,
-		values: KnownInitialPositionsDomain<NAAwareDomain<Domain>>,
+		known: KnownInitialPositionsDomain<NAAwareDomain<Domain>>,
 		summary: NAAwareDomain<Domain>,
 		attributes: VectorAttrDomain,
 		type: RVectorTypeDomain
 	): VectorDomain<Domain> {
 		return new VectorDomain({
 			length,
-			values,
+			known,
 			summary,
 			attributes,
 			type
@@ -451,8 +451,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * @template Domain - The abstract domain for individual vector elements
 	 * @param factory - The domain factory for creating element domain values
 	 * @param length - The possible range of vector lengths
-	 * @param values - Array of domain values for positions 0 to values.length-1
-	 * @param summary - Abstract value summarizing all positions from values.length onwards
+	 * @param values - Array of domain values for positions 0 to known.length-1
+	 * @param summary - Abstract value summarizing all positions from known.length onwards
 	 * @param attributes - Abstraction of R vector attributes
 	 * @returns A new VectorDomain instance
 	 * @example
@@ -469,14 +469,14 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	public static fromValues<Domain extends AnyAbstractDomain>(
 		factory: DomainFactory<Domain>,
 		length: PosIntervalDomain,
-		values: readonly NAAwareDomain<Domain>[],
+		known: readonly NAAwareDomain<Domain>[],
 		summary: NAAwareDomain<Domain>,
 		attributes: VectorAttrDomain,
 		type: RVectorTypeDomain
 	): VectorDomain<Domain> {
 		const smartFactory = NAAwareDomain.createSmartFactory(factory);
 		const knownPositions = new KnownInitialPositionsDomain(
-			values,
+			known,
 			smartFactory
 		);
 		return VectorDomain.create(factory, length, knownPositions, summary, attributes, type);
@@ -493,7 +493,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const summaryTop = NAAwareDomain.top(factory);
 		return new VectorDomain({
 			length: PosIntervalDomain.top(),
-			values: KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
+			known:  KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
 				smartFactory
 			),
 			summary:    summaryTop,
@@ -516,7 +516,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const summaryBottom = NAAwareDomain.bottom(factory);
 		return new VectorDomain({
 			length:     PosIntervalDomain.bottom(),
-			values:     valuesBottom,
+			known:      valuesBottom,
 			summary:    summaryBottom,
 			attributes: VectorAttrDomain.bottom(),
 			type:       RVectorTypeDomain.bottom()
@@ -532,8 +532,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 *    the values array cannot exceed that bound. Excess elements are
 	 *    joined into the summary.
 	 *
-	 * 2. **Known-Summary Gap**: If length.lower \> values.length, the positions
-	 *    [values.length, length.lower-1] conceptually contain Bottom (no values possible).
+	 * 2. **Known-Summary Gap**: If length.lower \> known.length, the positions
+	 *    [known.length, length.lower-1] conceptually contain Bottom (no values possible).
 	 *
 	 * 3. **Size Limit**: The values array is limited to `SafetyMaxKnownLength` elements
 	 *    to ensure termination. Excess elements are joined into the summary.
@@ -544,25 +544,25 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * @returns The reduced value with maintained invariants
 	 */
 	protected reduce(value: VectorProduct<Domain>): VectorProduct<Domain> {
-		if(value.length.isBottom() || value.values.isBottom()) {
+		if(value.length.isBottom() || value.known.isBottom()) {
 			return value;
 		}
 
 		const { length, attributes, type } = value;
-		let { values, summary } = value;
+		let { known, summary } = value;
 		let modified = false;
 
 		if(length.isValue()) {
 			const upperBound = length.value[1];
 
-			if(Number.isFinite(upperBound) && values.isValue()) {
-				const valuesArray = values.value as readonly NAAwareDomain<Domain>[];
+			if(Number.isFinite(upperBound) && known.isValue()) {
+				const valuesArray = known.value as readonly NAAwareDomain<Domain>[];
 
 				if(valuesArray.length > upperBound) {
 					for(let i = upperBound; i < valuesArray.length; i++) {
 						summary = summary.join(valuesArray[i]);
 					}
-					values = values.create(valuesArray.slice(0, upperBound));
+					known = known.create(valuesArray.slice(0, upperBound));
 					modified = true;
 				}
 
@@ -574,19 +574,19 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			}
 		}
 
-		if(values.isValue()) {
-			const valuesArray = values.value as readonly NAAwareDomain<Domain>[];
+		if(known.isValue()) {
+			const valuesArray = known.value as readonly NAAwareDomain<Domain>[];
 
 			if(valuesArray.length > SafetyMaxKnownLength) {
 				for(let i = SafetyMaxKnownLength; i < valuesArray.length; i++) {
 					summary = summary.join(valuesArray[i]);
 				}
-				values = values.create(valuesArray.slice(0, SafetyMaxKnownLength));
+				known = known.create(valuesArray.slice(0, SafetyMaxKnownLength));
 				modified = true;
 			}
 		}
 
-		return modified ? { length, values, summary, attributes, type } : value;
+		return modified ? { length, known, summary, attributes, type } : value;
 	}
 
 	/**
@@ -613,18 +613,18 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		const newType = this.type.join(other.type);
 		let newValues: KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
 
-		if(this.values.isTop() || other.values.isTop()) {
+		if(this.known.isTop() || other.known.isTop()) {
 			const smartFactory = NAAwareDomain.createSmartFactory(this._factory);
 			newValues = KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
 				smartFactory
 			);
-		} else if(this.values.isBottom()) {
-			newValues = other.values;
-		} else if(other.values.isBottom()) {
-			newValues = this.values;
+		} else if(this.known.isBottom()) {
+			newValues = other.known;
+		} else if(other.known.isBottom()) {
+			newValues = this.known;
 		} else {
-			const thisArr = this.values.value as readonly NAAwareDomain<Domain>[];
-			const otherArr = other.values.value as readonly NAAwareDomain<Domain>[];
+			const thisArr = this.known.value as readonly NAAwareDomain<Domain>[];
+			const otherArr = other.known.value as readonly NAAwareDomain<Domain>[];
 
 			const commonLen = Math.min(thisArr.length, otherArr.length);
 
@@ -641,12 +641,12 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 				newSummary = newSummary.join(otherArr[i]);
 			}
 
-			newValues = this.values.create(commonKnown);
+			newValues = this.known.create(commonKnown);
 		}
 
 		return this.create({
 			length:     newLength,
-			values:     newValues,
+			known:      newValues,
 			summary:    newSummary,
 			attributes: newAttributes,
 			type:       newType

@@ -223,9 +223,9 @@ export function assertKnownPositions<Domain extends AnyAbstractDomain>(
 	if(vector === undefined) {
 		return;
 	}
-	assert.ok(vector.values.isValue(), `Expected concrete known positions but got ${vector.values.toString()}`);
-	if(vector.values.isValue()) {
-		const values = vector.values.value;
+	assert.ok(vector.known.isValue(), `Expected concrete known positions but got ${vector.known.toString()}`);
+	if(vector.known.isValue()) {
+		const values = vector.known.value;
 		assert.strictEqual(values.length, expectedValues.length,
 			`Expected ${expectedValues.length} known positions but got ${values.length}`);
 

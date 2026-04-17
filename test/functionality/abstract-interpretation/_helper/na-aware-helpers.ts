@@ -4,6 +4,7 @@ import { IntervalDomain, type IntervalLift } from '../../../../src/abstract-inte
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { KnownInitialPositionsDomain, type DomainFactory } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
+import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { Top, NA } from '../../../../src/abstract-interpretation/domains/lattice';
 
 /**
@@ -91,9 +92,10 @@ export function createNAAwareVector(
 
 	return new VectorDomain({
 		length:     len,
-		values:     vals,
+		known:      vals,
 		summary:    sum,
-		attributes: VectorAttrDomain.top()
+		attributes: VectorAttrDomain.top(),
+		type:       RVectorTypeDomain.top()
 	}, intervalFactory);
 }
 
@@ -123,8 +125,8 @@ export function assertContainsNA(
 	}
 
 	let containsNA = false;
-	if(vector.values.isValue()) {
-		const values = vector.values.value;
+	if(vector.known.isValue()) {
+		const values = vector.known.value;
 		for(const val of values) {
 			const naVal = val as NAAwareDomain<IntervalDomain>;
 			if(naVal.containsNA()) {

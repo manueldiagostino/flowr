@@ -149,7 +149,7 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 
 	return new VectorDomain({
 		length:     new PosIntervalDomain([domainValueSets.length, domainValueSets.length]),
-		values:     knownPositions,
+		known:      knownPositions,
 		summary:    summaryBottom,
 		attributes: VectorAttrDomain.top(),
 		type:       RVectorTypeDomain.top()
@@ -182,7 +182,7 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 
 		return new VectorDomain({
 			length:     new PosIntervalDomain([1, 1]),
-			values:     knownPositions,
+			known:      knownPositions,
 			summary:    summaryBottom,
 			attributes: VectorAttrDomain.top(),
 			type:       RVectorTypeDomain.of('logical')
