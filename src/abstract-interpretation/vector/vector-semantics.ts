@@ -1,11 +1,13 @@
 /* eslint-disable tsdoc/syntax */
-import type { AnyAbstractDomain } from '../domains/abstract-domain';
-import type { IntervalDomain } from '../domains/interval-domain';
-import type { PosIntervalDomain } from '../domains/positive-interval-domain';
-import type { VectorDomain } from './vector-domain';
+import { type AnyAbstractDomain } from '../domains/abstract-domain';
+import { type IntervalDomain } from '../domains/interval-domain';
+import { type PosIntervalDomain } from '../domains/positive-interval-domain';
+import { type VectorDomain } from './vector-domain';
+import { KnownInitialPositionsDomain, type DomainFactory } from './known-initial-positions-domain';
 import type { NAAwareDomain } from './na-aware-domain';
 import { ConstraintType } from '../data-frame/semantics';
 import { assert } from 'ts-essentials';
+import { guard } from '../../util/assert';
 import { vectorLogger } from './logger';
 import { expensiveTrace } from '../../util/log';
 import { formatVectorDomain, formatExtremeResult } from './log-utils';
@@ -586,5 +588,113 @@ export function countZerosInIntervalVector(
 
 	const result = selector.length.create([definiteZeros, possibleZeros]);
 	expensiveTrace(vectorLogger, () => `Semantic: countZerosInIntervalVector result = ${result.toString()}`);
+	return result;
+}
+
+/**
+ * Concrete recycle function (paper Section 4.5: ρ_c^♯).
+ * Cycles the first i' = min(i, |prefix|) elements of the prefix
+ * to reach length h.
+ *
+ * More formally:
+ * ρ_c^♯(prefix, i, h) ≡
+ *   (p_1 ⊔ ... ⊔ p_{i'} ⊔ ... ⊔ p_1 ⊔ ... ⊔ p_{i'}) [floor(h/i') times]
+ *   ⊕ (p_1 ⊔ ... ⊔ p_r) [first r = h mod i' elements]
+ * @param prefix - The known positions domain (genvaldom^* in paper)
+ * @param i - Starting position (1-indexed in paper)
+ * @param h - Target length to reach
+ * @param factory - Domain factory for creating known positions
+ * @returns KnownInitialPositionsDomain of length h
+ */
+export function rhoC<Domain extends AnyAbstractDomain>(
+	prefix: KnownInitialPositionsDomain<Domain>,
+	i: number,
+	h: number,
+	factory: DomainFactory<Domain>
+): KnownInitialPositionsDomain<Domain> {
+	vectorLogger.debug(`Semantic: rhoC [i=${i}, h=${h}]`);
+
+	if(prefix.isBottom() || prefix.isTop() || h === 0) {
+		expensiveTrace(vectorLogger, () => 'Semantic: rhoC early return (bottom/top or h=0)');
+		return KnownInitialPositionsDomain.top(factory);
+	}
+
+	if(!prefix.isValue()) {
+		return KnownInitialPositionsDomain.top(factory);
+	}
+
+	const prefixLen = prefix.length;
+	guard(prefixLen !== undefined, 'KnownInitialPositionsDomain.length is undefined after isValue check');
+	const sourceElements = prefix.value;
+
+	// i' = min(i, |prefix|), paper uses 1-indexed math
+	const iPrime = Math.min(i, prefixLen);
+
+	if(iPrime === 0) {
+		return KnownInitialPositionsDomain.top(factory);
+	}
+
+	const result: Domain[] = [];
+
+	// repeat floor(h / i') times
+	const fullRepeats = Math.floor(h / iPrime);
+	const remainder = h % iPrime;
+
+	for(let repeat = 0; repeat < fullRepeats; repeat++) {
+		for(let j = 0; j < iPrime; j++) {
+			result.push(sourceElements[j]);
+		}
+	}
+
+	// first r = h mod i' elements
+	for(let j = 0; j < remainder; j++) {
+		result.push(sourceElements[j]);
+	}
+
+	expensiveTrace(vectorLogger, () => `Semantic: rhoC result length=${result.length}`);
+	return new KnownInitialPositionsDomain(result, factory);
+}
+
+/**
+ * Abstract recycle helper function (paper Section 4.5: ρ_f^♯).
+ * Joins all ρ_c^♯ results from i=l to n.
+ *
+ * More formally:
+ * ρ_f^♯(prefix, l, n) ≡ ⊔_{i=l}^{n} ρ_c^♯(prefix, i, n)
+ *
+ * This is used in the abstract recycling operation (paper Section 4.5)
+ * to compute the joined prefix for all possible starting positions.
+ * @param prefix - The known positions domain (genvaldom^* in paper)
+ * @param i - Starting position (1-indexed in paper)
+ * @param h - Target length to reach
+ * @param factory - Domain factory for creating elements
+ * @returns Joined abstract value (callers must handle wrapping if needed)
+ */
+export function rhoF<Domain extends AnyAbstractDomain>(
+	prefix: KnownInitialPositionsDomain<Domain>,
+	l: number,
+	n: number,
+	factory: DomainFactory<Domain>
+): KnownInitialPositionsDomain<Domain> {
+	vectorLogger.debug(`Semantic: rhoF [l=${l}, n=${n}]`);
+
+	if(prefix.isBottom() || prefix.isTop() || n === 0) {
+		expensiveTrace(vectorLogger, () => 'Semantic: rhoF early return (bottom/top or n=0)');
+		return KnownInitialPositionsDomain.bottom(factory);
+	}
+
+	if(!prefix.isValue()) {
+		return KnownInitialPositionsDomain.bottom(factory);
+	}
+
+	const prefixLen = prefix.length;
+	guard(prefixLen !== undefined, 'KnownInitialPositionsDomain.length is undefined after isValue check');
+
+	let result = rhoC(prefix, l, n, factory);
+	for(let i = l + 1; i <= n; i++) {
+		result = result.join(rhoC(prefix, i, n, factory));
+	}
+
+	expensiveTrace(vectorLogger, () => `Semantic: rhoF result = ${result.toString()}`);
 	return result;
 }

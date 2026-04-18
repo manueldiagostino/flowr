@@ -399,8 +399,8 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	/**
 	 * Gets the domain factory used to create this VectorDomain.
 	 */
-	public get factory(): DomainFactory<Domain> {
-		return this._factory;
+	public get factory(): DomainFactory<NAAwareDomain<Domain>> {
+		return NAAwareDomain.createSmartFactory(this._factory);
 	}
 
 	/**

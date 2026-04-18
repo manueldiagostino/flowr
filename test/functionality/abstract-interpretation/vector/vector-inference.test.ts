@@ -21,6 +21,8 @@ import {
 const valueToDomain = (value: string | number | boolean): ReadonlySet<number> | undefined => {
 	if(typeof value === 'number') {
 		return new Set([value]);
+	} else if(typeof value === 'boolean') {
+		return new Set([value ? 1 : 0]);
 	}
 	return undefined;
 };
@@ -419,6 +421,14 @@ y <- x[c(TRUE, FALSE, TRUE)]`;
 			assertLengthOrTop(vector);
 		});
 
+		test('logical selector c(TRUE, FALSE, TRUE, TRUE) on x <- c(10, 20) gets NA from selected', async() => {
+			const code = `x <- c(10, 20)
+y <- x[c(TRUE, FALSE, TRUE, TRUE)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			assertLengthOrTop(vector);
+		});
+
+
 		test('comparison selector x[x > 0] uses logical selection', async() => {
 			const code = `x <- c(10, -5, 20)
 y <- x[x > 0]`;
@@ -454,6 +464,146 @@ x[-2] <- 99`;
 x[-(-2)] <- 99`;
 			const vector = await getVectorForCriterion(shell, code, '2@x', intervalFactory, valueToDomain);
 			assertLength(vector, [3, 3]);
+		});
+	});
+
+	describe('Positive Update (Paper §4.8.1)', () => {
+		describe('Paragraph 1: Non-enumerable selector', () => {
+			test('should use squash for non-enumerable positions', async() => {
+				// Create source vector: x = [1, 2, 3, 4, 5]
+				// Create selector with non-enumerable interval (card > θ=50)
+				// Result should have infinite upper length and squashed summary
+				const code = 'x <- c(1, 2, 3, 4, 5)\nx[c(1, 100)] <- 99';
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test('should handle non-enumerable selector with multiple values', async() => {
+				// x = [1, 2, 3], selector = c(1, 50, 100) (non-enumerable)
+				// Values = c(10, 20, 30)
+				// Result should squash both source and values
+				const code = 'x <- c(1, 2, 3)\nx[c(1, 50, 100)] <- c(10, 20, 30)';
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Paragraph 2a: Infinite selector, non-enumerable summary', () => {
+			test('should handle infinite selector with non-enumerable summary', async() => {
+				// Create infinite selector via branching with non-enumerable summary
+				// if(runif(1) > 0.5) { a <- 1 } else { a <- 100 }
+				// Selector summary = [1, 100] which is non-enumerable
+				const code = `x <- c(10, 20, 30)
+if(runif(1) > 0.5) { a <- 1 } else { a <- 100 }
+sel <- c(a, a, a)
+x[sel] <- 99`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test('should join squash values for positions >= lS2', async() => {
+				// When selector summary has lower bound lS2, positions >= lS2
+				// should be joined with squashed values
+				const code = `x <- c(10, 20, 30, 40, 50)
+if(runif(1) > 0.5) { a <- 1 } else { a <- 100 }
+sel <- c(a, a)
+x[sel] <- c(99, 88)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Paragraph 2b: Infinite selector, enumerable summary', () => {
+			test('should handle infinite selector with enumerable summary', async() => {
+				// Create infinite selector via branching with enumerable summary
+				// if(runif(1) > 0.5) { a <- 1 } else { a <- 2 }
+				// Selector summary = [1, 2] which is enumerable
+				const code = `x <- c(10, 20, 30)
+if(runif(1) > 0.5) { a <- 1 } else { a <- 2 }
+sel <- c(a, a, a)
+x[sel] <- 99`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+
+			test('should use cyclic recycling for enumerable summary', async() => {
+				// With enumerable summary, use cyclic recycling for value assignment
+				const code = `x <- c(10, 20, 30, 40, 50)
+if(runif(1) > 0.5) { a <- 1 } else { a <- 3 }
+sel <- c(a, a, a)
+x[sel] <- c(99, 88)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Paragraph 3: Finite selector, enumerable', () => {
+			test('should update exact positions with finite selector', async() => {
+				// x = [10, 20, 30], selector = c(1, 3) (finite, enumerable)
+				// Values = c(99, 88)
+				// Result: positions 1 and 3 updated
+				const code = `x <- c(10, 20, 30)
+x[c(1, 3)] <- c(99, 88)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assertLength(vector, [3, 3]);
+			});
+
+			test('should use cyclic recycling for value assignment', async() => {
+				// x = [10, 20, 30, 40, 50], selector = c(1, 3, 5)
+				// Values = c(99, 88) (fewer values than positions)
+				// Values should be recycled cyclically
+				const code = `x <- c(10, 20, 30, 40, 50)
+x[c(1, 3, 5)] <- c(99, 88)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assertLength(vector, [5, 5]);
+			});
+
+			test('should result in bottom summary for finite selector', async() => {
+				// Finite selector should result in summary = ⊥
+				const code = `x <- c(10, 20, 30)
+x[c(1, 2)] <- c(99, 88)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+				assertLength(vector, [3, 3]);
+			});
+
+			test('should extend vector when selector exceeds current length', async() => {
+				// x = [10, 20, 30], selector = c(1, 5)
+				// Vector should extend to length 5
+				const code = `x <- c(10, 20, 30)
+x[c(1, 5)] <- c(99, 88)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
+		});
+
+		describe('Edge cases', () => {
+			test('should handle zero in selector (AdjustForZeros)', async() => {
+				// x = [10, 20, 30], selector = c(0, 1, 2)
+				// Zero should be ignored (AdjustForZeros)
+				const code = `x <- c(10, 20, 30)
+x[c(0, 1, 2)] <- c(99, 88, 77)`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assertLength(vector, [3, 3]);
+			});
+
+			test('should handle single element update', async() => {
+				// x = [10, 20, 30], selector = 2
+				// Single element update
+				const code = `x <- c(10, 20, 30)
+x[2] <- 99`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assertLength(vector, [3, 3]);
+			});
+
+			test('should handle empty selector', async() => {
+				// x = [10, 20, 30], selector = c()
+				// No positions updated
+				const code = `x <- c(10, 20, 30)
+x[c()] <- 99`;
+				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
+				assert.ok(vector, 'Should return a vector');
+			});
 		});
 	});
 

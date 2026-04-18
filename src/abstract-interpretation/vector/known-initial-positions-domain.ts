@@ -5,6 +5,7 @@ import type {
 } from '../domains/abstract-domain';
 import { AbstractDomain } from '../domains/abstract-domain';
 import type { NA } from '../domains/lattice';
+import { guard } from '../../util/assert';
 import { Top, Bottom, BottomSymbol } from '../domains/lattice';
 
 type KnownInitialPositionsValue<Domain extends AnyAbstractDomain> =
@@ -316,5 +317,20 @@ export class KnownInitialPositionsDomain<
 
 	public toArray(): Domain[] {
 		return this.value as Domain[];
+	}
+
+	/**
+	 * Gets the number of known initial positions.
+	 * Returns undefined for Bottom, 0 for Top (unknown), array length for value.
+	 */
+	public get length(): number | undefined {
+		if(this.isBottom()) {
+			return undefined;
+		}
+		if(this.isTop()) {
+			return 0;
+		}
+		guard(this.isValue(), 'KnownInitialPositionsDomain.length: not a value');
+		return this.value.length;
 	}
 }

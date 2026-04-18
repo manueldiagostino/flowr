@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 import type { DataflowGraphVertexFunctionCall, DataflowGraphVertexValue } from '../../dataflow/graph/vertex';
 import type { RNode } from '../../r-bridge/lang-4.x/ast/model/model';
 import type { ParentInformation } from '../../r-bridge/lang-4.x/ast/model/processing/decorate';
@@ -16,7 +17,8 @@ import {
 	initKnownPositions,
 	updateKnownPositions,
 	generateCyclicKnownPositions,
-	accessPosition
+	accessPosition,
+	rhoF
 } from './vector-semantics';
 import { NA, Top, Bottom } from '../domains/lattice';
 import type { IntervalDomain } from '../domains/interval-domain';
@@ -1172,6 +1174,42 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		return result;
 	}
 
+	private buildNegativeSets(
+		sourceUpper: number,
+		selectorValues: readonly NAAwareDomain<PosIntervalDomain>[],
+	): [ mustDeleted: Set<number>, mayDeleted: Set<number> ] {
+		const mustDeleted = new Set<number>();
+		const mayDeleted = new Set<number>();
+
+		let idxPos = 0;
+		for(const idx of selectorValues) {
+			guard(idx.isBottom(), `Selector index ${idxPos} is bottom`);
+
+			const innerInterval = idx.inner;
+			guard(innerInterval.isValue(), `Selector index ${idxPos} has bottom inner value`);
+
+			const [l, u] = innerInterval.value;
+			guard(l <= 0 && u <= 0);
+
+			const posLower = Math.abs(u);
+			const posUpper = Math.abs(l);
+			if(card(innerInterval) === 1) {
+				const pos = posLower;
+				if(pos >= 1 && pos <= sourceUpper) {
+					mustDeleted.add(pos);
+				}
+			} else {
+				for(let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
+					mayDeleted.add(pos);
+				}
+			}
+
+			idxPos += 1;
+		}
+
+		return [mustDeleted, mayDeleted];
+	}
+
 	/**
 	 * Applies negative indexing selection: x[c] where c \&lt; 0.
 	 * Negative indices specify positions to delete from the vector.
@@ -1193,73 +1231,38 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			vectorLogger.trace('Subcase: selectNegative - bottom input');
 			return value.bottom();
 		}
-		let sourceLower: number;
-		let sourceUpper: number;
-		if(value.length.isValue()) {
-			sourceLower = value.length.value[0];
-			sourceUpper = value.length.value[1];
-			if(sourceUpper === +Infinity) {
-				vectorLogger.trace('Subcase: selectNegative - infinite source, returning top');
-				return value.top();
-			}
-		} else {
-			vectorLogger.trace('Subcase: selectNegative - bottom source length, returning bottom');
-			return value.bottom();
+
+		guard(value.length.isValue(), 'Source length is Bottom');
+		guard(value.known.isValue(), 'Source known positions are Bottom');
+
+		const sourceLower = value.length.value[0];
+		const sourceUpper = value.length.value[1];
+		if(sourceUpper === +Infinity) {
+			vectorLogger.trace('Subcase: selectNegative - infinite source, returning top');
+			return value.top();
 		}
 
-		// 3. Compute adjusted selector (REMOVE zeros from selector)
+		// 3. Compute adjusted selector
 		const adjustedSelector = adjustForZeros(selector);
+		guard(adjustedSelector.isValue(), 'Adjusted Selector is bottom');
+		guard(adjustedSelector.length.isValue(), 'Adjusted Selector is bottom');
+
 		vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
 
 		// 4. Compute sets from ADJUSTED selector
-		const mustDeleted = new Set<number>();
-		const mayDeleted = new Set<number>();
+		let mustDeleted = new Set<number>();
+		let mayDeleted = new Set<number>();
 
-		if(adjustedSelector.known.isValue()) {
-			const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
-			for(const idx of selectorValues) {
-				if(idx.isBottom()) {
-					continue;
-				}
-				const innerInterval = idx.inner;
-				if(innerInterval.isValue()) {
-					const [l, u] = innerInterval.value;
-					if(l <= 0 && u <= 0) {
-						const posLower = Math.abs(u);
-						const posUpper = Math.abs(l);
-						if(card(innerInterval) === 1) {
-							const pos = posLower;
-							if(pos >= 1 && pos <= sourceUpper) {
-								mustDeleted.add(pos);
-							}
-						} else {
-							for(let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
-								mayDeleted.add(pos);
-							}
-						}
-					}
-				} else {
-					// innerInterval is Top or non-value
-					for(let pos = 1; pos <= sourceUpper; pos++) {
-						mayDeleted.add(pos);
-					}
-				}
-			}
-		} else {
-			// adjustedSelector.known is not a value (Top/Bottom)
-			vectorLogger.debug('Adjusted selector values not enumerable, assuming all positions may be deleted');
-			for(let pos = 1; pos <= sourceUpper; pos++) {
-				mayDeleted.add(pos);
-			}
-		}
+		const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
+		// Sets construction
+		[ mustDeleted, mayDeleted ] = this.buildNegativeSets(sourceUpper, selectorValues);
+
 
 		// Compute MustNotDeleted
 		const mustNotDeleted = new Set<number>();
-		if(value.known.isValue()) {
-			for(let i = 1; i <= value.known.value.length; i++) {
-				if(!mayDeleted.has(i)) {
-					mustNotDeleted.add(i);
-				}
+		for(let i = 1; i <= value.known.value.length; i++) {
+			if(!mayDeleted.has(i)) {
+				mustNotDeleted.add(i);
 			}
 		}
 
@@ -1323,28 +1326,27 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			resultKnownPositions[i] = value.summary.bottom();
 		}
 
+		guard([...mustDeleted].filter(d => d > sourceUpper).length == 0, '');
+		guard([...mayDeleted].filter(d => d > sourceUpper).length == 0, '');
+
 		// Process MustNotDeleted positions (ascending)
 		for(const i of [...mustNotDeleted].sort((a, b) => a - b)) {
-			if(i > sourceUpper) {
-				continue;
-			}
+
 			const accessed = accessPosition(value, i - 1, naValue);
 			const targetIdx = i - countMustDeleted(i);
-			if(targetIdx >= 1 && targetIdx <= resultPrefixSize) {
-				resultKnownPositions[targetIdx - 1] = resultKnownPositions[targetIdx - 1].join(accessed);
-			}
+			guard(targetIdx >= 1 && targetIdx <= resultPrefixSize, '!(targetIdx >= 1 && targetIdx <= resultPrefixSize)');
+
+			resultKnownPositions[targetIdx - 1] = resultKnownPositions[targetIdx - 1].join(accessed);
 		}
 
 		// Process MayDeleted positions (ascending, excluding mustDeleted)
 		for(const i of [...mayDeleted].filter(i => !mustDeleted.has(i)).sort((a, b) => a - b)) {
-			if(i > sourceUpper) {
-				continue;
-			}
+
 			const accessed = accessPosition(value, i - 1, naValue);
 			const targetIdx = i - countMustDeleted(i);
-			if(targetIdx >= 1 && targetIdx <= resultPrefixSize) {
-				resultKnownPositions[targetIdx - 1] = resultKnownPositions[targetIdx - 1].join(accessed);
-			}
+			guard(targetIdx >= 1 && targetIdx <= resultPrefixSize, '!(targetIdx >= 1 && targetIdx <= resultPrefixSize)');
+
+			resultKnownPositions[targetIdx - 1] = resultKnownPositions[targetIdx - 1].join(accessed);
 		}
 
 		// Summary: s₁ for infinite, ⊥ for finite (Paper §4.7, L607-639 vs L641-646)
@@ -1371,33 +1373,27 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applySelectLogical(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<Domain>,
+		selector: VectorDomain<PosIntervalDomain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
-		vectorLogger.debug('Operation: selectLogical');
+		vectorLogger.trace(`applySelectLogical [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
+
 		if(value.isBottom() || selector.isBottom()) {
 			vectorLogger.trace('Subcase: selectLogical - bottom input');
 			return value.bottom();
 		}
-		let sourceLen = 0;
-		if(value.length.isValue()) {
-			sourceLen = value.length.value[1];
-		}
-		let selectorLen = 0;
-		if(selector.length.isValue()) {
-			selectorLen = selector.length.value[1];
-		}
+		guard(value.known.isValue(), 'Source is Bottom');
+		guard(selector.known.isValue(), 'Selector is Bottom');
+		guard(selector.length.isValue(), 'Selector length is Bottom');
+
+		const sourceLen = value.known.value.length;
+		const selectorLen = selector.known.value.length;
+
 		if(selectorLen === 0) {
 			vectorLogger.trace('Subcase: selectLogical - empty selector');
-			const result = value.create({
-				length:     value.length.create([0, 0]),
-				known:      value.known.create([]),
-				summary:    value.summary.bottom(),
-				attributes: value.attributes,
-				type:       value.type
-			});
-			return result;
+			return value;
 		}
+
 		if(sourceLen === +Infinity || selectorLen === +Infinity) {
 			vectorLogger.trace('Subcase: selectLogical - infinite source or selector');
 			const result = value.create({
@@ -1409,29 +1405,42 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			});
 			return result;
 		}
+
 		vectorLogger.trace('Subcase: selectLogical - finite source and selector with recycling');
 		const maxLen = Math.max(sourceLen, selectorLen);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
-		for(let i = 0; i < maxLen; i++) {
-			const selectorPos = i % selectorLen;
-			let selectorVal: NAAwareDomain<Domain>;
-			if(selector.known.isValue()) {
-				const selectorValues = selector.known.value as readonly NAAwareDomain<Domain>[];
-				if(selectorPos < selectorValues.length) {
-					selectorVal = selectorValues[selectorPos];
-				} else {
-					selectorVal = selector.summary;
+
+		const adjustedSelector = rhoF(selector.known, selector.length.value[0], maxLen, selector.factory);
+		guard(adjustedSelector.isValue(), 'adjustedSelector is Bottom');
+		const plainSelector = adjustedSelector.toArray();
+		for(let i = 0; i < selector.known.value.length; i++) {
+			const iVal: NAAwareDomain<PosIntervalDomain> = plainSelector[i];
+			let sourceVal = NAAwareDomain.bottom(this.factory);
+
+			let [u, l] = [0, 0];
+			if(iVal.inner.isValue()) {
+				[u, l] = iVal.inner.value;
+
+				if(l == 0 && u == 0) {
+					vectorLogger.trace(`Extracted FALSE in position ${i}`);
+					continue;
+				} else if(u == 1) {
+					vectorLogger.trace(`Contained TRUE in position ${i}`);
+					const accessed = accessPosition(value, i, naValue);
+					vectorLogger.trace(`Accessed value [${accessed}]`);
+					sourceVal = sourceVal.join(accessed);
 				}
-			} else {
-				selectorVal = selector.summary;
 			}
-			const sourceVal = accessPosition(value, i, naValue);
-			if(selectorVal.isValue()) {
-				resultKnownPositions.push(sourceVal);
-			} else {
-				resultKnownPositions.push(sourceVal.join(naValue));
+
+			if(iVal.containsNA()) {
+				vectorLogger.trace(`Contained NA in position ${i}`);
+				sourceVal = sourceVal.join(naValue);
 			}
+
+			guard(sourceVal.isValue(), `Selected position [sourceVal:${sourceVal} value:${sourceVal.value}] not valid`);
+			resultKnownPositions.push(sourceVal);
 		}
+
 		const isInfinite = selector.length.isValue() && selector.length.value[1] === +Infinity;
 		const result = value.create({
 			length:     value.length.create([0, resultKnownPositions.length]),
@@ -1643,61 +1652,116 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
-		vectorLogger.debug('Operation: updateNegative');
+		// 1. Entry logging
+		vectorLogger.trace(`applyUpdateNegative [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
+
+		// 2. Guard: bottom inputs
 		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
 			vectorLogger.trace('Subcase: updateNegative - bottom input');
 			return value.bottom();
 		}
+
+		// 3. Guard: extract source length bounds
+		let sourceLower = 0;
 		let sourceUpper = 0;
 		if(value.length.isValue()) {
+			sourceLower = value.length.value[0];
 			sourceUpper = value.length.value[1];
+			// 4. Guard: infinite source
 			if(sourceUpper === +Infinity) {
 				vectorLogger.trace('Subcase: updateNegative - infinite source, returning top');
 				return value.top();
 			}
 		} else {
-			vectorLogger.trace('Subcase: updateNegative - non-value source length, returning top');
-			return value.top();
+			vectorLogger.trace('Subcase: updateNegative - non-value source length, returning bottom');
+			return value.bottom();
 		}
+
+		// 5. Compute adjusted selector
 		const adjustedSelector = adjustForZeros(selector);
-		const mustNotUpdated: number[] = [];
-		const mayNotUpdated: number[] = [];
+		vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
+
+		// 6. Compute MustNotUpdated set (Paper §4.8.2, lines 934-936)
+		// Positions definitely NOT updated: card(p) = 1 and valid positive index in [1, u₁]
+		const mustNotUpdated = new Set<number>();
+		// 7. Compute MayNotUpdated set (Paper §4.8.2, lines 938-944)
+		// Positions possibly NOT updated (non-singleton intervals or from summary)
+		const mayNotUpdated = new Set<number>();
+
 		if(adjustedSelector.known.isValue()) {
 			const selectorKnownPositions = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorKnownPositions) {
 				if(idx.isBottom()) {
 					continue;
 				}
+				if(idx.isNA()) {
+					// NA in selector means the position is unknown
+					for(let pos = 1; pos <= sourceUpper; pos++) {
+						mayNotUpdated.add(pos);
+					}
+					continue;
+				}
 				const innerInterval = idx.inner;
 				if(innerInterval.isValue()) {
 					const [l, u] = innerInterval.value;
+					// Negative indices: must be in range [-u₁, -1] to be valid
 					if(l <= 0 && u <= 0) {
-						const posLower = Math.abs(u);
-						const posUpper = Math.abs(l);
+						const posLower = Math.abs(u); // |u| is smaller absolute value
+						const posUpper = Math.abs(l); // |l| is larger absolute value
 						if(card(innerInterval) === 1) {
+							// Singleton: definitely this position
 							const pos = posLower;
 							if(pos >= 1 && pos <= sourceUpper) {
-								mustNotUpdated.push(pos);
+								mustNotUpdated.add(pos);
 							}
 						} else {
+							// Non-singleton interval: range of possible positions
 							for(let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
-								mayNotUpdated.push(pos);
+								mayNotUpdated.add(pos);
 							}
 						}
 					}
 				} else {
+					// Top interval: all positions may be not updated
 					for(let pos = 1; pos <= sourceUpper; pos++) {
-						mayNotUpdated.push(pos);
+						mayNotUpdated.add(pos);
 					}
 				}
 			}
+		} else {
+			// adjustedSelector.known is Bot: all positions may be not updated
+			for(let pos = 1; pos <= sourceUpper; pos++) {
+				mayNotUpdated.add(pos);
+			}
 		}
-		const hasNonEnumerable = adjustedSelector.known.isValue() && (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
-		const v = squash(values);
+
+		// 8. Compute MustUpdated set (Paper §4.8.2, lines 946-948)
+		// Positions definitely updated: [1, |prefix₁|] \ (MustNotUpdated ∪ MayNotUpdated)
+		const mustUpdated = new Set<number>();
+		const prefixLength = value.known.isValue() ? value.known.value.length : 0;
+		for(let i = 1; i <= Math.min(prefixLength, sourceUpper); i++) {
+			if(!mustNotUpdated.has(i) && !mayNotUpdated.has(i)) {
+				mustUpdated.add(i);
+			}
+		}
+
+		vectorLogger.trace(`Sets computed [mustNotUpdated=${mustNotUpdated.size}, mayNotUpdated=${mayNotUpdated.size}, mustUpdated=${mustUpdated.size}]`);
+
+		// 9. Check for non-enumerable positions in adjusted selector
+		const hasNonEnumerable = adjustedSelector.known.isValue() &&
+			(adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[])
+				.some(idx => !idx.isNA() && !idx.isBottom() && !isEnumerable(idx.inner));
+
+		// 10. Paragraph 1: At least one non-enumerable position (Paper §4.8.2, lines 953-975)
 		if(hasNonEnumerable) {
-			vectorLogger.trace('Subcase: updateNegative - non-enumerable selector');
-			const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
+			vectorLogger.debug('Paragraph 1: Non-enumerable position in selector, using weak update');
+			const v = squash(values);
+			const sourceKnownPositions = value.known.isValue()
+				? (value.known.value as readonly NAAwareDomain<Domain>[])
+				: [];
 			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
+
+			// Initialize to prefix₁, then weakly update positions not in MustNotUpdated
 			for(let i = 1; i <= sourceUpper; i++) {
 				const idx = i - 1;
 				let val: NAAwareDomain<Domain>;
@@ -1706,12 +1770,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				} else {
 					val = value.summary;
 				}
-				if(!mustNotUpdated.includes(i)) {
+				// Weakly update: join with v if not definitely not updated
+				if(!mustNotUpdated.has(i)) {
 					val = val.join(v);
 				}
 				resultKnownPositions.push(val);
 			}
-			const resultSummary = value.summary.join(v);
+
+			// Summary: if u₁ = +∞, update as s_r = s₁ ⊔ v
+			const resultSummary = sourceUpper === +Infinity ? value.summary.join(v) : value.summary;
+
 			const result = value.create({
 				length:     value.length,
 				known:      value.known.create(resultKnownPositions),
@@ -1719,26 +1787,104 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				attributes: value.attributes,
 				type:       value.type
 			});
+			vectorLogger.trace(`Result [length=${result.length.toString()}]`);
 			return result;
 		}
-		const isInfinite = adjustedSelector.length.isValue() && adjustedSelector.length.value[1] === +Infinity;
+
+		// 11. Paragraphs 2 & 3: All enumerable positions
+		// Determine if selector is finite or infinite
+		const selectorUpper = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
+		const isInfinite = selectorUpper === +Infinity;
+
 		if(isInfinite) {
-			vectorLogger.trace('Subcase: updateNegative - infinite selector, returning top');
-			return value.top();
-		} else {
-			vectorLogger.trace('Subcase: updateNegative - finite selector');
-			let selectorUpper = 0;
-			if(adjustedSelector.length.isValue()) {
-				selectorUpper = adjustedSelector.length.value[1];
+			// 12. Paragraph 2: Infinite selector, all enumerable (Paper §4.8.2, lines 977-1015)
+			vectorLogger.debug('Paragraph 2: Infinite selector, all enumerable, building positive selector');
+
+			// Build positive selector from MustUpdated and MayNotUpdated
+			// Length: [lᵣ, uᵣ] = [|MustUpdated_{l₁}|, u₁ - |MustNotUpdated_{u₁}|]
+			const mustUpdatedCount = [...mustUpdated].filter(i => i >= sourceLower).length;
+			const mustNotUpdatedCount = [...mustNotUpdated].filter(i => i <= sourceUpper).length;
+			const resultLengthLower = mustUpdatedCount;
+			const resultLengthUpper = sourceUpper - mustNotUpdatedCount;
+
+			// Build selector prefix
+			const selectorPrefixPositions: NAAwareDomain<PosIntervalDomain>[] = [];
+
+			// CountMustNotUpdated helper: count positions < i
+			const countMustNotUpdated = (i: number) => [...mustNotUpdated].filter(p => p < i).length;
+
+			// For each position in MustUpdated (ascending)
+			for(const i of [...mustUpdated].sort((a, b) => a - b)) {
+				const targetIdx = i - countMustNotUpdated(i);
+				// Ensure selectorPrefixPositions has enough room
+				while(selectorPrefixPositions.length < targetIdx) {
+					selectorPrefixPositions.push(new NAAwareDomain<PosIntervalDomain>({
+						inner: PosIntervalDomain.bottom(),
+						hasNA: false
+					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>));
+				}
+				if(targetIdx >= 1) {
+					selectorPrefixPositions[targetIdx - 1] = new NAAwareDomain<PosIntervalDomain>({
+						inner: new PosIntervalDomain([i, i]),
+						hasNA: false
+					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>);
+				}
 			}
+
+			// For each position in MayNotUpdated (ascending, excluding MustNotUpdated)
+			for(const i of [...mayNotUpdated].filter(i => !mustNotUpdated.has(i)).sort((a, b) => a - b)) {
+				if(i > sourceUpper) {
+					continue;
+				}
+				const targetIdx = i - countMustNotUpdated(i);
+				while(selectorPrefixPositions.length < targetIdx) {
+					selectorPrefixPositions.push(new NAAwareDomain<PosIntervalDomain>({
+						inner: PosIntervalDomain.bottom(),
+						hasNA: false
+					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>));
+				}
+				if(targetIdx >= 1) {
+					const existing = selectorPrefixPositions[targetIdx - 1];
+					selectorPrefixPositions[targetIdx - 1] = existing.join(new NAAwareDomain<PosIntervalDomain>({
+						inner: new PosIntervalDomain([i, i]),
+						hasNA: false
+					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>));
+				}
+			}
+
+			// Build selector vector
+			const positiveSelector = value.create({
+				length:     new PosIntervalDomain([resultLengthLower, resultLengthUpper]),
+				known:      adjustedSelector.known.create(selectorPrefixPositions),
+				summary:    adjustedSelector.summary,
+				attributes: adjustedSelector.attributes,
+				type:       adjustedSelector.type
+			}) as unknown as VectorDomain<PosIntervalDomain>;
+
+			// Call applyUpdatePositive
+			const result = this.applyUpdatePositive(value, positiveSelector, values, naValue);
+			vectorLogger.trace(`Result [length=${result.length.toString()}]`);
+			return result;
+		} else {
+			// 13. Paragraph 3: Finite selector, all enumerable (Paper §4.8.2, lines 1017-1026)
+			vectorLogger.debug('Paragraph 3: Finite selector, all enumerable');
+
+			// uᵣ = max(u₁, u₂')
 			const uR = Math.max(sourceUpper, selectorUpper);
+
+			// Generate cyclic values: prefix₃' = ρ_f^♯(ν₃, l₃, uᵣ)
 			let valuesUpper = 0;
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
 			}
 			const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
-			const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
+
+			// Build base positions from source
+			const sourceKnownPositions = value.known.isValue()
+				? (value.known.value as readonly NAAwareDomain<Domain>[])
+				: [];
 			const resultKnownPositions: NAAwareDomain<Domain>[] = [];
+
 			for(let i = 0; i < uR; i++) {
 				if(i < sourceKnownPositions.length) {
 					resultKnownPositions.push(sourceKnownPositions[i]);
@@ -1748,21 +1894,27 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					resultKnownPositions.push(naValue);
 				}
 			}
-			const updatedPositions = new Set([...mustNotUpdated, ...mayNotUpdated]);
+
+			// Update positions that are not in MustNotUpdated or MayNotUpdated
+			// (i.e., positions that are definitely being updated)
+			const notUpdatedPositions = new Set([...mustNotUpdated, ...mayNotUpdated]);
 			for(let i = 1; i <= uR; i++) {
-				if(!updatedPositions.has(i)) {
+				if(!notUpdatedPositions.has(i)) {
 					const idx = i - 1;
 					const valueIdx = (i - 1) % cyclicValues.length;
 					resultKnownPositions[idx] = cyclicValues[valueIdx];
 				}
 			}
+
+			// Result length: [l₁, uᵣ], summary: ⊥
 			const result = value.create({
-				length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, uR]),
+				length:     value.length.create([sourceLower, uR]),
 				known:      value.known.create(resultKnownPositions),
 				summary:    value.summary.bottom(),
 				attributes: value.attributes,
 				type:       value.type
 			});
+			vectorLogger.trace(`Result [length=${result.length.toString()}]`);
 			return result;
 		}
 	}
