@@ -1496,14 +1496,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if(!numericSelector.known.isValue() || !Array.isArray(numericSelector.known.value)) {
 			// Cannot enumerate selector values, apply positive update conservatively
 			vectorLogger.debug('Operation: update cannot enumerate selector values, using conservative positive');
-			const conservativeSelector = buildPosIntervalSelectorFromSource(numericSelector);
-			const result = this.applyUpdatePositive(value, conservativeSelector, values, naValue);
-			vectorLogger.debug(`Operation: update conservative result [length=${result.length.toString()}]`);
-			return result;
+			return value.bottom();
 		}
 
 		// Paper Section 4.8: abstract filter classifies selector positions
-		const selectorPositions = numericSelector.known.value as readonly NAAwareDomain<IntervalDomain>[];
+		const selectorPositions = numericSelector.known.value;
 		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.factory);
 		vectorLogger.debug(`Operation: update filter [positive=${filterResult.positive.length}, negative=${filterResult.negative.length}]`);
 

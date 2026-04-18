@@ -24,7 +24,7 @@ export type { DomainFactory } from './known-initial-positions-domain';
 export interface AbstractFilterResult {
 	/** Positions classified as positive (Z≥0 ∪ {NA}) */
 	positive:          NAAwareDomain<IntervalDomain>[];
-	/** Positions classified as negative (Z≤0, excluding NA) */
+	/** Positions classified as negative (Z≥0 ∪ {NA}) */
 	negative:          NAAwareDomain<IntervalDomain>[];
 	/** Whether any bottom position was omitted from the positive group */
 	positiveHasBottom: boolean;
@@ -41,133 +41,6 @@ export interface AbstractFilterResult {
  * - `'bottom'`: impossible position → skipped with bottom flag set
  */
 export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bottom';
-
-/**
- * Flattens a potentially double-wrapped NAAwareDomain to ensure the inner
- * domain is an IntervalDomain. When VectorDomain's Domain parameter is
- * NAAwareDomain (instead of IntervalDomain), values become double-wrapped.
- * This function unwraps any extra NAAwareDomain layers and merges NA flags.
- */
-function flattenNAAwareInterval(
-	pos: NAAwareDomain<IntervalDomain>,
-	factory: DomainFactory<IntervalDomain>
-): NAAwareDomain<IntervalDomain> {
-	if(pos.isBottom()) {
-		return NAAwareDomain.bottom(factory);
-	}
-	if(pos.isTop()) {
-		return NAAwareDomain.top(factory);
-	}
-	if(pos.isNA()) {
-		return NAAwareDomain.na(factory);
-	}
-
-	let inner: AnyAbstractDomain = pos.inner;
-	let hasNA = pos.containsNA();
-
-	while(inner instanceof NAAwareDomain) {
-		hasNA = hasNA || (inner as NAAwareDomain<AnyAbstractDomain>).containsNA();
-		if(inner.isBottom()) {
-			return hasNA ? NAAwareDomain.na(factory) : NAAwareDomain.bottom(factory);
-		}
-		if(inner.isTop()) {
-			return NAAwareDomain.top(factory);
-		}
-		if(inner instanceof NAAwareDomain && inner.isNA()) {
-			return NAAwareDomain.na(factory);
-		}
-		inner = (inner as NAAwareDomain<AnyAbstractDomain>).inner;
-	}
-
-	// inner is now guaranteed to be IntervalDomain (or PosIntervalDomain)
-	return new NAAwareDomain({ inner: inner as IntervalDomain, hasNA }, factory);
-}
-
-/**
- * Classifies an NA-aware interval position for abstract filtering (paper Section 4.7).
- *
- * Classification rules:
- * 1. Pure NA (isNA) → 'positive' (NA is in Z≥0 ∪ {NA})
- * 2. Pure positive interval (lower ≥ 0) → 'positive' (all values in Z≥0)
- * 3. Pure negative interval (upper ≤ 0, no NA) → 'negative' (all values in Z≤0)
- * 4. Negative interval with NA → 'ambiguous' (NA goes to positive, interval to negative)
- * 5. Interval spanning zero (lower < 0 and upper > 0) → 'ambiguous'
- * 6. Bottom → 'bottom' (skipped with flag)
- * 7. Top → 'ambiguous' (spans everything)
- * @param pos - The NA-aware interval position to classify
- * @returns The classification result
- */
-export function classifyNAAwarePosition(
-	pos: NAAwareDomain<IntervalDomain>
-): PositionClassification {
-	// Case 9: bottom position
-	if(pos.isBottom()) {
-		return 'bottom';
-	}
-
-	// Case 1: pure NA → positive (NA is in Z≥0 ∪ {NA})
-	if(pos.isNA()) {
-		return 'positive';
-	}
-
-	// Case 10: top position → ambiguous (spans everything)
-	if(pos.isTop()) {
-		return 'ambiguous';
-	}
-
-	// pos.isValue() is true here — extract the IntervalDomain and NA flag.
-	// When the VectorDomain's Domain parameter is NAAwareDomain (double-wrapping),
-	// pos.inner is itself an NAAwareDomain<IntervalDomain> rather than an IntervalDomain,
-	// so we must flatten it to get the underlying IntervalDomain and merge NA flags.
-	let inner: AnyAbstractDomain = pos.inner;
-	let hasNA = pos.containsNA();
-
-	while(inner instanceof NAAwareDomain) {
-		hasNA = hasNA || (inner as NAAwareDomain<AnyAbstractDomain>).containsNA();
-		if(inner.isBottom()) {
-			return 'bottom';
-		}
-		if(inner.isTop()) {
-			return 'ambiguous';
-		}
-		if(inner instanceof NAAwareDomain && inner.isNA()) {
-			return 'positive';
-		}
-		inner = (inner as NAAwareDomain<AnyAbstractDomain>).inner;
-	}
-
-	// inner is now guaranteed to be IntervalDomain (or PosIntervalDomain)
-	const interval = inner as IntervalDomain;
-
-	if(interval.isBottom()) {
-		return 'bottom';
-	}
-
-	// Case: inner is Top (but hasNA is false, so pos itself is not Top)
-	// Top interval spans everything → ambiguous
-	if(interval.isTop()) {
-		return 'ambiguous';
-	}
-
-	// After isBottom() and isTop() checks, interval must be a value (concrete interval)
-
-	const [lower, upper] = interval.value as readonly [number, number];
-
-	// Case 2 + 4 + 5: all values ≥ 0 → positive (includes zero)
-	if(lower >= 0) {
-		return 'positive';
-	}
-
-	// Case 3: all values ≤ 0 and no NA → negative
-	if(upper <= 0 && !hasNA) {
-		return 'negative';
-	}
-
-	// Case 6: all values ≤ 0 but has NA → ambiguous (need to split NA to positive)
-	// Case 7: interval spans zero (lower < 0 and upper > 0) → ambiguous
-	// Case 8: interval spans zero with NA → ambiguous
-	return 'ambiguous';
-}
 
 /**
  * Splits an ambiguous NA-aware interval position into its positive and negative components.
@@ -210,7 +83,6 @@ export function splitNAAwarePosition(
 		return { positive: null, negative: null };
 	}
 
-	// Flatten double-wrapped NAAwareDomain (same as classifyNAAwarePosition)
 	let inner: AnyAbstractDomain = pos.inner;
 	let hasNA = pos.containsNA();
 
@@ -677,31 +549,47 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 		let negativeHasBottom = false;
 
 		for(const pos of positions) {
-			const flatPos = flattenNAAwareInterval(pos, factory);
-			const classification = classifyNAAwarePosition(flatPos);
+			const hasNA = pos.containsNA();
 
-			switch(classification) {
-				case 'bottom':
-					positiveHasBottom = true;
-					negativeHasBottom = true;
-					break;
-				case 'positive':
-					positive.push(flatPos);
-					break;
-				case 'negative':
-					negative.push(flatPos);
-					break;
-				case 'ambiguous': {
-					const { positive: posPart, negative: negPart } = splitNAAwarePosition(flatPos, factory);
-					if(posPart !== null) {
-						positive.push(posPart);
-					}
-					if(negPart !== null) {
-						negative.push(negPart);
-					}
-					break;
-				}
+			if(!pos.isValue()) {
+				negativeHasBottom = positiveHasBottom = true;
+				break;
 			}
+
+			if(!pos.value.inner.isValue()) {
+				const naVal = new NAAwareDomain({
+					inner: IntervalDomain.bottom(), hasNA: hasNA
+				}, factory);
+
+				negative.push(naVal);
+				positive.push(naVal);
+				continue;
+			}
+
+			const [l, u] = pos.value.inner.value;
+
+			const innerNeg = new IntervalDomain([l, u>0 ? 0 : u]);
+			let naNeg: NAAwareDomain<IntervalDomain> = new NAAwareDomain({
+				inner: innerNeg, hasNA: hasNA
+			}, factory);
+
+			if(l > 0) {
+				negativeHasBottom = true;
+				naNeg = NAAwareDomain.bottom(factory);
+			}
+
+			const innerPos = new IntervalDomain([l<0 ? 0 : l, u]);
+			let naPos: NAAwareDomain<IntervalDomain> = new NAAwareDomain({
+				inner: innerPos, hasNA: hasNA
+			}, factory);
+
+			if(u < 0) {
+				positiveHasBottom = true;
+				naPos = NAAwareDomain.bottom(factory);
+			}
+
+			positive.push(naPos);
+			negative.push(naNeg);
 		}
 
 		return { positive, negative, positiveHasBottom, negativeHasBottom };

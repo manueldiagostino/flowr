@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { NAAwareDomain, type NAAwareInnerValue } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain, type IntervalLift } from '../../../../src/abstract-interpretation/domains/interval-domain';

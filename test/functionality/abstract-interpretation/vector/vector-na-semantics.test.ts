@@ -6,6 +6,7 @@ import { withShell } from '../../_helper/shell';
 import { getVectorForCriterion } from '../_helper/vector-inference-helpers';
 import { naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA } from '../_helper/na-aware-helpers';
 import type { ValueToDomainConverter } from '../../../../src/abstract-interpretation/vector/resolve-vector-args';
+import { NA, Top } from '../../../../src/abstract-interpretation/domains/lattice';
 
 const naValueToDomain: ValueToDomainConverter<NAAwareDomain<IntervalDomain>> = (value) => {
 	if(typeof value === 'number') {
@@ -197,7 +198,6 @@ c <- b[c(1, 2)]`;
 describe('NA-Aware Vector Semantics Unit Tests', () => {
 	describe('Domain Factory', () => {
 		test('naAwareIntervalFactory creates Top element', () => {
-			const { Top } = require('../../../../src/abstract-interpretation/domains/lattice');
 			const top = naAwareIntervalFactory(Top);
 			assert.strictEqual(top.isTop(), true);
 			assert.strictEqual(top.containsNA(), true);
@@ -210,7 +210,6 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 		});
 
 		test('naAwareIntervalFactory creates value with NA', () => {
-			const { NA } = require('../../../../src/abstract-interpretation/domains/lattice');
 			const domain = naAwareIntervalFactory(new Set([1, 2, NA]));
 			assert.strictEqual(domain.isValue(), true);
 			assert.strictEqual(domain.containsNA(), true);

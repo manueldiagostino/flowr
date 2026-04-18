@@ -441,6 +441,6 @@ export class NAAwareDomain<
 	}
 
 	public isValue(): this is NAAwareDomain<Domain, NAAwareInnerValue<Domain>> {
-		return !this.isBottom() && !this.isTop();
+		return !this.isBottom();
 	}
 }
