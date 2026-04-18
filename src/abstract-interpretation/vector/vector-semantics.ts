@@ -159,21 +159,24 @@ export function propagate(
 			return propagate(rest, summary, k + 1);
 		}
 
-		// Check if may contain zero: 0 ∈ γ(c₁) but γ(c₁) ≠ {0}
+		// Check if may contain zero: 0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0}
 		if(l <= 0 && u >= 0) {
 			// Join with propagated value from rest (paper specifies ⊔)
 			const propagated = propagate(rest, summary, k);
 			return first.join(propagated);
 		}
-	} else {
-		// position is a pure NA
-		assert(first.isNA());
+	} else if(first.isNA()) {
+		// position is a pure NA - treat as non-zero and continue
+		// NA values are not zeros, so they don't affect the zero counter
+	} else if(first.isBottom()) {
+		// position is bottom (no possible values) - propagate bottom
+		return summary.bottom();
 	}
+	// For Top or pure NA, continue to non-zero handling below
 
 	// Non-zero value
 	if(k > 0) {
 		// Decrement counter and continue, joining with first (per paper L411)
-
 		return first.join(propagate(rest, summary, k - 1));
 	}
 

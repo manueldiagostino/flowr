@@ -225,19 +225,20 @@ c <- if(runif(1) > 0.5) 0 else 1
 sel <- c(a, b, c)
 y <- x[sel]`;
 			const result = await runVectorInference(shell, code, intervalFactory, valueToDomain);
-			const selVector = result.getForCriterion('1@sel');
-			const yVector = result.getForCriterion('1@y');
+			const selVector = result.getForCriterion('5@sel');
+			const yVector = result.getForCriterion('6@y');
 			assert.ok(selVector !== undefined, 'Selector vector should be defined');
 			assert.ok(yVector !== undefined, 'Result vector y should be defined');
 			if(selVector !== undefined) {
 				assertLength(selVector, [3, 3]);
 				assert.ok(selVector.known.isValue(), 'Selector should have concrete values');
 			}
-			// y should have length in range [2, 5] since:
-			// - positive selection could get 3 elements (all indices 0,1,2 resolve to positive)
-			// - negative selection could delete up to 2 elements (indices -2, -1 from a, b)
+			// y should have length in range [0, 5] since:
+			// - all selector positions could be 0 (a=0, b=0, c=0) → empty result
+			// - positive selection could get up to 3 elements
+			// - negative selection could delete up to 2 elements
 			if(yVector !== undefined) {
-				assertLengthRange(yVector, 2, 5);
+				assertLengthRange(yVector, 0, 5);
 			}
 		});
 
@@ -257,7 +258,7 @@ a <- 0
 b <- 0
 sel <- c(a, b)
 y <- x[sel]`;
-			const vector = await getVectorForCriterion(shell, code, '3@y', intervalFactory, valueToDomain);
+			const vector = await getVectorForCriterion(shell, code, '5@y', intervalFactory, valueToDomain);
 			assert.ok(vector !== undefined && vector.isBottom(), 'Zero-only selector should return bottom (empty vector)');
 		});
 

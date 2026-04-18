@@ -43,11 +43,11 @@ import { RLogical as RLogicalNode } from '../../r-bridge/lang-4.x/ast/model/node
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { guard } from '../../util/assert';
 
-type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'unknown';
+type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'random' | 'unknown';
 
 type SelectorKind = 'logical' | 'numeric';
 
-type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'unknown';
+type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
 interface VectorOperation<Name extends VectorOperationName = VectorOperationName> {
 	operation:     Name;
@@ -175,13 +175,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			vectorLogger.debug(`Decision: function type 'arithmetic' for node type '${node.type}'`);
 			return 'arithmetic';
 		}
-		if(functionName === 'length') {
-			vectorLogger.debug(`Decision: function type 'length' for node type '${node.type}'`);
-			return 'length';
-		}
+	if(functionName === 'length') {
+		vectorLogger.debug(`Decision: function type 'length' for node type '${node.type}'`);
+		return 'length';
+	}
+	if(['runif', 'rnorm', 'rbinom', 'rexp', 'rpois'].includes(functionName)) {
+		vectorLogger.debug(`Decision: function type 'random' for node type '${node.type}'`);
+		return 'random';
+	}
 
-		vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
-		return 'unknown';
+	vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
+	return 'unknown';
 	}
 
 	// ==================== Selector Type Detection ====================
@@ -396,14 +400,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return [{ operation: 'unknown', operand: undefined }];
 			}
 			// For unary minus, we need to negate the value
-			// Since PosIntervalDomain can't represent negative values, we return top
-			// to indicate we can't precisely track the value
 			const operandValue = this.getVectorDomainValue(lhsId);
 			if(operandValue?.isValue() && node.operator === '-') {
 				vectorLogger.debug(`Handler: handleArithmetic unary minus with value [length=${operandValue.length.toString()}]`);
-				// The operand has a concrete value, try to negate it
-				// Return top since we can't represent negative values in PosIntervalDomain
-				return [{ operation: 'concatenate', operand: operandValue.top() }];
+				// The operand has a concrete value, negate it
+				return [{ operation: 'negate', operand: operandValue }];
 			}
 			vectorLogger.debug(`Handler: handleArithmetic unary - not handling [hasValue=${operandValue?.isValue()}, operator=${node.operator}]`);
 			return [{ operation: 'unknown', operand: undefined }];
@@ -431,6 +432,41 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private handleLength(): VectorOperations {
 		return [{ operation: 'unknown', operand: undefined }];
+	}
+
+	/**
+	 * Handles random number generation functions (runif, rnorm, etc.).
+	 * Returns a VectorDomain with known length but ⊤ values.
+	 * @param node - The R node of the function call
+	 * @param call - The function call vertex from the dataflow graph
+	 * @returns The mapped vector operations sequence
+	 */
+	private handleRandomFunction(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations {
+		const args = this.resolveVectorArguments(call);
+
+		vectorLogger.debug(`Handler: handleRandomFunction [argCount=${args.length}]`);
+
+		// Get the first argument (n = number of values to generate)
+		let lengthDomain: PosIntervalDomain;
+		if(args.length > 0 && args[0].resolved?.length.isValue()) {
+			// First argument is a concrete number - use it as exact length
+			const len = args[0].resolved.length;
+			if(len.isValue()) {
+				lengthDomain = new PosIntervalDomain([len.value[0], len.value[1]]);
+			} else {
+				lengthDomain = PosIntervalDomain.top();
+			}
+		} else {
+			// Conservative: unknown length
+			lengthDomain = PosIntervalDomain.top();
+		}
+
+		// Build a VectorDomain with ⊤ values (any double)
+		// The actual values are unknown, so we return a vector with the right length
+		// but ⊤ values that will be stored via applyVectorExpression
+		const topVector = VectorDomain.top(this.plainFactory);
+
+		return [{ operation: 'concatenate', operand: topVector }];
 	}
 
 	// ==================== Access and Replacement Handlers ====================
@@ -576,14 +612,28 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				}
 				break;
 			}
-			case 'length':
-				operations = this.handleLength();
-				break;
-			case 'unknown':
-			default:
-				vectorLogger.warn(`Unknown function type '${funcType}' in onFunctionCall [nodeId=${call.id}]`);
-				operations = undefined;
-				break;
+		case 'length':
+			operations = this.handleLength();
+			break;
+		case 'random': {
+			const vertexInfo = this.config.dfg.get(node.info.id);
+			if(vertexInfo === undefined) {
+				operations = [{ operation: 'unknown', operand: undefined }];
+			} else {
+				const [callVertex] = vertexInfo;
+				if(callVertex?.tag !== VertexType.FunctionCall) {
+					operations = [{ operation: 'unknown', operand: undefined }];
+				} else {
+					operations = this.handleRandomFunction(node, callVertex);
+				}
+			}
+			break;
+		}
+		case 'unknown':
+		default:
+			vectorLogger.warn(`Unknown function type '${funcType}' in onFunctionCall [nodeId=${call.id}]`);
+			operations = undefined;
+			break;
 		}
 
 		this.applyVectorExpression(node, operations);
@@ -813,11 +863,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					args.naValue as NAAwareDomain<Domain>,
 					args.selectorKind as SelectorKind | undefined
 				);
-			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.known as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
-			default:
-				vectorLogger.warn(`Unknown operation '${operation}' in applyOperation, returning top`);
-				return value.top();
+		case 'update':
+			return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.known as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
+		case 'negate':
+			return this.applyNegate(value);
+		default:
+			vectorLogger.warn(`Unknown operation '${operation}' in applyOperation, returning top`);
+			return value.top();
 		}
 	}
 
@@ -1008,6 +1060,60 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			type:       value.type
 		});
 		vectorLogger.debug(`Operation: concatenate result [length=${result.length.toString()}, values=${result.known.toString()}]`);
+		return result;
+	}
+
+	/**
+	 * Applies the negate operation to a vector.
+	 * Negates each known position and the summary, preserving length/attributes/type.
+	 * @param value - The VectorDomain to negate
+	 * @returns The resulting VectorDomain after negation
+	 */
+	private applyNegate(value: VectorDomain<Domain>): VectorDomain<Domain> {
+		vectorLogger.debug('Operation: negate');
+
+		if(value.isBottom()) {
+			vectorLogger.debug('Operation: negate returning bottom');
+			return value.bottom();
+		}
+		if(value.isTop()) {
+			vectorLogger.debug('Operation: negate returning top');
+			return value.top();
+		}
+
+		// Negate known positions
+		let negatedKnown: typeof value.known;
+		if(value.known.isBottom()) {
+			negatedKnown = value.known.bottom();
+		} else if(value.known.isTop()) {
+			negatedKnown = value.known.top();
+		} else if(value.known.isValue()) {
+			const values = value.known.value as readonly NAAwareDomain<Domain>[];
+			const negatedValues = values.map(v => v.negate());
+			negatedKnown = value.known.create(negatedValues);
+		} else {
+			negatedKnown = value.known.top();
+		}
+
+		// Negate summary
+		let negatedSummary: typeof value.summary;
+		if(value.summary.isBottom()) {
+			negatedSummary = value.summary.bottom();
+		} else if(value.summary.isTop()) {
+			negatedSummary = value.summary.top();
+		} else {
+			negatedSummary = value.summary.negate();
+		}
+
+		const result = value.create({
+			length:     value.length,
+			known:      negatedKnown,
+			summary:    negatedSummary,
+			attributes: value.attributes,
+			type:       value.type
+		});
+
+		vectorLogger.debug(`Operation: negate result [length=${result.length.toString()}, values=${result.known.toString()}]`);
 		return result;
 	}
 
@@ -2072,6 +2178,10 @@ function buildPosIntervalSelector(
 		}
 		if(pos.isTop()) {
 			return NAAwareDomain.top(posIntervalFactory);
+		}
+		if(pos.isNA()) {
+			// Pure NA position - preserve as NA
+			return NAAwareDomain.na(posIntervalFactory);
 		}
 		// Convert inner IntervalDomain to PosIntervalDomain
 		// (safe because abstractFilter guarantees lower ≥ 0 for positive, upper ≤ 0 for negative)

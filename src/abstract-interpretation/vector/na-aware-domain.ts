@@ -355,6 +355,25 @@ export class NAAwareDomain<
 	}
 
 	/**
+	 * Negates the inner domain value, preserving NA status.
+	 * Delegates to inner.negate() if available.
+	 */
+	public negate(): this {
+		if(this.isBottom()) {
+			return this.bottom();
+		}
+		if(this.isTop()) {
+			return this.top();
+		}
+
+		const thisValue = this.value as NAAwareInnerValue<Domain>;
+		// Delegate to inner domain's negate method
+		const negatedInner = (thisValue.inner as unknown as { negate(): Domain }).negate();
+
+		return this.create({ inner: negatedInner as Domain, hasNA: thisValue.hasNA });
+	}
+
+	/**
 	 * Concretize: returns set of concrete values.
 	 * - pure NA → Set([NA])
 	 * - value with NA → inner values + NA (if within limit)

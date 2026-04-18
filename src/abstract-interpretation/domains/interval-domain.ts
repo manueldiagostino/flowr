@@ -244,6 +244,18 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 	}
 
 	/**
+	 * Negates the interval: [a, b] → [-b, -a]
+	 * Handles ⊥ → ⊥ and ⊤ → ⊤ correctly.
+	 */
+	public negate(): this {
+		if(this.value === Bottom) {
+			return this.bottom();
+		} else {
+			return this.create([-this.value[1], -this.value[0]]);
+		}
+	}
+
+	/**
 	 * Extends the lower bound of the current abstract value down to -∞.
 	 */
 	public widenDown(): this {
