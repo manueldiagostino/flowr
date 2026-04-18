@@ -182,7 +182,7 @@ y <- x[c(1, NA, 3)]`;
 			const code = `x <- c(10, 20, 30)
 y <- x[c(0, 0)]`;
 			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
-			assertLength(vector, [0, 0]);
+			assert(vector !== undefined && vector.isBottom());
 		});
 
 		test('positive selection with 0 at different positions x[c(1, 0, 3, 0, 5)] - 0s ignored, returns 3 elements', async() => {
@@ -210,6 +210,55 @@ y <- x[c(1, 0, 3, 0, 5)]`;
 			if(yVector !== undefined) {
 				assertLengthRange(yVector, 2, 3);
 			}
+		});
+
+		test('mixed interval selector [[-2,1][-1,1][0,1]] - ambiguous intervals split correctly', async() => {
+			// Selector with intervals spanning negative, zero, and positive:
+			// a ∈ [-2, 1], b ∈ [-1, 1], c ∈ [0, 1]
+			// After abstractFilter:
+			//   - positive part: [0,1] for all three
+			//   - negative part: [-2,0], [-1,0] for first two, bottom for third (c has no negative values)
+			const code = `x <- c(10, 20, 30, 40, 50)
+a <- if(runif(1) > 0.5) -2 else 1
+b <- if(runif(1) > 0.5) -1 else 1
+c <- if(runif(1) > 0.5) 0 else 1
+sel <- c(a, b, c)
+y <- x[sel]`;
+			const result = await runVectorInference(shell, code, intervalFactory, valueToDomain);
+			const selVector = result.getForCriterion('1@sel');
+			const yVector = result.getForCriterion('1@y');
+			assert.ok(selVector !== undefined, 'Selector vector should be defined');
+			assert.ok(yVector !== undefined, 'Result vector y should be defined');
+			if(selVector !== undefined) {
+				assertLength(selVector, [3, 3]);
+				assert.ok(selVector.known.isValue(), 'Selector should have concrete values');
+			}
+			// y should have length in range [2, 5] since:
+			// - positive selection could get 3 elements (all indices 0,1,2 resolve to positive)
+			// - negative selection could delete up to 2 elements (indices -2, -1 from a, b)
+			if(yVector !== undefined) {
+				assertLengthRange(yVector, 2, 5);
+			}
+		});
+
+		test('all zeros selector c(0, 0, 0) - returns empty vector', async() => {
+			// Selector with only zeros should return empty vector (bottom)
+			const code = `x <- c(10, 20, 30, 40, 50)
+y <- x[c(0, 0, 0)]`;
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			assert.ok(vector !== undefined && vector.isBottom(), 'All-zeros selector should return bottom (empty vector)');
+		});
+
+		test('selector with only zero intervals [[0,0][0,0]] - returns empty vector', async() => {
+			// Selector where all positions are exactly [0,0] should return empty vector
+			// This is the concrete version of the bug: c(0, 0) should not be treated as negative
+			const code = `x <- c(10, 20, 30, 40, 50)
+a <- 0
+b <- 0
+sel <- c(a, b)
+y <- x[sel]`;
+			const vector = await getVectorForCriterion(shell, code, '3@y', intervalFactory, valueToDomain);
+			assert.ok(vector !== undefined && vector.isBottom(), 'Zero-only selector should return bottom (empty vector)');
 		});
 
 	});

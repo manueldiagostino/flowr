@@ -73,8 +73,8 @@ interface VectorInferenceConfiguration extends AbsintVisitorConfiguration {
  */
 export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends AbstractInterpretationVisitor<VectorDomain<Domain>, VectorInferenceConfiguration> {
 	private readonly operations?:    Map<NodeId, VectorOperations>;
-	private readonly factory:        import('./vector-domain').DomainFactory<Domain>;
-	private readonly naFactory:      import('./vector-domain').DomainFactory<NAAwareDomain<Domain>>;
+	private readonly plainFactory:   import('./vector-domain').DomainFactory<Domain>;
+	private readonly naAwareFactory: import('./vector-domain').DomainFactory<NAAwareDomain<Domain>>;
 	private readonly valueConverter: ValueToDomainConverter<Domain>;
 
 	constructor(
@@ -83,8 +83,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		{ trackOperations = true, ...config }: VectorInferenceConfiguration
 	) {
 		super(config, VectorDomain.top(factory));
-		this.factory = factory;
-		this.naFactory = NAAwareDomain.createSmartFactory(factory);
+		this.plainFactory = factory;
+		this.naAwareFactory = NAAwareDomain.createSmartFactory(factory);
 		this.valueConverter = valueConverter;
 
 		if(trackOperations) {
@@ -636,7 +636,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	protected override onNumberConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RNumber<ParentInformation> }): void {
 		super.onNumberConstant({ vertex, node });
 		vectorLogger.debug(`Handler: onNumberConstant [nodeId=${vertex.id}]`);
-		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
+		const vectorDomain = buildVectorFromLiteral(node, this.plainFactory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
 		}
@@ -650,7 +650,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	protected override onLogicalConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RLogical<ParentInformation> }): void {
 		super.onLogicalConstant({ vertex, node });
 		vectorLogger.debug(`Handler: onLogicalConstant [nodeId=${vertex.id}]`);
-		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
+		const vectorDomain = buildVectorFromLiteral(node, this.plainFactory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
 		}
@@ -664,7 +664,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	protected override onStringConstant({ vertex, node }: { vertex: DataflowGraphVertexValue, node: RString<ParentInformation> }): void {
 		super.onStringConstant({ vertex, node });
 		vectorLogger.debug(`Handler: onStringConstant [nodeId=${vertex.id}]`);
-		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
+		const vectorDomain = buildVectorFromLiteral(node, this.plainFactory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
 		}
@@ -679,7 +679,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		super.onSymbolConstant({ vertex, node });
 		vectorLogger.debug(`Handler: onSymbolConstant [nodeId=${vertex.id}]`);
 		// Handle NA symbol - NA is parsed as RSymbol with content === 'NA'
-		const vectorDomain = buildVectorFromLiteral(node, this.factory, this.valueConverter);
+		const vectorDomain = buildVectorFromLiteral(node, this.plainFactory, this.valueConverter);
 		if(vectorDomain !== undefined) {
 			this.updateState(node.info.id, vectorDomain);
 		}
@@ -700,9 +700,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			this.operations.set(node.info.id, operations);
 		}
 
-		let value: VectorDomain<Domain> = VectorDomain.bottom(this.factory);
+		let value: VectorDomain<Domain> = VectorDomain.bottom(this.plainFactory);
 
-		const naValue = this.naFactory(NA);
+		const naValue = this.naAwareFactory(NA);
 
 		for(const { operation, operand, ...args } of operations) {
 			// operand is now VectorDomain<Domain> | undefined
@@ -754,13 +754,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if('selector' in args && typeof args.selector === 'string') {
 			const selectorId = Number(args.selector) as NodeId;
 			const selectorValue = this.getVectorDomainValue(selectorId);
-			resolved.selector = selectorValue ?? VectorDomain.bottom(this.factory);
+			resolved.selector = selectorValue ?? VectorDomain.bottom(this.plainFactory);
 		}
 
 		if('known' in args && typeof args.known === 'string') {
 			const valuesId = Number(args.known) as NodeId;
 			const valuesValue = this.getVectorDomainValue(valuesId);
-			resolved.known = valuesValue ?? VectorDomain.bottom(this.factory);
+			resolved.known = valuesValue ?? VectorDomain.bottom(this.plainFactory);
 		}
 
 		return resolved;
@@ -1027,7 +1027,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applySelect(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
+		selector: VectorDomain<IntervalDomain>,
 		naValue: NAAwareDomain<Domain>,
 		selectorKind?: SelectorKind
 	): VectorDomain<Domain> {
@@ -1042,11 +1042,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if(selector.isTop()) {
 			vectorLogger.debug('Operation: select returning squashed (selector is top)');
 			const squashedValue = squash(value);
-			const smartFactory = NAAwareDomain.createSmartFactory(value.factory);
+			const naFactory = value.naAwareFactory;
 			const valueSquashed = VectorDomain.create(
-				value.factory,
+				value.plainFactory,
 				PosIntervalDomain.top(),
-				KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(smartFactory),
+				KnownInitialPositionsDomain.top(naFactory),
 				squashedValue,
 				value.attributes,
 				value.type
@@ -1073,7 +1073,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// Paper Section 4.7: abstract filter classifies selector positions
 		const selectorPositions = numericSelector.known.value as readonly NAAwareDomain<IntervalDomain>[];
-		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.factory);
+		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.plainFactory);
 		vectorLogger.debug(`Operation: select filter [positive=${filterResult.positive.length}, negative=${filterResult.negative.length}, posBottom=${filterResult.positiveHasBottom}, negBottom=${filterResult.negativeHasBottom}]`);
 
 		// Handle bottom propagation: if both groups have bottom elements, result is bottom
@@ -1121,6 +1121,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		vectorLogger.debug(`  selector [length=${selector.length.toString()}, values=${selector.known.toString()}]`);
 		const adjustedSelector = adjustForZeros(selector);
 		vectorLogger.debug(`  adjustedSelector [length=${adjustedSelector.length.toString()}, values=${adjustedSelector.known.toString()}]`);
+
+		// Empty selector after adjusting for zeros - return bottom
+		if(adjustedSelector.length.isValue()) {
+			const [newL, newU] = adjustedSelector.length.value;
+			if(newL === 0 && newU === 0) {
+				vectorLogger.debug('Operation: selectPositive - empty selector, returning bottom');
+				return value.bottom();
+			}
+		}
+
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		if(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value)) {
 			const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
@@ -1248,6 +1258,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		guard(adjustedSelector.length.isValue(), 'Adjusted Selector is bottom');
 
 		vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
+
+		// Empty selector after adjusting for zeros - return bottom
+		if(adjustedSelector.length.isValue()) {
+			const [newL, newU] = adjustedSelector.length.value;
+			if(newU === 0) {
+				vectorLogger.debug('Operation: selectNegative - empty selector, returning bottom');
+				return value.bottom();
+			}
+		}
 
 		// 4. Compute sets from ADJUSTED selector
 		let mustDeleted = new Set<number>();
@@ -1410,12 +1429,24 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const maxLen = Math.max(sourceLen, selectorLen);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 
-		const adjustedSelector = rhoF(selector.known, selector.length.value[0], maxLen, selector.factory);
-		guard(adjustedSelector.isValue(), 'adjustedSelector is Bottom');
+		const adjustedSelector = rhoF(selector.known, selector.length.value[0], maxLen, selector.naAwareFactory);
+		if(!adjustedSelector.isValue() || adjustedSelector.value.length === undefined) {
+			return value.bottom();
+		}
+
+		// Empty selector after adjusting for zeros - return bottom
+		if(adjustedSelector.value.length) {
+			const [_newL, newU] = adjustedSelector.length;
+			if(newU === 0) {
+				vectorLogger.debug('Operation: selectNegative - empty selector, returning bottom');
+				return value.bottom();
+			}
+		}
+
 		const plainSelector = adjustedSelector.toArray();
 		for(let i = 0; i < selector.known.value.length; i++) {
 			const iVal: NAAwareDomain<PosIntervalDomain> = plainSelector[i];
-			let sourceVal = NAAwareDomain.bottom(this.factory);
+			let sourceVal = NAAwareDomain.bottom(this.plainFactory);
 
 			let [u, l] = [0, 0];
 			if(iVal.inner.isValue()) {
@@ -1471,7 +1502,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applyUpdate(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<IntervalDomain> | VectorDomain<Domain>,
+		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>,
 		selectorKind: SelectorKind
@@ -1486,22 +1517,22 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// Logical selector: use logical update
 		if(selectorKind === 'logical') {
-			const result = this.applyUpdateLogical(value, selector as VectorDomain<Domain>, values, naValue);
+			const result = this.applyUpdateLogical(value, selector, values, naValue);
 			vectorLogger.debug(`Operation: update logical result [length=${result.length.toString()}]`);
 			return result;
 		}
 
-		const numericSelector = selector as VectorDomain<IntervalDomain>;
+		const numericSelector = selector;
 
 		if(!numericSelector.known.isValue() || !Array.isArray(numericSelector.known.value)) {
 			// Cannot enumerate selector values, apply positive update conservatively
-			vectorLogger.debug('Operation: update cannot enumerate selector values, using conservative positive');
+			vectorLogger.debug('Operation: update cannot enumerate selector values, returning bottom');
 			return value.bottom();
 		}
 
 		// Paper Section 4.8: abstract filter classifies selector positions
 		const selectorPositions = numericSelector.known.value;
-		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.factory);
+		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.plainFactory);
 		vectorLogger.debug(`Operation: update filter [positive=${filterResult.positive.length}, negative=${filterResult.negative.length}]`);
 
 		// Handle bottom propagation: if both groups have bottom elements, result is bottom
@@ -1797,6 +1828,21 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			// 12. Paragraph 2: Infinite selector, all enumerable (Paper §4.8.2, lines 977-1015)
 			vectorLogger.debug('Paragraph 2: Infinite selector, all enumerable, building positive selector');
 
+			// Factory for creating PosIntervalDomain values
+			const posIntervalFactory: DomainFactory<PosIntervalDomain> = (c: unknown) => {
+				if(c === undefined) {
+					return PosIntervalDomain.bottom();
+				}
+				if(c === Bottom) {
+					return PosIntervalDomain.bottom();
+				}
+				if(c === Top) {
+					return PosIntervalDomain.top();
+				}
+				const values = [...(c as Set<number>)];
+				return new PosIntervalDomain([Math.min(...values), Math.max(...values)]);
+			};
+
 			// Build positive selector from MustUpdated and MayNotUpdated
 			// Length: [lᵣ, uᵣ] = [|MustUpdated_{l₁}|, u₁ - |MustNotUpdated_{u₁}|]
 			const mustUpdatedCount = [...mustUpdated].filter(i => i >= sourceLower).length;
@@ -1818,13 +1864,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					selectorPrefixPositions.push(new NAAwareDomain<PosIntervalDomain>({
 						inner: PosIntervalDomain.bottom(),
 						hasNA: false
-					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>));
+					}, posIntervalFactory));
 				}
 				if(targetIdx >= 1) {
 					selectorPrefixPositions[targetIdx - 1] = new NAAwareDomain<PosIntervalDomain>({
 						inner: new PosIntervalDomain([i, i]),
 						hasNA: false
-					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>);
+					}, posIntervalFactory);
 				}
 			}
 
@@ -1838,14 +1884,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					selectorPrefixPositions.push(new NAAwareDomain<PosIntervalDomain>({
 						inner: PosIntervalDomain.bottom(),
 						hasNA: false
-					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>));
+					}, posIntervalFactory));
 				}
 				if(targetIdx >= 1) {
 					const existing = selectorPrefixPositions[targetIdx - 1];
 					selectorPrefixPositions[targetIdx - 1] = existing.join(new NAAwareDomain<PosIntervalDomain>({
 						inner: new PosIntervalDomain([i, i]),
 						hasNA: false
-					}, adjustedSelector.summary.factory as import('./vector-domain').DomainFactory<PosIntervalDomain>));
+					}, posIntervalFactory));
 				}
 			}
 
@@ -1928,7 +1974,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applyUpdateLogical(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<Domain>,
+		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {

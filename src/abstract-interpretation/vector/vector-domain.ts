@@ -269,10 +269,26 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
-	 * Gets the domain factory used to create this VectorDomain.
+	 * The plain factory for creating inner domain values (without NA wrapping).
+	 * This is the factory originally provided by the user.
+	 */
+	public get plainFactory(): DomainFactory<Domain> {
+		return this._factory;
+	}
+
+	/**
+	 * The NA-aware factory for creating NAAwareDomain-wrapped values.
+	 * Derived from the plain factory using createSmartFactory.
+	 */
+	public get naAwareFactory(): DomainFactory<NAAwareDomain<Domain>> {
+		return NAAwareDomain.createSmartFactory(this._factory);
+	}
+
+	/**
+	 * @deprecated Use plainFactory or naAwareFactory explicitly
 	 */
 	public get factory(): DomainFactory<NAAwareDomain<Domain>> {
-		return NAAwareDomain.createSmartFactory(this._factory);
+		return this.naAwareFactory;
 	}
 
 	/**
