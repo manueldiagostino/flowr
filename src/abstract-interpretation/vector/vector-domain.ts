@@ -391,6 +391,33 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
+	 * Creates an empty vector element.
+	 * Represents the empty R vector: length [0,0], empty prefix ε, bottom summary, bottom attributes.
+	 * 
+	 * Paper reference (03-abstract.tex:106-111):
+	 * genvecalpha(rEmpty) def= ([0,0], ε, genvalbot, attrbot)
+	 * 
+	 * This differs from bottom() which has bottom length (no values possible).
+	 */
+	public static empty<Domain extends AnyAbstractDomain>(
+		factory: DomainFactory<Domain>
+	): VectorDomain<Domain> {
+		const smartFactory = NAAwareDomain.createSmartFactory(factory);
+		// ε: empty prefix - no guaranteed positions (represented by top() with empty array)
+		const emptyPrefix = KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
+			smartFactory
+		);
+		const summaryBottom = NAAwareDomain.bottom(factory);
+		return new VectorDomain({
+			length:     new PosIntervalDomain([0, 0]),
+			known:      emptyPrefix,
+			summary:    summaryBottom,
+			attributes: VectorAttrDomain.bottom(),
+			type:       RVectorTypeDomain.bottom()
+		}, factory);
+	}
+
+	/**
 	 * Creates the bottom element of the vector domain.
 	 * Represents no possible vector: bottom length, bottom known positions, bottom summary, bottom attributes.
 	 */
