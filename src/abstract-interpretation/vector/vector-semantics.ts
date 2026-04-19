@@ -89,13 +89,6 @@ export function squash<Domain extends AnyAbstractDomain>(
 	return result;
 }
 
-function elementMayContainNA<Domain extends AnyAbstractDomain>(
-	elem: Domain,
-	summary: NAAwareDomain<Domain>
-): boolean {
-	return summary.containsNA();
-}
-
 /**
  * Squashes (joins) all values in a vector's known positions and summary, except those in the excluded set.
  * Per paper section 4.6: SquashedExcept(([l, u], prefix, s, a), E) = ⊔_{i=1, i∉E}^{|prefix|} pᵢ ⊔ s
@@ -361,7 +354,7 @@ export function initKnownPositions<Domain extends AnyAbstractDomain>(
  */
 export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 	knownPositions: NAAwareDomain<Domain>[],
-	selectorPositions: readonly PosIntervalDomain[],
+	selectorPositions: readonly NAAwareDomain<IntervalDomain>[],
 	values: readonly NAAwareDomain<Domain>[]
 ): NAAwareDomain<Domain>[] {
 	vectorLogger.debug(`Semantic: updateKnownPositions [selectorPositions=${selectorPositions.length}]`);
@@ -379,23 +372,23 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 		}
 
 		const valueToWrite = values[valueIdx % values.length];
-		valueIdx++;
 
-		if(posInterval.isValue()) {
-			const [l, u] = posInterval.value;
+		if(posInterval.isValue() && posInterval.inner.isValue()) {
+			const [l, u] = posInterval.inner.value;
 
 			// Skip zero index
 			if(l === 0 && u === 0) {
 				continue;
 			}
+			guard(l>=0, `Negative index detected for position ${valueIdx}.`);
 
 			// Get actual positions (1-indexed to 0-indexed)
-			const startPos = l <= 0 ? 1 : l;
+			const startPos = l == 0 ? 1 : l;
 			const endPos = u;
 
-			if(isEnumerable(posInterval)) {
+			if(isEnumerable(posInterval.inner)) {
 				// Enumerable: update specific positions
-				const isSingleton = card(posInterval) === 1;
+				const isSingleton = card(posInterval.inner) === 1;
 				for(let pos = startPos; pos <= endPos && pos <= result.length; pos++) {
 					const idx = pos - 1;
 					if(isSingleton) {
@@ -418,6 +411,8 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 				result[i] = result[i].join(valueToWrite);
 			}
 		}
+
+		valueIdx++;
 	}
 
 	expensiveTrace(vectorLogger, () => `Semantic: updateKnownPositions result length=${result.length}`);
@@ -499,7 +494,7 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 	}
 
 	if(lengthUpperBound === +Infinity) {
-		const result = accessFromInfiniteLengthVector(vector, pos, naValue);
+		const result = accessFromInfiniteLengthVector(vector, pos);
 		expensiveTrace(vectorLogger, () => `Semantic: accessPosition infinite-length result = ${result.toString()}`);
 		return result;
 	}
@@ -519,7 +514,6 @@ function getLengthUpperBound(length: PosIntervalDomain): number | undefined {
 function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 	vector: VectorDomain<Domain>,
 	pos: number,
-	naValue: NAAwareDomain<Domain>
 ): NAAwareDomain<Domain> {
 	if(vector.known.isValue()) {
 		const values = vector.known.value as readonly NAAwareDomain<Domain>[];

@@ -21,25 +21,23 @@ import {
 	rhoF
 } from './vector-semantics';
 import { NA, Top, Bottom } from '../domains/lattice';
-import type { IntervalDomain } from '../domains/interval-domain';
+import { IntervalDomain } from '../domains/interval-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { type ValueToDomainConverter, buildVectorFromLiteral } from './resolve-vector-args';
 import type { RNumber } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import type { RString } from '../../r-bridge/lang-4.x/ast/model/nodes/r-string';
 import type { RLogical } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
-import { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
+import type { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 import { FunctionArgument as FunctionArgumentUtil } from '../../dataflow/graph/graph';
-import { EmptyArgument, RFunctionCall } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
+import { EmptyArgument } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
 import { VertexType } from '../../dataflow/graph/vertex';
 import { RType } from '../../r-bridge/lang-4.x/ast/model/type';
 import { Identifier } from '../../dataflow/environments/identifier';
 import { RAccess } from '../../r-bridge/lang-4.x/ast/model/nodes/r-access';
 import { RArgument } from '../../r-bridge/lang-4.x/ast/model/nodes/r-argument';
-import { RBinaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
-import { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
-import { RNumber as RNumberNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
-import { RLogical as RLogicalNode } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
+import type { RBinaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
+import type { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { guard } from '../../util/assert';
 import { expensiveTrace } from '../../util/log';
@@ -185,122 +183,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
 		return 'unknown';
-	}
-
-	// ==================== Selector Type Detection ====================
-
-	/**
-	 * Detects whether a selector is logical or numeric from AST.
-	 * Logical selectors come from: logical literals, comparisons, logical operators.
-	 * Everything else is treated as numeric (including arithmetic expressions).
-	 * @param selectorNode - The selector argument node from the AST
-	 * @returns The selector kind: 'logical' or 'numeric'
-	 */
-	private detectSelectorKind(selectorNode: RNode<ParentInformation> | typeof EmptyArgument | undefined): SelectorKind {
-		if(selectorNode === undefined || selectorNode === EmptyArgument) {
-			vectorLogger.debug(`Decision: selector kind 'numeric' for empty/undefined selector`);
-			return 'numeric';
-		}
-
-		// Get the actual value from the argument wrapper
-		const node = RArgument.is(selectorNode) ? selectorNode.value : selectorNode;
-		if(node === undefined) {
-			vectorLogger.debug(`Decision: selector kind 'numeric' for node type '${selectorNode?.type ?? 'undefined'}' (undefined value)`);
-			return 'numeric';
-		}
-
-		const kind = this.detectSelectorKindFromNode(node);
-		vectorLogger.debug(`Decision: selector kind '${kind}' for node type '${node.type}'`);
-		return kind;
-	}
-
-	/**
-	 * Recursively analyzes a node to determine if it produces logical or numeric output.
-	 * For vectors (e.g., `c(TRUE, 1, 2, FALSE)`), if ANY element is numeric, the selector
-	 * is numeric (R coerces all to numeric). Only if ALL elements are logical is it logical.
-	 * @param node - The AST node to analyze
-	 * @returns The selector kind: 'logical' or 'numeric'
-	 */
-	private detectSelectorKindFromNode<Info>(node: RNode<Info>): SelectorKind {
-		// Logical literals indicate logical selector
-		if(RLogicalNode.is(node)) {
-			return 'logical';
-		}
-
-		// Check for comparison or logical operators (indicates logical selector)
-		if(RBinaryOp.is(node)) {
-			// Comparison operators create logical vectors
-			if(['>', '<', '>=', '<=', '==', '!='].includes(node.operator)) {
-				return 'logical';
-			}
-			// Logical operators create logical vectors
-			if(['&', '|', '&&', '||'].includes(node.operator)) {
-				return 'logical';
-			}
-			// All other binary operators (+, -, *, /, etc.) are numeric
-			return 'numeric';
-		}
-
-		// Check for unary NOT (logical operator)
-		if(RUnaryOp.is(node) && node.operator === '!') {
-			return 'logical';
-		}
-
-		// All unary operators (+, -) are numeric
-		if(RUnaryOp.is(node)) {
-			return 'numeric';
-		}
-
-		// Numeric literals are numeric selectors
-		if(RNumberNode.is(node)) {
-			return 'numeric';
-		}
-
-		// For function calls (e.g., `c(TRUE, 1, 2, FALSE)`), check all arguments recursively
-		// If ANY argument is numeric, the whole vector is numeric (R coercion rules)
-		if(RFunctionCall.is(node)) {
-			// For concatenation functions like c(), check all arguments
-			// For other functions, conservatively assume numeric
-			const functionName = RFunctionCall.isNamed(node) ? node.functionName.content : '';
-			if(functionName === 'c') {
-				let hasLogical = false;
-				for(const arg of node.arguments) {
-					if(arg !== undefined && arg !== EmptyArgument) {
-						const argNode = RArgument.is(arg) ? arg.value : arg;
-						if(argNode !== undefined) {
-							const kind = this.detectSelectorKindFromNode(argNode);
-							if(kind === 'numeric') {
-								return 'numeric';
-							}
-							hasLogical = true;
-						}
-					}
-				}
-				// All arguments were logical (or empty)
-				return hasLogical ? 'logical' : 'numeric';
-			}
-			// For other function calls, conservatively assume numeric
-			return 'numeric';
-		}
-
-		// For symbols, try to get the vector type from abstract interpretation state
-		if(RSymbol.is(node)) {
-			const nodeInfo = node.info as unknown as ParentInformation;
-			const nodeId = nodeInfo.id;
-			const vectorValue = this.getVectorDomainValue(nodeId);
-			if(vectorValue !== undefined && !vectorValue.type.isTop()) {
-				const type = vectorValue.type.getType();
-				if(type === 'logical') {
-					return 'logical';
-				}
-				// For numeric types (integer, double, complex, character), use numeric selection
-				return 'numeric';
-			}
-		}
-
-		// For symbols and other nodes, we can't determine from AST alone
-		// Conservative assumption: numeric (will be evaluated to abstract value anyway)
-		return 'numeric';
 	}
 
 
@@ -552,7 +434,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				operation: 'update',
 				operand:   resolvedOperand,
 				selector:  selector !== undefined ? String(selector) : undefined,
-				known:     values !== undefined ? String(values) : undefined
+				values:    values !== undefined ? String(values) : undefined
 			}];
 		}
 
@@ -804,10 +686,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			resolved.selector = selectorValue ?? VectorDomain.bottom(this.plainFactory);
 		}
 
-		if('known' in args && typeof args.known === 'string') {
+		if('values' in args && typeof args.known === 'string') {
 			const valuesId = Number(args.known) as NodeId;
 			const valuesValue = this.getVectorDomainValue(valuesId);
-			resolved.known = valuesValue ?? VectorDomain.bottom(this.plainFactory);
+			resolved.values = valuesValue ?? VectorDomain.bottom(this.plainFactory);
 		}
 
 		return resolved;
@@ -858,10 +740,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					value,
 					args.selector as VectorDomain<IntervalDomain>,
 					args.naValue as NAAwareDomain<Domain>,
-					args.selectorKind as SelectorKind | undefined
 				);
 			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain>, args.known, args.naValue);
+				guard(args.values != undefined, 'args.known undefined');
+				return this.applyUpdate(value,
+					args.selector as VectorDomain<IntervalDomain>,
+					args.values as VectorDomain<Domain>,
+					args.naValue as NAAwareDomain<Domain>
+				);
 			case 'negate':
 				return this.applyNegate(value);
 			default:
@@ -1674,7 +1560,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applyUpdatePositive(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<PosIntervalDomain>,
+		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
@@ -1787,7 +1673,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applyUpdateNegative(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<PosIntervalDomain>,
+		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
@@ -1828,18 +1714,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		const mayNotUpdated = new Set<number>();
 
 		if(adjustedSelector.known.isValue()) {
-			const selectorKnownPositions = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
+			const selectorKnownPositions = adjustedSelector.known.value;
 			for(const idx of selectorKnownPositions) {
-				if(idx.isBottom()) {
+				if(idx.isBottom() || idx.isNA()) {
 					continue;
 				}
-				if(idx.isNA()) {
-					// NA in selector means the position is unknown
-					for(let pos = 1; pos <= sourceUpper; pos++) {
-						mayNotUpdated.add(pos);
-					}
-					continue;
-				}
+
 				const innerInterval = idx.inner;
 				if(innerInterval.isValue()) {
 					const [l, u] = innerInterval.value;
@@ -1887,9 +1767,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		vectorLogger.trace(`Sets computed [mustNotUpdated=${mustNotUpdated.size}, mayNotUpdated=${mayNotUpdated.size}, mustUpdated=${mustUpdated.size}]`);
 
 		// 9. Check for non-enumerable positions in adjusted selector
-		const hasNonEnumerable = adjustedSelector.known.isValue() &&
-			(adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[])
-				.some(idx => !idx.isNA() && !idx.isBottom() && !isEnumerable(idx.inner));
+		const hasNonEnumerable = adjustedSelector.known.isValue()
+			&& (adjustedSelector.known.value).some(idx => !idx.isNA() && !idx.isBottom() && !isEnumerable(idx.inner));
 
 		// 10. Paragraph 1: At least one non-enumerable position (Paper §4.8.2, lines 953-975)
 		if(hasNonEnumerable) {
@@ -1962,7 +1841,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const resultLengthUpper = sourceUpper - mustNotUpdatedCount;
 
 			// Build selector prefix
-			const selectorPrefixPositions: NAAwareDomain<PosIntervalDomain>[] = [];
+			const selectorPrefixPositions: NAAwareDomain<IntervalDomain>[] = [];
 
 			// CountMustNotUpdated helper: count positions < i
 			const countMustNotUpdated = (i: number) => [...mustNotUpdated].filter(p => p < i).length;
@@ -1972,14 +1851,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				const targetIdx = i - countMustNotUpdated(i);
 				// Ensure selectorPrefixPositions has enough room
 				while(selectorPrefixPositions.length < targetIdx) {
-					selectorPrefixPositions.push(new NAAwareDomain<PosIntervalDomain>({
-						inner: PosIntervalDomain.bottom(),
+					selectorPrefixPositions.push(new NAAwareDomain({
+						inner: IntervalDomain.bottom(),
 						hasNA: false
 					}, posIntervalFactory));
 				}
 				if(targetIdx >= 1) {
-					selectorPrefixPositions[targetIdx - 1] = new NAAwareDomain<PosIntervalDomain>({
-						inner: new PosIntervalDomain([i, i]),
+					selectorPrefixPositions[targetIdx - 1] = new NAAwareDomain<IntervalDomain>({
+						inner: new IntervalDomain([i, i]),
 						hasNA: false
 					}, posIntervalFactory);
 				}
@@ -1992,28 +1871,28 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				}
 				const targetIdx = i - countMustNotUpdated(i);
 				while(selectorPrefixPositions.length < targetIdx) {
-					selectorPrefixPositions.push(new NAAwareDomain<PosIntervalDomain>({
-						inner: PosIntervalDomain.bottom(),
+					selectorPrefixPositions.push(new NAAwareDomain<IntervalDomain>({
+						inner: IntervalDomain.bottom(),
 						hasNA: false
 					}, posIntervalFactory));
 				}
 				if(targetIdx >= 1) {
 					const existing = selectorPrefixPositions[targetIdx - 1];
-					selectorPrefixPositions[targetIdx - 1] = existing.join(new NAAwareDomain<PosIntervalDomain>({
-						inner: new PosIntervalDomain([i, i]),
+					selectorPrefixPositions[targetIdx - 1] = existing.join(new NAAwareDomain<IntervalDomain>({
+						inner: new IntervalDomain([i, i]),
 						hasNA: false
 					}, posIntervalFactory));
 				}
 			}
 
 			// Build selector vector
-			const positiveSelector = value.create({
+			const positiveSelector = selector.create({
 				length:     new PosIntervalDomain([resultLengthLower, resultLengthUpper]),
 				known:      adjustedSelector.known.create(selectorPrefixPositions),
 				summary:    adjustedSelector.summary,
 				attributes: adjustedSelector.attributes,
 				type:       adjustedSelector.type
-			}) as unknown as VectorDomain<PosIntervalDomain>;
+			});
 
 			// Call applyUpdatePositive
 			const result = this.applyUpdatePositive(value, positiveSelector, values, naValue);
