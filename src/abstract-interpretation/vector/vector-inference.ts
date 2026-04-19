@@ -45,8 +45,6 @@ import { guard } from '../../util/assert';
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'random' | 'unknown';
 
-type SelectorKind = 'logical' | 'numeric';
-
 type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
 interface VectorOperation<Domain extends AnyAbstractDomain, Name extends VectorOperationName = VectorOperationName> {
@@ -187,123 +185,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
 		return 'unknown';
 	}
-
-	// ==================== Selector Type Detection ====================
-
-	/**
-	 * Detects whether a selector is logical or numeric from AST.
-	 * Logical selectors come from: logical literals, comparisons, logical operators.
-	 * Everything else is treated as numeric (including arithmetic expressions).
-	 * @param selectorNode - The selector argument node from the AST
-	 * @returns The selector kind: 'logical' or 'numeric'
-	 */
-	private detectSelectorKind(selectorNode: RNode<ParentInformation> | typeof EmptyArgument | undefined): SelectorKind {
-		if(selectorNode === undefined || selectorNode === EmptyArgument) {
-			vectorLogger.debug(`Decision: selector kind 'numeric' for empty/undefined selector`);
-			return 'numeric';
-		}
-
-		// Get the actual value from the argument wrapper
-		const node = RArgument.is(selectorNode) ? selectorNode.value : selectorNode;
-		if(node === undefined) {
-			vectorLogger.debug(`Decision: selector kind 'numeric' for node type '${selectorNode?.type ?? 'undefined'}' (undefined value)`);
-			return 'numeric';
-		}
-
-		const kind = this.detectSelectorKindFromNode(node);
-		vectorLogger.debug(`Decision: selector kind '${kind}' for node type '${node.type}'`);
-		return kind;
-	}
-
-	/**
-	 * Recursively analyzes a node to determine if it produces logical or numeric output.
-	 * For vectors (e.g., `c(TRUE, 1, 2, FALSE)`), if ANY element is numeric, the selector
-	 * is numeric (R coerces all to numeric). Only if ALL elements are logical is it logical.
-	 * @param node - The AST node to analyze
-	 * @returns The selector kind: 'logical' or 'numeric'
-	 */
-	private detectSelectorKindFromNode<Info>(node: RNode<Info>): SelectorKind {
-		// Logical literals indicate logical selector
-		if(RLogicalNode.is(node)) {
-			return 'logical';
-		}
-
-		// Check for comparison or logical operators (indicates logical selector)
-		if(RBinaryOp.is(node)) {
-			// Comparison operators create logical vectors
-			if(['>', '<', '>=', '<=', '==', '!='].includes(node.operator)) {
-				return 'logical';
-			}
-			// Logical operators create logical vectors
-			if(['&', '|', '&&', '||'].includes(node.operator)) {
-				return 'logical';
-			}
-			// All other binary operators (+, -, *, /, etc.) are numeric
-			return 'numeric';
-		}
-
-		// Check for unary NOT (logical operator)
-		if(RUnaryOp.is(node) && node.operator === '!') {
-			return 'logical';
-		}
-
-		// All unary operators (+, -) are numeric
-		if(RUnaryOp.is(node)) {
-			return 'numeric';
-		}
-
-		// Numeric literals are numeric selectors
-		if(RNumberNode.is(node)) {
-			return 'numeric';
-		}
-
-		// For function calls (e.g., `c(TRUE, 1, 2, FALSE)`), check all arguments recursively
-		// If ANY argument is numeric, the whole vector is numeric (R coercion rules)
-		if(RFunctionCall.is(node)) {
-			// For concatenation functions like c(), check all arguments
-			// For other functions, conservatively assume numeric
-			const functionName = RFunctionCall.isNamed(node) ? node.functionName.content : '';
-			if(functionName === 'c') {
-				let hasLogical = false;
-				for(const arg of node.arguments) {
-					if(arg !== undefined && arg !== EmptyArgument) {
-						const argNode = RArgument.is(arg) ? arg.value : arg;
-						if(argNode !== undefined) {
-							const kind = this.detectSelectorKindFromNode(argNode);
-							if(kind === 'numeric') {
-								return 'numeric';
-							}
-							hasLogical = true;
-						}
-					}
-				}
-				// All arguments were logical (or empty)
-				return hasLogical ? 'logical' : 'numeric';
-			}
-			// For other function calls, conservatively assume numeric
-			return 'numeric';
-		}
-
-		// For symbols, try to get the vector type from abstract interpretation state
-		if(RSymbol.is(node)) {
-			const nodeInfo = node.info as unknown as ParentInformation;
-			const nodeId = nodeInfo.id;
-			const vectorValue = this.getVectorDomainValue(nodeId);
-			if(vectorValue !== undefined && !vectorValue.type.isTop()) {
-				const type = vectorValue.type.getType();
-				if(type === 'logical') {
-					return 'logical';
-				}
-				// For numeric types (integer, double, complex, character), use numeric selection
-				return 'numeric';
-			}
-		}
-
-		// For symbols and other nodes, we can't determine from AST alone
-		// Conservative assumption: numeric (will be evaluated to abstract value anyway)
-		return 'numeric';
-	}
-
 
 
 	// ==================== Function Handlers ====================
@@ -494,9 +375,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selectorNode = selectorArg !== '<>' && selectorArg !== undefined ? (RArgument.is(selectorArg) ? selectorArg.value : selectorArg) : undefined;
 			const selector = selectorNode?.info.id;
 
-			const selectorKind = this.detectSelectorKind(selectorArg);
-
 			const resolvedOperand = operand !== undefined ? this.getVectorDomainValue(operand) : undefined;
+			// Compute selector kind from the operand's type (logical vs numeric)
+			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
 			vectorLogger.debug(`Handler: handleAccess [operandId=${operand}, selectorId=${selector}, selectorKind=${selectorKind}]`);
 			if(resolvedOperand) {
@@ -506,8 +387,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return [{
 				operation: 'select',
 				operand:   resolvedOperand,
-				selector:  selector !== undefined ? String(selector) : undefined,
-				selectorKind
+				selector:  selector !== undefined ? String(selector) : undefined
 			}];
 		}
 
@@ -537,11 +417,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 			const values = source?.info.id;
 
-			// Detect selector kind from AST (logical vs numeric)
-			const selectorKind = this.detectSelectorKind(selectorArg);
-
 			const resolvedOperand = operand !== undefined ? this.getVectorDomainValue(operand) : undefined;
 			const resolvedValues = values !== undefined ? this.getVectorDomainValue(values) : undefined;
+			// Compute selector kind from the operand's type (logical vs numeric)
+			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
 			vectorLogger.debug(`Handler: handleReplacement [operandId=${operand}, selectorId=${selector}, valuesId=${values}, selectorKind=${selectorKind}]`);
 			if(resolvedOperand) {
@@ -555,8 +434,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				operation: 'update',
 				operand:   resolvedOperand,
 				selector:  selector !== undefined ? String(selector) : undefined,
-				known:     values !== undefined ? String(values) : undefined,
-				selectorKind
+				known:     values !== undefined ? String(values) : undefined
 			}];
 		}
 
@@ -861,11 +739,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return this.applySelect(
 					value,
 					args.selector as VectorDomain<IntervalDomain>,
-					args.naValue as NAAwareDomain<Domain>,
-					args.selectorKind as SelectorKind | undefined
+					args.naValue as NAAwareDomain<Domain>
 				);
 			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain>, args.known, args.naValue, args.selectorKind as SelectorKind);
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain>, args.known, args.naValue);
 			case 'negate':
 				return this.applyNegate(value);
 			default:
@@ -1129,16 +1006,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param value - The source VectorDomain to select from
 	 * @param selector - The selector VectorDomain (interval or value domain)
 	 * @param naValue - The NA value for out-of-bounds access
-	 * @param selectorKind - Optional selector type from AST detection (used for logical detection)
 	 * @returns The resulting VectorDomain after selection
 	 */
 	private applySelect(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain>,
-		naValue: NAAwareDomain<Domain>,
-		selectorKind?: SelectorKind
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
-		vectorLogger.debug(`Operation: select [selectorKind=${selectorKind ?? 'numeric'}]`);
+		// Derive selector kind from the selector's type (logical vs numeric)
+		const selectorKind = selector.type.getType() === 'logical' ? 'logical' : 'numeric';
+		vectorLogger.debug(`Operation: select [selectorKind=${selectorKind}]`);
 		vectorLogger.debug(`Operation: select input [value.length=${value.length.toString()}, value.known=${value.known.toString()}, selector.length=${selector.length.toString()}]`);
 
 		if(value.isBottom() || selector.isBottom()) {
@@ -1601,16 +1478,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param selector - The selector for positions to update
 	 * @param values - The values to assign to selected positions
 	 * @param naValue - The NA value for out-of-bounds positions
-	 * @param selectorKind - The kind of selector (logical or numeric)
 	 * @returns The resulting VectorDomain after update
 	 */
 	private applyUpdate(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
-		naValue: NAAwareDomain<Domain>,
-		selectorKind: SelectorKind
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		// Derive selector kind from the selector's type (logical vs numeric)
+		const selectorKind = selector.type.getType() === 'logical' ? 'logical' : 'numeric';
 		vectorLogger.debug(`Operation: update [selectorKind=${selectorKind}]`);
 		vectorLogger.debug(`Operation: update input [value.length=${value.length.toString()}, selector.length=${selector.length.toString()}, values.length=${values.length.toString()}]`);
 
