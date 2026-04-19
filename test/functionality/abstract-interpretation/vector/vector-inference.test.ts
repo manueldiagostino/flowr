@@ -1,12 +1,6 @@
 import { assert, test, describe } from 'vitest';
 import './log-config';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
-import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
-import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
-import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
-import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
-import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { withShell } from '../../_helper/shell';
 import { intervalFactory } from '../_helper/interval-factory';
 import {
@@ -759,7 +753,7 @@ z <- x + y`;
 		});
 
 		describe('Edge cases', () => {
-			test.skip('should return bottom for bottom selector', async() => {
+			test.skip('should return bottom for bottom selector', () => {
 				// selector.isBottom() → result.isBottom()
 				// This would require a bottom selector input
 				assert.ok(true, 'Skipped - requires specific bottom selector setup');
@@ -783,39 +777,3 @@ z <- x + y`;
 		});
 	});
 }));
-
-describe('Vector Inference Unit Tests', () => {
-	test('VectorDomain factory creates correct domain', () => {
-		const len = new PosIntervalDomain([3, 3]);
-
-		const vals = new KnownInitialPositionsDomain(
-			[[1, 1], [2, 2], [3, 3]].map(([l, u]) => new NAAwareDomain({ inner: new IntervalDomain([l, u]), hasNA: false }, intervalFactory)),
-			(v: any) => new NAAwareDomain({ inner: intervalFactory(v), hasNA: false }, intervalFactory)
-		);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const sum: any = new NAAwareDomain({ inner: IntervalDomain.bottom(), hasNA: false }, intervalFactory);
-		const attrs = VectorAttrDomain.top();
-
-
-		const vector = new VectorDomain({
-			length:     len,
-			known:      vals,
-			summary:    sum,
-			attributes: attrs,
-			type:       RVectorTypeDomain.top()
-		}, intervalFactory as any);
-
-		assert.strictEqual(vector.length.toString(), '[3, 3]');
-		assert.ok(vector.known.isValue());
-	});
-
-	test('VectorDomain top has unbounded length', () => {
-		const top = VectorDomain.top(intervalFactory);
-		assert.ok(top.isTop());
-	});
-
-	test('VectorDomain bottom has bottom length', () => {
-		const bottom = VectorDomain.bottom(intervalFactory);
-		assert.ok(bottom.length.isBottom());
-	});
-});

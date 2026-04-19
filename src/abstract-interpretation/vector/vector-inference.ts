@@ -1219,7 +1219,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private applySelectNegative(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<PosIntervalDomain>,
+		selector: VectorDomain<IntervalDomain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		// 1. Entry logging
@@ -1969,10 +1969,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updateLogical');
-		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
+		if(value.isBottom() || selector.isBottom() || values.isBottom() || value.known.isBottom()) {
 			vectorLogger.trace('Subcase: updateLogical - bottom input');
 			return value.bottom();
 		}
+
 		let sourceLower = 0, sourceUpper = 0;
 		if(value.length.isValue()) {
 			sourceLower = value.length.value[0];
@@ -1982,14 +1983,35 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if(selector.length.isValue()) {
 			selectorUpper = selector.length.value[1];
 		}
+
+		// Sanity check: selector length > 1 <-> no NA
+		if(squash(selector).containsNA() && selectorUpper > 1) {
+			vectorLogger.debug('Selectors longer than 1 cannot contain NA');
+			// Filter selector: keep only the first element, set length to [1, 1]
+			const rawSelectorKnownPositions = selector.known.isValue() ? selector.known.value : [];
+			const filteredSelectorKnownPositions = rawSelectorKnownPositions.length > 0 ? [rawSelectorKnownPositions[0]] : [];
+			selector = selector.create({
+				length:     selector.length.create([1, 1]),
+				known:      selector.known.create(filteredSelectorKnownPositions),
+				summary:    selector.summary,
+				attributes: selector.attributes,
+				type:       selector.type
+			});
+
+			selectorUpper = 1;
+		}
+
+		selector = adjustForZeros(selector);
+
 		const isInfinite = selectorUpper === +Infinity;
 		if(isInfinite) {
 			vectorLogger.trace('Subcase: updateLogical - infinite selector');
 		} else {
 			vectorLogger.trace('Subcase: updateLogical - finite selector');
 		}
-		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
-		const selectorKnownPositions = selector.known.isValue() ? (selector.known.value as readonly NAAwareDomain<Domain>[]) : [];
+
+		const sourceKnownPositions = value.known.toArray();
+		const selectorKnownPositions = selector.known.toArray();
 		const maxLen = Math.max(sourceKnownPositions.length, selectorKnownPositions.length);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 		for(let i = 0; i < maxLen; i++) {
@@ -2003,7 +2025,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 		const cyclicValues = generateCyclicKnownPositions(values, selectorUpper);
 		for(let i = 0; i < maxLen && i < cyclicValues.length; i++) {
-			let selectorVal: NAAwareDomain<Domain>;
+			let selectorVal: NAAwareDomain<IntervalDomain>;
 			if(i < selectorKnownPositions.length) {
 				selectorVal = selectorKnownPositions[i];
 			} else if(i < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {

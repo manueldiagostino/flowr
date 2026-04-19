@@ -186,6 +186,7 @@ export class NAAwareDomain<
 			}
 
 			// Should not reach here with valid inputs
+			// eslint-disable-next-line @typescript-eslint/no-base-to-string
 			throw new Error(`Invalid concrete value for NAAwareDomain: ${String(concrete)}`);
 		};
 	}

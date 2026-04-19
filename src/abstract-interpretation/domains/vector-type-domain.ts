@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 /* eslint-disable @typescript-eslint/unified-signatures */
 import { AbstractDomain } from './abstract-domain';
 import { Bottom, BottomSymbol, Top, TopSymbol } from './lattice';
@@ -60,10 +61,6 @@ type RVectorTypeLift = RVectorType | RVectorTypeTop | RVectorTypeBottom;
  */
 export class RVectorTypeDomain<Value extends RVectorTypeLift = RVectorTypeLift>
 	extends AbstractDomain<RVectorType, RVectorType, RVectorTypeTop, typeof Bottom, Value> {
-
-	constructor(value: Value) {
-		super(value);
-	}
 
 	public create(value: RVectorTypeLift): this;
 	public create(value: RVectorTypeLift): RVectorTypeDomain {

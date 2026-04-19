@@ -111,7 +111,7 @@ export async function runVectorInference<Domain extends AnyAbstractDomain>(
  * re-running the analysis multiple times.
  * @param shell - The RShell instance for parsing
  * @param code - The R code to analyze
- * @param criterion - The slicing criterion (e.g., '1@x')
+ * @param criterion - The slicing criterion (e.g., '1\@x')
  * @param factory - Domain factory function (e.g., intervalFactory or naAwareIntervalFactory)
  * @param valueConverter - Function to convert concrete values to domain sets
  * @returns The VectorDomain for the given criterion, or undefined
