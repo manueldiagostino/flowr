@@ -191,12 +191,12 @@ export class NAAwareDomain<
 		};
 	}
 
-	public top(): this & NAAwareDomain<Domain, NAAwareTop<Domain>>;
+	public top(): this & NAAwareDomain<Domain, NAAwareTop<Domain>> & AbstractDomain<ConcreteDomain<Domain> | typeof NA, NAAwareInnerValue<Domain>, NAAwareTop<Domain>, NAAwareBottom<Domain>, NAAwareTop<Domain>>;
 	public top(): NAAwareDomain<Domain, NAAwareTop<Domain>> {
 		return NAAwareDomain.top(this._factory);
 	}
 
-	public bottom(): this & NAAwareDomain<Domain, NAAwareBottom<Domain>>;
+	public bottom(): this & NAAwareDomain<Domain, NAAwareBottom<Domain>> & AbstractDomain<ConcreteDomain<Domain> | typeof NA, NAAwareInnerValue<Domain>, NAAwareTop<Domain>, NAAwareBottom<Domain>, NAAwareBottom<Domain>>;
 	public bottom(): NAAwareDomain<Domain, NAAwareBottom<Domain>> {
 		return NAAwareDomain.bottom(this._factory);
 	}
