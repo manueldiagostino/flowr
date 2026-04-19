@@ -46,8 +46,6 @@ import { expensiveTrace } from '../../util/log';
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'random' | 'unknown';
 
-type SelectorKind = 'logical' | 'numeric';
-
 type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
 interface VectorOperation<Domain extends AnyAbstractDomain, Name extends VectorOperationName = VectorOperationName> {
@@ -495,9 +493,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selectorNode = selectorArg !== '<>' && selectorArg !== undefined ? (RArgument.is(selectorArg) ? selectorArg.value : selectorArg) : undefined;
 			const selector = selectorNode?.info.id;
 
-			const selectorKind = this.detectSelectorKind(selectorArg);
-
 			const resolvedOperand = operand !== undefined ? this.getVectorDomainValue(operand) : undefined;
+			// Compute selector kind from the operand's type (logical vs numeric)
+			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
 			vectorLogger.debug(`Handler: handleAccess [operandId=${operand}, selectorId=${selector}, selectorKind=${selectorKind}]`);
 			if(resolvedOperand) {
@@ -507,8 +505,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return [{
 				operation: 'select',
 				operand:   resolvedOperand,
-				selector:  selector !== undefined ? String(selector) : undefined,
-				selectorKind
+				selector:  selector !== undefined ? String(selector) : undefined
 			}];
 		}
 
@@ -538,11 +535,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
 			const values = source?.info.id;
 
-			// Detect selector kind from AST (logical vs numeric)
-			const selectorKind = this.detectSelectorKind(selectorArg);
-
 			const resolvedOperand = operand !== undefined ? this.getVectorDomainValue(operand) : undefined;
 			const resolvedValues = values !== undefined ? this.getVectorDomainValue(values) : undefined;
+			// Compute selector kind from the operand's type (logical vs numeric)
+			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
 			vectorLogger.debug(`Handler: handleReplacement [operandId=${operand}, selectorId=${selector}, valuesId=${values}, selectorKind=${selectorKind}]`);
 			if(resolvedOperand) {
@@ -556,8 +552,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				operation: 'update',
 				operand:   resolvedOperand,
 				selector:  selector !== undefined ? String(selector) : undefined,
-				known:     values !== undefined ? String(values) : undefined,
-				selectorKind
+				known:     values !== undefined ? String(values) : undefined
 			}];
 		}
 
@@ -866,7 +861,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 					args.selectorKind as SelectorKind | undefined
 				);
 			case 'update':
-				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain>, args.known, args.naValue, args.selectorKind as SelectorKind);
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain>, args.known, args.naValue);
 			case 'negate':
 				return this.applyNegate(value);
 			default:
@@ -1130,16 +1125,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param value - The source VectorDomain to select from
 	 * @param selector - The selector VectorDomain (interval or value domain)
 	 * @param naValue - The NA value for out-of-bounds access
-	 * @param selectorKind - Optional selector type from AST detection (used for logical detection)
 	 * @returns The resulting VectorDomain after selection
 	 */
 	private applySelect(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain>,
-		naValue: NAAwareDomain<Domain>,
-		selectorKind?: SelectorKind
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
-		vectorLogger.debug(`Operation: select [selectorKind=${selectorKind ?? 'numeric'}]`);
+		// Derive selector kind from the selector's type (logical vs numeric)
+		const selectorKind = selector.type.getType() === 'logical' ? 'logical' : 'numeric';
+		vectorLogger.debug(`Operation: select [selectorKind=${selectorKind}]`);
 		vectorLogger.debug(`Operation: select input [value.length=${value.length.toString()}, value.known=${value.known.toString()}, selector.length=${selector.length.toString()}]`);
 
 		if(value.isBottom() || selector.isBottom()) {
@@ -1602,16 +1597,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param selector - The selector for positions to update
 	 * @param values - The values to assign to selected positions
 	 * @param naValue - The NA value for out-of-bounds positions
-	 * @param selectorKind - The kind of selector (logical or numeric)
 	 * @returns The resulting VectorDomain after update
 	 */
 	private applyUpdate(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
-		naValue: NAAwareDomain<Domain>,
-		selectorKind: SelectorKind
+		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
+		// Derive selector kind from the selector's type (logical vs numeric)
+		const selectorKind = selector.type.getType() === 'logical' ? 'logical' : 'numeric';
 		vectorLogger.debug(`Operation: update [selectorKind=${selectorKind}]`);
 		vectorLogger.debug(`Operation: update input [value.length=${value.length.toString()}, selector.length=${selector.length.toString()}, values.length=${values.length.toString()}]`);
 
