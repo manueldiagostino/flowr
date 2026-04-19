@@ -370,7 +370,7 @@ export class NAAwareDomain<
 		// Delegate to inner domain's negate method
 		const negatedInner = (thisValue.inner as unknown as { negate(): Domain }).negate();
 
-		return this.create({ inner: negatedInner as Domain, hasNA: thisValue.hasNA });
+		return this.create({ inner: negatedInner, hasNA: thisValue.hasNA });
 	}
 
 	/**

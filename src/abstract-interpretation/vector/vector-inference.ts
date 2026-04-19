@@ -49,13 +49,13 @@ type SelectorKind = 'logical' | 'numeric';
 
 type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
-interface VectorOperation<Name extends VectorOperationName = VectorOperationName> {
+interface VectorOperation<Domain extends AnyAbstractDomain, Name extends VectorOperationName = VectorOperationName> {
 	operation:     Name;
-	operand:       VectorDomain<AnyAbstractDomain> | undefined;
+	operand:       VectorDomain<Domain> | undefined;
 	[key: string]: unknown;
 }
 
-type VectorOperations = VectorOperation[] | undefined;
+type VectorOperations<Domain extends AnyAbstractDomain> = VectorOperation<Domain>[];
 
 /**
  * Configuration options for the VectorInferenceVisitor.
@@ -72,13 +72,13 @@ interface VectorInferenceConfiguration extends AbsintVisitorConfiguration {
  * @template Domain - The abstract domain type for vector elements
  */
 export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends AbstractInterpretationVisitor<VectorDomain<Domain>, VectorInferenceConfiguration> {
-	private readonly operations?:    Map<NodeId, VectorOperations>;
-	private readonly plainFactory:   import('./vector-domain').DomainFactory<Domain>;
-	private readonly naAwareFactory: import('./vector-domain').DomainFactory<NAAwareDomain<Domain>>;
+	private readonly operations?:    Map<NodeId, VectorOperations<Domain>>;
+	private readonly plainFactory:   DomainFactory<Domain>;
+	private readonly naAwareFactory: DomainFactory<NAAwareDomain<Domain>>;
 	private readonly valueConverter: ValueToDomainConverter<Domain>;
 
 	constructor(
-		factory: import('./vector-domain').DomainFactory<Domain>,
+		factory: DomainFactory<Domain>,
 		valueConverter: ValueToDomainConverter<Domain>,
 		{ trackOperations = true, ...config }: VectorInferenceConfiguration
 	) {
@@ -107,7 +107,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param id - The ID of the node to get the mapped abstract operations for
 	 * @returns The mapped abstract vector operations for the node, or `undefined` if no abstract operation was mapped for the node or storing mapped abstract operations is disabled via the visitor config.
 	 */
-	public getAbstractOperations(id: NodeId | undefined): Readonly<VectorOperations> {
+	public getAbstractOperations(id: NodeId | undefined): Readonly<VectorOperations<Domain>> | undefined {
 		return id !== undefined ? this.operations?.get(id) : undefined;
 	}
 
@@ -175,17 +175,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			vectorLogger.debug(`Decision: function type 'arithmetic' for node type '${node.type}'`);
 			return 'arithmetic';
 		}
-	if(functionName === 'length') {
-		vectorLogger.debug(`Decision: function type 'length' for node type '${node.type}'`);
-		return 'length';
-	}
-	if(['runif', 'rnorm', 'rbinom', 'rexp', 'rpois'].includes(functionName)) {
-		vectorLogger.debug(`Decision: function type 'random' for node type '${node.type}'`);
-		return 'random';
-	}
+		if(functionName === 'length') {
+			vectorLogger.debug(`Decision: function type 'length' for node type '${node.type}'`);
+			return 'length';
+		}
+		if(['runif', 'rnorm', 'rbinom', 'rexp', 'rpois'].includes(functionName)) {
+			vectorLogger.debug(`Decision: function type 'random' for node type '${node.type}'`);
+			return 'random';
+		}
 
-	vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
-	return 'unknown';
+		vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);
+		return 'unknown';
 	}
 
 	// ==================== Selector Type Detection ====================
@@ -199,7 +199,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	private detectSelectorKind(selectorNode: RNode<ParentInformation> | typeof EmptyArgument | undefined): SelectorKind {
 		if(selectorNode === undefined || selectorNode === EmptyArgument) {
-			vectorLogger.debug(`Decision: selector kind 'numeric' for node type '${selectorNode?.type ?? 'undefined'}' (empty/undefined)`);
+			vectorLogger.debug(`Decision: selector kind 'numeric' for empty/undefined selector`);
 			return 'numeric';
 		}
 
@@ -286,7 +286,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// For symbols, try to get the vector type from abstract interpretation state
 		if(RSymbol.is(node)) {
-			const nodeId = (node.info as ParentInformation).id;
+			const nodeInfo = node.info as unknown as ParentInformation;
+			const nodeId = nodeInfo.id;
 			const vectorValue = this.getVectorDomainValue(nodeId);
 			if(vectorValue !== undefined && !vectorValue.type.isTop()) {
 				const type = vectorValue.type.getType();
@@ -338,7 +339,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param call - The function call vertex from the dataflow graph
 	 * @returns The mapped vector operations sequence
 	 */
-	private handleConcatenate(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations {
+	private handleConcatenate(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations<Domain> {
 		const args = this.resolveVectorArguments(call);
 
 		vectorLogger.debug(`Handler: handleConcatenate [argCount=${args.length}]`);
@@ -351,14 +352,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		if(args.length === 0) {
-			return [{ operation: 'unknown', operand: undefined }];
+			return this.unknownOperation();
 		}
 
 		if(args.length === 1) {
 			return [{ operation: 'concatenate', operand: args[0].resolved }];
 		}
 
-		const operations: VectorOperations = [];
+		const operations: VectorOperations<Domain> = [];
 
 		operations.push({
 			operation: 'concatenate',
@@ -383,7 +384,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param call - The function call vertex from the dataflow graph
 	 * @returns The mapped vector operations sequence
 	 */
-	private handleArithmetic(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations {
+	private handleArithmetic(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations<Domain> {
 		const lhsId = call.args[0] !== undefined && call.args[0] !== EmptyArgument
 			? FunctionArgumentUtil.getId(call.args[0])
 			: undefined;
@@ -397,7 +398,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if(node.type === RType.UnaryOp) {
 			if(lhsId === undefined) {
 				vectorLogger.debug('Handler: handleArithmetic unary - no lhsId');
-				return [{ operation: 'unknown', operand: undefined }];
+				return this.unknownOperation();
 			}
 			// For unary minus, we need to negate the value
 			const operandValue = this.getVectorDomainValue(lhsId);
@@ -407,12 +408,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				return [{ operation: 'negate', operand: operandValue }];
 			}
 			vectorLogger.debug(`Handler: handleArithmetic unary - not handling [hasValue=${operandValue?.isValue()}, operator=${node.operator}]`);
-			return [{ operation: 'unknown', operand: undefined }];
+			return this.unknownOperation();
 		}
 
 		if(lhsId === undefined) {
 			vectorLogger.debug('Handler: handleArithmetic binary - no lhsId');
-			return [{ operation: 'unknown', operand: undefined }];
+			return this.unknownOperation();
 		}
 
 		const lhsValue = this.getVectorDomainValue(lhsId);
@@ -430,8 +431,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * Handles the length() function.
 	 * @returns An unknown operation since we cannot determine length statically
 	 */
-	private handleLength(): VectorOperations {
-		return [{ operation: 'unknown', operand: undefined }];
+	private handleLength(): VectorOperations<Domain> {
+		return this.unknownOperation();
 	}
 
 	/**
@@ -441,24 +442,24 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param call - The function call vertex from the dataflow graph
 	 * @returns The mapped vector operations sequence
 	 */
-	private handleRandomFunction(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations {
+	private handleRandomFunction(node: RNode<ParentInformation>, call: DataflowGraphVertexFunctionCall): VectorOperations<Domain> {
 		const args = this.resolveVectorArguments(call);
 
 		vectorLogger.debug(`Handler: handleRandomFunction [argCount=${args.length}]`);
 
 		// Get the first argument (n = number of values to generate)
-		let lengthDomain: PosIntervalDomain;
+		let _lengthDomain: PosIntervalDomain;
 		if(args.length > 0 && args[0].resolved?.length.isValue()) {
 			// First argument is a concrete number - use it as exact length
 			const len = args[0].resolved.length;
 			if(len.isValue()) {
-				lengthDomain = new PosIntervalDomain([len.value[0], len.value[1]]);
+				_lengthDomain = new PosIntervalDomain([len.value[0], len.value[1]]);
 			} else {
-				lengthDomain = PosIntervalDomain.top();
+				_lengthDomain = PosIntervalDomain.top();
 			}
 		} else {
 			// Conservative: unknown length
-			lengthDomain = PosIntervalDomain.top();
+			_lengthDomain = PosIntervalDomain.top();
 		}
 
 		// Build a VectorDomain with ⊤ values (any double)
@@ -476,9 +477,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param node - The R access node representing the vector
 	 * @returns The mapped vector operations sequence for selection
 	 */
-	private handleAccess(node: RNode<ParentInformation>): VectorOperations {
+	private handleAccess(node: RNode<ParentInformation>): VectorOperations<Domain> {
 		if(!RAccess.is(node)) {
-			return undefined;
+			return this.unknownOperation();
 		}
 
 		const access = node;
@@ -512,7 +513,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// Two arguments: x[i, j] - matrix/array access (not supported yet)
 		vectorLogger.debug(`Handler: handleAccess matrix access (not supported) [argCount=${args.length}]`);
-		return [{ operation: 'unknown', operand: undefined }];
+		return this.unknownOperation();
 	}
 
 	/**
@@ -521,9 +522,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param source - The R node representing the value being assigned
 	 * @returns The mapped vector operations sequence for update
 	 */
-	private handleReplacement(node: RNode<ParentInformation>, source: RNode<ParentInformation> | undefined): VectorOperations {
+	private handleReplacement(node: RNode<ParentInformation>, source: RNode<ParentInformation> | undefined): VectorOperations<Domain> {
 		if(!RAccess.is(node)) {
-			return undefined;
+			return this.unknownOperation();
 		}
 
 		const access = node;
@@ -560,7 +561,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		vectorLogger.debug(`Handler: handleReplacement matrix access (not supported) [argCount=${args.length}]`);
-		return [{ operation: 'unknown', operand: undefined }];
+		return this.unknownOperation();
 	}
 
 	// ==================== Event Handlers ====================
@@ -581,17 +582,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		const funcType = this.detectFunctionType(node);
-		let operations: VectorOperations;
+		let operations: VectorOperations<Domain>;
 
 		switch(funcType) {
 			case 'concatenate': {
 				const vertexInfo = this.config.dfg.get(node.info.id);
 				if(vertexInfo === undefined) {
-					operations = [{ operation: 'unknown', operand: undefined }];
+					operations = this.unknownOperation();
 				} else {
 					const [callVertex] = vertexInfo;
 					if(callVertex?.tag !== VertexType.FunctionCall) {
-						operations = [{ operation: 'unknown', operand: undefined }];
+						operations = this.unknownOperation();
 					} else {
 						operations = this.handleConcatenate(node, callVertex);
 					}
@@ -601,39 +602,39 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			case 'arithmetic': {
 				const vertexInfo = this.config.dfg.get(node.info.id);
 				if(vertexInfo === undefined) {
-					operations = [{ operation: 'unknown', operand: undefined }];
+					operations = this.unknownOperation();
 				} else {
 					const [callVertex] = vertexInfo;
 					if(callVertex?.tag !== VertexType.FunctionCall) {
-						operations = [{ operation: 'unknown', operand: undefined }];
+						operations = this.unknownOperation();
 					} else {
 						operations = this.handleArithmetic(node, callVertex);
 					}
 				}
 				break;
 			}
-		case 'length':
-			operations = this.handleLength();
-			break;
-		case 'random': {
-			const vertexInfo = this.config.dfg.get(node.info.id);
-			if(vertexInfo === undefined) {
-				operations = [{ operation: 'unknown', operand: undefined }];
-			} else {
-				const [callVertex] = vertexInfo;
-				if(callVertex?.tag !== VertexType.FunctionCall) {
-					operations = [{ operation: 'unknown', operand: undefined }];
+			case 'length':
+				operations = this.handleLength();
+				break;
+			case 'random': {
+				const vertexInfo = this.config.dfg.get(node.info.id);
+				if(vertexInfo === undefined) {
+					operations = this.unknownOperation();
 				} else {
-					operations = this.handleRandomFunction(node, callVertex);
+					const [callVertex] = vertexInfo;
+					if(callVertex?.tag !== VertexType.FunctionCall) {
+						operations = this.unknownOperation();
+					} else {
+						operations = this.handleRandomFunction(node, callVertex);
+					}
 				}
+				break;
 			}
-			break;
-		}
-		case 'unknown':
-		default:
-			vectorLogger.warn(`Unknown function type '${funcType}' in onFunctionCall [nodeId=${call.id}]`);
-			operations = undefined;
-			break;
+			case 'unknown':
+			default:
+				vectorLogger.warn(`Unknown function type '${funcType}' in onFunctionCall [nodeId=${call.id}]`);
+				operations = this.unknownOperation();
+				break;
 		}
 
 		this.applyVectorExpression(node, operations);
@@ -742,9 +743,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @param node - The R node being processed
 	 * @param operations - The sequence of operations to apply (undefined if no operations)
 	 */
-	private applyVectorExpression(node: RNode<ParentInformation>, operations: VectorOperations): void {
-		vectorLogger.debug(`Operation: applyVectorExpression [nodeId=${node.info.id}, operations=${operations?.length ?? 0}]`);
-		if(operations === undefined) {
+	private applyVectorExpression(node: RNode<ParentInformation>, operations: VectorOperations<Domain>): void {
+		vectorLogger.debug(`Operation: applyVectorExpression [nodeId=${node.info.id}, operations=${operations.length}]`);
+		if(operations.length === 0 || operations[0].operation === 'unknown') {
 			return;
 		} else if(this.operations !== undefined) {
 			this.operations.set(node.info.id, operations);
@@ -768,7 +769,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 			value = this.applyOperation(
 				operation,
-				effectiveOperand as VectorDomain<Domain>,
+				effectiveOperand,
 				argsWithNaValue
 			);
 
@@ -859,17 +860,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			case 'select':
 				return this.applySelect(
 					value,
-					args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>,
+					args.selector as VectorDomain<IntervalDomain>,
 					args.naValue as NAAwareDomain<Domain>,
 					args.selectorKind as SelectorKind | undefined
 				);
-		case 'update':
-			return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain> | VectorDomain<Domain>, args.known as VectorDomain<Domain>, args.naValue as NAAwareDomain<Domain>, args.selectorKind as SelectorKind);
-		case 'negate':
-			return this.applyNegate(value);
-		default:
-			vectorLogger.warn(`Unknown operation '${operation}' in applyOperation, returning top`);
-			return value.top();
+			case 'update':
+				return this.applyUpdate(value, args.selector as VectorDomain<IntervalDomain>, args.known, args.naValue, args.selectorKind as SelectorKind);
+			case 'negate':
+				return this.applyNegate(value);
+			default:
+				vectorLogger.warn(`Unknown operation '${operation}' in applyOperation, returning top`);
+				return value.top();
 		}
 	}
 
@@ -1161,12 +1162,12 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		if(selectorKind === 'logical') {
-			const result = this.applySelectLogical(value, selector as VectorDomain<Domain>, naValue);
+			const result = this.applySelectLogical(value, selector, naValue);
 			vectorLogger.debug(`Operation: select logical result [length=${result.length.toString()}, values=${result.known.toString()}]`);
 			return result;
 		}
 
-		const numericSelector = selector as VectorDomain<IntervalDomain>;
+		const numericSelector = selector;
 
 		if(!numericSelector.known.isValue() || !Array.isArray(numericSelector.known.value)) {
 			// Cannot enumerate selector values, treat all positions as positive (conservative)
@@ -1367,7 +1368,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// Empty selector after adjusting for zeros - return bottom
 		if(adjustedSelector.length.isValue()) {
-			const [newL, newU] = adjustedSelector.length.value;
+			const [, newU] = adjustedSelector.length.value;
 			if(newU === 0) {
 				vectorLogger.debug('Operation: selectNegative - empty selector, returning bottom');
 				return value.bottom();
@@ -1541,17 +1542,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		// Empty selector after adjusting for zeros - return bottom
-		if(adjustedSelector.value.length) {
-			const [_newL, newU] = adjustedSelector.length;
-			if(newU === 0) {
-				vectorLogger.debug('Operation: selectNegative - empty selector, returning bottom');
-				return value.bottom();
-			}
+		if(adjustedSelector.value.length == 0) {
+			vectorLogger.debug('Operation: selectNegative - empty selector, returning bottom');
+			return value.bottom();
 		}
 
 		const plainSelector = adjustedSelector.toArray();
 		for(let i = 0; i < selector.known.value.length; i++) {
-			const iVal: NAAwareDomain<PosIntervalDomain> = plainSelector[i];
+			const iVal = plainSelector[i];
 			let sourceVal = NAAwareDomain.bottom(this.plainFactory);
 
 			let [u, l] = [0, 0];
@@ -1564,7 +1562,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				} else if(u == 1) {
 					vectorLogger.trace(`Contained TRUE in position ${i}`);
 					const accessed = accessPosition(value, i, naValue);
-					vectorLogger.trace(`Accessed value [${accessed}]`);
+					vectorLogger.trace(`Accessed value [${accessed.toString()}]`);
 					sourceVal = sourceVal.join(accessed);
 				}
 			}
@@ -1574,7 +1572,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				sourceVal = sourceVal.join(naValue);
 			}
 
-			guard(sourceVal.isValue(), `Selected position [sourceVal:${sourceVal} value:${sourceVal.value}] not valid`);
+			guard(sourceVal.isValue(), `Selected position [sourceVal:${sourceVal.toString()}] not valid`);
 			resultKnownPositions.push(sourceVal);
 		}
 
@@ -2144,6 +2142,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		});
 		return result;
 	}
+
+	private unknownOperation(): VectorOperations<Domain> {
+		return [{ operation: 'unknown', operand: VectorDomain.bottom(this.plainFactory) }];
+	}
+
 }
 
 /**
