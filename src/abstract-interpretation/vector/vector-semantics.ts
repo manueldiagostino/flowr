@@ -6,7 +6,6 @@ import { type VectorDomain } from './vector-domain';
 import { KnownInitialPositionsDomain, type DomainFactory } from './known-initial-positions-domain';
 import type { NAAwareDomain } from './na-aware-domain';
 import { ConstraintType } from '../data-frame/semantics';
-import { assert } from 'ts-essentials';
 import { guard } from '../../util/assert';
 import { vectorLogger } from './logger';
 import { expensiveTrace } from '../../util/log';
@@ -22,20 +21,27 @@ export { ConstraintType };
  * @returns The cardinality as a number, or +Infinity
  */
 export function card(interval: PosIntervalDomain): number {
+	vectorLogger.debug('Semantic: card');
 	if(interval.isBottom()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'interval is bottom'));
 		return 0;
 	}
 	if(interval.isTop()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'interval is top'));
 		return +Infinity;
 	}
 	if(!interval.isValue()) {
+		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'interval is not a value'));
 		return +Infinity;
 	}
 	const [l, u] = interval.value;
 	if(u === +Infinity) {
+		expensiveTrace(vectorLogger, () => 'Semantic: card result = +Infinity (upper bound is infinity)');
 		return +Infinity;
 	}
-	return u - l + 1;
+	const result = u - l + 1;
+	expensiveTrace(vectorLogger, () => `Semantic: card result = ${result}`);
+	return result;
 }
 
 /**
@@ -46,8 +52,11 @@ export function card(interval: PosIntervalDomain): number {
  * @returns True if the interval's cardinality is finite and ≤ threshold
  */
 export function isEnumerable(interval: PosIntervalDomain, threshold = 50): boolean {
+	vectorLogger.debug(`Semantic: isEnumerable [threshold=${threshold}]`);
 	const c = card(interval);
-	return c !== +Infinity && c <= threshold;
+	const result = c !== +Infinity && c <= threshold;
+	expensiveTrace(vectorLogger, () => `Semantic: isEnumerable result = ${result} (card=${c}, threshold=${threshold})`);
+	return result;
 }
 
 /**
@@ -156,21 +165,27 @@ export function propagate(
 		// Check if definitely zero: γ(c₁) = {0}
 		if(l === 0 && u === 0) {
 			// Skip and increment counter
-			return propagate(rest, summary, k + 1);
+			const result = propagate(rest, summary, k + 1);
+			expensiveTrace(vectorLogger, () => `Semantic: propagate zero-skip result = ${result.toString()}`);
+			return result;
 		}
 
 		// Check if may contain zero: 0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0}
 		if(l <= 0 && u >= 0) {
 			// Join with propagated value from rest (paper specifies ⊔)
 			const propagated = propagate(rest, summary, k);
-			return first.join(propagated);
+			const result = first.join(propagated);
+			expensiveTrace(vectorLogger, () => `Semantic: propagate may-zero result = ${result.toString()}`);
+			return result;
 		}
 	} else if(first.isNA()) {
 		// position is a pure NA - treat as non-zero and continue
 		// NA values are not zeros, so they don't affect the zero counter
 	} else if(first.isBottom()) {
 		// position is bottom (no possible values) - propagate bottom
-		return summary.bottom();
+		const result = summary.bottom();
+		expensiveTrace(vectorLogger, () => `Semantic: propagate bottom result = ${result.toString()}`);
+		return result;
 	}
 	// For Top or pure NA, continue to non-zero handling below
 
@@ -181,6 +196,7 @@ export function propagate(
 	}
 
 	// k = 0, return this value
+	expensiveTrace(vectorLogger, () => `Semantic: propagate non-zero k=0 result = ${first.toString()}`);
 	return first;
 }
 
@@ -477,15 +493,19 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 	const lengthUpperBound = getLengthUpperBound(vector.length);
 
 	if(lengthUpperBound === undefined) {
-		return squash(vector);
+		const result = squash(vector);
+		expensiveTrace(vectorLogger, () => `Semantic: accessPosition undefined-bound result = ${result.toString()}`);
+		return result;
 	}
 
 	if(lengthUpperBound === +Infinity) {
 		const result = accessFromInfiniteLengthVector(vector, pos, naValue);
+		expensiveTrace(vectorLogger, () => `Semantic: accessPosition infinite-length result = ${result.toString()}`);
 		return result;
 	}
 
 	const result = accessFromFiniteLengthVector(vector, pos, naValue, lengthUpperBound);
+	expensiveTrace(vectorLogger, () => `Semantic: accessPosition finite-length result = ${result.toString()}`);
 	return result;
 }
 
