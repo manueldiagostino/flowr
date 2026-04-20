@@ -277,11 +277,9 @@ export function adjustForZeros(
 				}
 			}
 
-			const remainingValues = knownPositionValues.slice(i);
-			const propagated = propagate(remainingValues, summary, zerosBefore);
-			if(!propagated.isBottom()) {
-				newKnownPositionValues.push(propagated);
-			}
+		const remainingValues = knownPositionValues.slice(i);
+		const propagated = propagate(remainingValues, summary, zerosBefore);
+		newKnownPositionValues.push(propagated);
 		}
 	}
 

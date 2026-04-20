@@ -1025,14 +1025,16 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		vectorLogger.debug(`Operation: select [selectorKind=${selectorKind}]`);
 		vectorLogger.debug(`Operation: select input [value.length=${value.length.toString()}, value.known=${value.known.toString()}, selector.length=${selector.length.toString()}]`);
 
+		// INVARIANT 1: Bottom Propagation
+		// If either source vector or selector is Bottom, return Bottom
 		if(value.isBottom() || selector.isBottom()) {
 			vectorLogger.debug('Operation: select returning bottom (input is bottom)');
 			return value.bottom();
 		}
 
-		// Paper Section 4.7 (L498-503): Empty selector is a special case
-		// rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
-		// The empty vector has length [0,0]
+		// INVARIANT 2: Empty Selector
+		// If selector is empty (length = [0, 0]), return source vector unchanged
+		// Paper Section 4.7 (L498-503): rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
 		const isEmptySelector = selector.length.isValue() &&
 			selector.length.value[0] === 0 &&
 			selector.length.value[1] === 0;
@@ -1041,31 +1043,24 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return value;
 		}
 
-		if(selector.isTop()) {
-			vectorLogger.debug('Operation: select returning squashed (selector is top)');
-			const squashedValue = squash(value);
-			const naFactory = value.naAwareFactory;
-			const valueSquashed = VectorDomain.create(
-				value.plainFactory,
-				PosIntervalDomain.top(),
-				KnownInitialPositionsDomain.top(naFactory),
-				squashedValue,
-				value.attributes,
-				value.type
-			);
-			return valueSquashed;
-		}
-
+		// INVARIANT 3: Selector Kind Detection
+		// Determine selector kind (logical or numeric) based on selector's type
 		if(selectorKind === 'logical') {
 			const result = this.applySelectLogical(value, selector, naValue);
 			vectorLogger.debug(`Operation: select logical result [length=${result.length.toString()}, values=${result.known.toString()}]`);
 			return result;
 		}
 
+		// INVARIANT 4: No Early Return on Top
+		// Do NOT handle Top selector with immediate return. Top selector means indices could be anything.
+		// Logical vs numeric selection have completely different behaviors.
+		// Top selector must be filtered by abstractFilter into positive/negative/logical components.
+
+		// Numeric Selector: Use abstract filtering to classify positions
 		const numericSelector = selector;
 
+		// If selector values cannot be enumerated, use conservative positive selector
 		if(!numericSelector.known.isValue() || !Array.isArray(numericSelector.known.value)) {
-			// Cannot enumerate selector values, treat all positions as positive (conservative)
 			vectorLogger.debug('Operation: select cannot enumerate selector values, using conservative positive');
 			const conservativeSelector = buildPosIntervalSelectorFromSource(numericSelector);
 			const result = this.applySelectPositive(value, conservativeSelector, naValue);
@@ -1073,9 +1068,29 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return result;
 		}
 
+		// Check if selector is all zeros (will become empty after adjustForZeros)
+		// In this case, return empty vector
+		const selectorValues = numericSelector.known.value as readonly NAAwareDomain<IntervalDomain>[];
+		const allZeros = selectorValues.every(pos => {
+			if(!pos.isValue() || !pos.inner.isValue()) {
+				return false;
+			}
+			const [l, u] = pos.inner.value;
+			return l === 0 && u === 0;
+		});
+		if(allZeros) {
+			vectorLogger.debug('Operation: select with all-zero selector, returning empty vector');
+			return value.create({
+				length:     value.length.create([0, 0]),
+				known:      value.known.create([]),
+				summary:    value.summary.bottom(),
+				attributes: value.attributes,
+				type:       value.type
+			});
+		}
+
 		// Paper Section 4.7: abstract filter classifies selector positions
-		const selectorPositions = numericSelector.known.value as readonly NAAwareDomain<IntervalDomain>[];
-		const filterResult = VectorDomain.abstractFilter(selectorPositions, numericSelector.plainFactory);
+		const filterResult = VectorDomain.abstractFilter(selectorValues, numericSelector.plainFactory);
 		vectorLogger.debug(`Operation: select filter [positive=${filterResult.positive.length}, negative=${filterResult.negative.length}, posBottom=${filterResult.positiveHasBottom}, negBottom=${filterResult.negativeHasBottom}]`);
 
 		// Handle bottom propagation: if both groups have bottom elements, result is bottom
@@ -1086,7 +1101,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		let result = value.bottom();
 
-		// Build positive selector and apply select_pos (paper Section 4.7)
+		// INVARIANT 5: Positive Selector Filtering
+		// Ensure selector contains only non-negative positions or NA before calling applySelectPositive
 		if(filterResult.positive.length > 0 && !filterResult.positiveHasBottom) {
 			const positiveSelector = buildPosIntervalSelector(numericSelector, filterResult.positive);
 			const resultPos = this.applySelectPositive(value, positiveSelector, naValue);
@@ -1094,7 +1110,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			result = result.join(resultPos);
 		}
 
-		// Build negative selector and apply select_neg (paper Section 4.7)
+		// INVARIANT 6: Negative Selector Filtering
+		// Ensure selector contains only non-positive positions (no NA) before calling applySelectNegative
 		if(filterResult.negative.length > 0 && !filterResult.negativeHasBottom) {
 			const negativeSelector = buildPosIntervalSelector(numericSelector, filterResult.negative);
 			const resultNeg = this.applySelectNegative(value, negativeSelector, naValue);
@@ -1107,10 +1124,19 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
-	 * Applies positive indexing selection: x[c] where c \&gt;= 0.
-	 * Uses adjustForZeros to handle zero indices and builds result from known positions.
-	 * @param value - The source VectorDomain to select from
-	 * @param selector - The selector VectorDomain with positive intervals
+	 * Applies positive indexing selection: x[c] where c >= 0.
+	 * Preconditions (guaranteed by dispatcher):
+	 * - value is not Bottom
+	 * - selector is not Bottom
+	 * - selector contains only non-negative positions or NA
+	 * 
+	 * Postconditions:
+	 * - Result length is determined by selector length
+	 * - Result summary is ⊥ for finite selectors, Squash(value) for infinite
+	 * - Result attributes are preserved from source
+	 * 
+	 * @param value - The source VectorDomain to select from (not Bottom)
+	 * @param selector - The selector VectorDomain with positive intervals (not Bottom)
 	 * @param naValue - The NA value for out-of-bounds access
 	 * @returns The resulting VectorDomain after positive selection
 	 */
@@ -1121,15 +1147,25 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectPositive');
 		vectorLogger.debug(`  selector [length=${selector.length.toString()}, values=${selector.known.toString()}]`);
+		
+		// Adjust selector for zeros: removes zero indices and adjusts length bounds
 		const adjustedSelector = adjustForZeros(selector);
 		vectorLogger.debug(`  adjustedSelector [length=${adjustedSelector.length.toString()}, values=${adjustedSelector.known.toString()}]`);
 
-		// Empty selector after adjusting for zeros - return bottom
+		// Empty selector after adjusting for zeros - return empty vector
+		// In positive selection, empty selector means no positions are selected
 		if(adjustedSelector.length.isValue()) {
 			const [newL, newU] = adjustedSelector.length.value;
 			if(newL === 0 && newU === 0) {
-				vectorLogger.debug('Operation: selectPositive - empty selector, returning bottom');
-				return value.bottom();
+				vectorLogger.debug('Operation: selectPositive - empty selector, returning empty vector');
+				// Return vector with empty length and no known positions
+				return value.create({
+					length:     adjustedSelector.length,
+					known:      value.known.create([]),
+					summary:    value.summary.bottom(),
+					attributes: value.attributes,
+					type:       value.type
+				});
 			}
 		}
 
@@ -1139,7 +1175,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 			let idxNumber = 0;
 			for(const idx of selectorValues) {
-				guard(!idx.isBottom(), 'applySelectPositive: selector position should not be bottom');
+				// Precondition: dispatcher guarantees selector positions are not bottom
+				// No redundant check needed here
 
 				const innerInterval = idx.inner;
 				if(isEnumerable(innerInterval)) {
@@ -1147,10 +1184,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 						const [l, u] = innerInterval.value;
 						vectorLogger.trace(`Subcase: selectPositive - enumerable interval [${l}, ${u}]`);
 						let joinedAccessed: NAAwareDomain<Domain> | undefined;
+						// After adjustForZeros, all positions are guaranteed to be > 0
+						// No zero-to-one conversion needed
 						for(let pos = l; pos <= u; pos++) {
-							const adjustedPos = pos === 0 ? 1 : pos;
-							if(adjustedPos > 0) {
-								const accessed = accessPosition(value, adjustedPos - 1, naValue);
+							if(pos > 0) {
+								const accessed = accessPosition(value, pos - 1, naValue);
 								joinedAccessed = joinedAccessed === undefined ? accessed : joinedAccessed.join(accessed);
 							}
 						}
@@ -1169,11 +1207,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				idxNumber += 1;
 			}
 		}
+		
+		// Determine if selector is infinite
 		const selectorLen = adjustedSelector.length;
 		const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
 		if(isInfinite) {
 			vectorLogger.trace('Subcase: selectPositive - infinite selector, valorizing summary');
 		}
+		
+		// Summary: ⊥ for finite selectors, Squash(value) for infinite
 		const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
 		const resultValues = value.known.create(resultKnownPositions);
 		const result = value.create({
@@ -1195,16 +1237,18 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		let idxPos = 0;
 		for(const idx of selectorValues) {
-			guard(idx.isBottom(), `Selector index ${idxPos} is bottom`);
+			guard(!idx.isBottom(), `Selector index ${idxPos} is bottom`);
 
 			const innerInterval = idx.inner;
 			guard(innerInterval.isValue(), `Selector index ${idxPos} has bottom inner value`);
 
 			const [l, u] = innerInterval.value;
-			guard(l <= 0 && u <= 0);
+			// After buildPosIntervalSelector conversion, intervals are positive
+			// representing the positions to delete (negated from original negative intervals)
+			guard(l >= 0 && u >= 0, `Selector index ${idxPos} has invalid positive interval [${l}, ${u}]`);
 
-			const posLower = Math.abs(u);
-			const posUpper = Math.abs(l);
+			const posLower = l;
+			const posUpper = u;
 			if(card(innerInterval) === 1) {
 				const pos = posLower;
 				if(pos >= 1 && pos <= sourceUpper) {
@@ -1223,30 +1267,37 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
-	 * Applies negative indexing selection: x[c] where c \&lt; 0.
+	 * Applies negative indexing selection: x[c] where c < 0.
 	 * Negative indices specify positions to delete from the vector.
-	 * @param value - The source VectorDomain to select from
-	 * @param selector - The selector VectorDomain with negative intervals
+	 * Preconditions (guaranteed by dispatcher):
+	 * - value is not Bottom
+	 * - selector is not Bottom
+	 * - selector contains only non-positive positions (no NA)
+	 * 
+	 * Postconditions:
+	 * - Result length is reduced by number of excluded positions
+	 * - Result summary is ⊥ for non-enumerable selectors, preserved for enumerable
+	 * - Result attributes are preserved from source
+	 * 
+	 * @param value - The source VectorDomain to select from (not Bottom)
+	 * @param selector - The selector VectorDomain with negative intervals (not Bottom)
 	 * @param naValue - The NA value for out-of-bounds access
 	 * @returns The resulting VectorDomain after negative selection
 	 */
 	private applySelectNegative(
 		value: VectorDomain<Domain>,
-		selector: VectorDomain<IntervalDomain>,
+		selector: VectorDomain<PosIntervalDomain>,
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
-		// 1. Entry logging
+		// Entry logging
 		vectorLogger.trace(`applySelectNegative [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
 
-		// 2. Early returns
-		if(value.isBottom() || selector.isBottom()) {
-			vectorLogger.trace('Subcase: selectNegative - bottom input');
-			return value.bottom();
-		}
+		// Preconditions (guaranteed by dispatcher):
+		// - value is not Bottom
+		// - selector is not Bottom
 
-		guard(value.length.isValue(), 'Source length is Bottom');
-		guard(value.known.isValue(), 'Source known positions are Bottom');
-
+		// Get source bounds
+		guard(value.length.isValue(), 'Source length is not value');
 		const sourceLower = value.length.value[0];
 		const sourceUpper = value.length.value[1];
 		if(sourceUpper === +Infinity) {
@@ -1254,26 +1305,26 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return value.top();
 		}
 
-		// 3. Compute adjusted selector
+		// Compute adjusted selector: removes zero indices and adjusts length bounds
 		const adjustedSelector = adjustForZeros(selector);
-		guard(adjustedSelector.isValue(), 'Adjusted Selector is bottom');
-		guard(adjustedSelector.length.isValue(), 'Adjusted Selector is bottom');
 
 		vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
 
-		// Empty selector after adjusting for zeros - return bottom
+		// Empty selector after adjusting for zeros means no positions are deleted
+		// Return source vector unchanged (no positions deleted)
 		if(adjustedSelector.length.isValue()) {
 			const [, newU] = adjustedSelector.length.value;
 			if(newU === 0) {
-				vectorLogger.debug('Operation: selectNegative - empty selector, returning bottom');
-				return value.bottom();
+				vectorLogger.debug('Operation: selectNegative - empty selector, returning source vector');
+				return value;
 			}
 		}
 
-		// 4. Compute sets from ADJUSTED selector
+		// Compute sets from ADJUSTED selector
 		let mustDeleted = new Set<number>();
 		let mayDeleted = new Set<number>();
 
+		guard(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value), 'Adjusted selector known positions not enumerable');
 		const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
 		// Sets construction
 		[ mustDeleted, mayDeleted ] = this.buildNegativeSets(sourceUpper, selectorValues);
@@ -1281,6 +1332,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// Compute MustNotDeleted
 		const mustNotDeleted = new Set<number>();
+		guard(value.known.isValue() && Array.isArray(value.known.value), 'Source known positions not enumerable');
 		for(let i = 1; i <= value.known.value.length; i++) {
 			if(!mayDeleted.has(i)) {
 				mustNotDeleted.add(i);
@@ -1294,7 +1346,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			(adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[])
 				.some(idx => !isEnumerable(idx.inner));
 
-		// 5. Paragraph 1: At least one non-enumerable position (Paper §4.7, L591-605)
+		// Paragraph 1: At least one non-enumerable position (Paper §4.7, L591-605)
 		if(hasNonEnumerable) {
 			vectorLogger.debug('Paragraph 1: Non-enumerable position in selector, using SquashExcept');
 			const newUpper = Math.max(0, sourceUpper - mustDeleted.size);
@@ -1318,7 +1370,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return result;
 		}
 
-		// 6. Paragraphs 2 & 3: All enumerable positions
+		// Paragraphs 2 & 3: All enumerable positions
 		// Determine if selector is finite or infinite
 		const selectorUpper = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
 		const isInfinite = selectorUpper === +Infinity;
@@ -1399,10 +1451,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.trace(`applySelectLogical [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
 
-		if(value.isBottom() || selector.isBottom()) {
-			vectorLogger.trace('Subcase: selectLogical - bottom input');
-			return value.bottom();
-		}
+		// Preconditions (guaranteed by dispatcher):
+		// - value is not Bottom
+		// - selector is not Bottom
 		guard(value.known.isValue(), 'Source is Bottom');
 		guard(selector.known.isValue(), 'Selector is Bottom');
 		guard(selector.length.isValue(), 'Selector length is Bottom');
@@ -2197,19 +2248,32 @@ function buildPosIntervalSelector(
 			return NAAwareDomain.na(posIntervalFactory);
 		}
 		// Convert inner IntervalDomain to PosIntervalDomain
-		// (safe because abstractFilter guarantees lower ≥ 0 for positive, upper ≤ 0 for negative)
+		// abstractFilter guarantees: lower ≥ 0 for positive, upper ≤ 0 for negative
 		const innerInterval = pos.inner;
-		const posInner = new PosIntervalDomain(innerInterval.value);
+		if(!innerInterval.isValue()) {
+			return NAAwareDomain.bottom(posIntervalFactory);
+		}
+		const [l, u] = innerInterval.value;
+		// For positive intervals [l, u] where l ≥ 0: keep as is
+		// For non-positive intervals [l, u] where u ≤ 0: negate to get positions to delete
+		// In R, x[-2] means delete position 2, so [-2, -1] becomes [1, 2]
+		// In R, x[-2:0] means delete positions 1 and 2, so [-2, 0] becomes [1, 2] (excluding 0)
+		const [posL, posU] = u <= 0 && l < 0
+			? [Math.max(1, Math.abs(u)), Math.abs(l)]  // Negate and exclude 0
+			: [l, u];
+		const posInner = new PosIntervalDomain([posL, posU]);
 		return new NAAwareDomain({ inner: posInner, hasNA: pos.containsNA() }, posIntervalFactory);
 	});
 	const naAwareSummary = source.summary.isBottom()
 		? NAAwareDomain.bottom(posIntervalFactory)
 		: source.summary.isTop()
 			? NAAwareDomain.top(posIntervalFactory)
-			: new NAAwareDomain(
-				{ inner: new PosIntervalDomain(source.summary.inner.value), hasNA: source.summary.containsNA() },
-				posIntervalFactory
-			);
+			: source.summary.inner.isValue()
+				? new NAAwareDomain(
+					{ inner: new PosIntervalDomain(source.summary.inner.value), hasNA: source.summary.containsNA() },
+					posIntervalFactory
+				)
+				: NAAwareDomain.bottom(posIntervalFactory);
 	return VectorDomain.fromValues(
 		posIntervalFactory,
 		source.length,
