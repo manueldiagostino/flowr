@@ -16,7 +16,6 @@ import {
 	adjustForZeros,
 	initKnownPositions,
 	updateKnownPositions,
-	generateCyclicKnownPositions,
 	accessPosition,
 	rhoF
 } from './vector-semantics';
@@ -1034,8 +1033,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		// Paper Section 4.7 (L498-503): Empty selector is a special case
 		// rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
 		// The empty vector has length [0,0]
-		const isEmptySelector = selector.length.isValue() && 
-			selector.length.value[0] === 0 && 
+		const isEmptySelector = selector.length.isValue() &&
+			selector.length.value[0] === 0 &&
 			selector.length.value[1] === 0;
 		if(isEmptySelector) {
 			vectorLogger.debug('Operation: select with empty selector, returning source vector');
@@ -1518,8 +1517,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		// Paper Section 4.8 (L757-769): Empty selector update
 		// rUpdateSharp(ν1, genvecalpha(rEmpty), ν3) = rUpdateSharp_pos(ν1, ν2', ν3)
 		// where ν2' = rvec[[l1,u1], ⟨[1,1][2,2]...[u1,u1]⟩, s1, a1]
-		const isEmptySelector = selector.length.isValue() && 
-			selector.length.value[0] === 0 && 
+		const isEmptySelector = selector.length.isValue() &&
+			selector.length.value[0] === 0 &&
 			selector.length.value[1] === 0;
 		if(isEmptySelector) {
 			vectorLogger.debug('Operation: update with empty selector - building matching selector');
@@ -1578,7 +1577,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		return result;
 	}
 
-/**
+	/**
 	 * Builds a selector that matches the source vector's abstract length.
 	 * Paper Section 4.8 (L757-769): For empty selector update:
 	 * ν2' = rvec[[l1,u1], ⟨[1,1][2,2]...[u1,u1]⟩, s1, a1]
@@ -1707,7 +1706,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
 			}
-			const cyclicValues = generateCyclicKnownPositions(values, valuesUpper);
+			const vLower = values.length.isValue() ? values.length.value[0] : 1;
+			const rhoFResult = rhoF(values.known, vLower, valuesUpper, values.factory);
+			const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 			const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 			if(!selectorSummaryEnumerable && summaryInner != undefined && summaryInner.isValue()) {
 				const squashValues = squash(values);
@@ -1744,7 +1745,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
 			}
-			const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
+			const vLower = values.length.isValue() ? values.length.value[0] : 1;
+			const rhoFResult = rhoF(values.known, vLower, Math.max(selectorUpper, valuesUpper), values.factory);
+			const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 			const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 			const result = value.create({
 				length:     value.length.create([sourceLower, uR]),
@@ -2005,7 +2008,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(values.length.isValue()) {
 				valuesUpper = values.length.value[1];
 			}
-			const cyclicValues = generateCyclicKnownPositions(values, Math.max(selectorUpper, valuesUpper));
+			const vLower = values.length.isValue() ? values.length.value[0] : 1;
+			const rhoFResult = rhoF(values.known, vLower, Math.max(selectorUpper, valuesUpper), values.factory);
+			const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 
 			// Build base positions from source
 			const sourceKnownPositions = value.known.isValue()
@@ -2118,7 +2123,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				resultKnownPositions.push(naValue);
 			}
 		}
-		const cyclicValues = generateCyclicKnownPositions(values, selectorUpper);
+		const vLower = values.length.isValue() ? values.length.value[0] : 1;
+		const rhoFResult = rhoF(values.known, vLower, selectorUpper, values.factory);
+		const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 		for(let i = 0; i < maxLen && i < cyclicValues.length; i++) {
 			let selectorVal: NAAwareDomain<IntervalDomain>;
 			if(i < selectorKnownPositions.length) {
