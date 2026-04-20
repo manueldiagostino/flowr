@@ -232,8 +232,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			}
 		}
 
+		// Handle empty concatenate c() - returns empty vector
+		// Paper: genvecalpha(rEmpty) = ([0,0], ε, genvalbot, attrbot)
 		if(args.length === 0) {
-			return this.unknownOperation();
+			const emptyVector = VectorDomain.empty(this.plainFactory);
+			return [{ operation: 'concatenate', operand: emptyVector }];
 		}
 
 		if(args.length === 1) {
@@ -1028,6 +1031,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return value.bottom();
 		}
 
+		// Paper Section 4.7 (L498-503): Empty selector is a special case
+		// rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
+		// The empty vector has length [0,0]
+		const isEmptySelector = selector.length.isValue() && 
+			selector.length.value[0] === 0 && 
+			selector.length.value[1] === 0;
+		if(isEmptySelector) {
+			vectorLogger.debug('Operation: select with empty selector, returning source vector');
+			return value;
+		}
+
 		if(selector.isTop()) {
 			vectorLogger.debug('Operation: select returning squashed (selector is top)');
 			const squashedValue = squash(value);
@@ -1501,6 +1515,21 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return value.bottom();
 		}
 
+		// Paper Section 4.8 (L757-769): Empty selector update
+		// rUpdateSharp(ν1, genvecalpha(rEmpty), ν3) = rUpdateSharp_pos(ν1, ν2', ν3)
+		// where ν2' = rvec[[l1,u1], ⟨[1,1][2,2]...[u1,u1]⟩, s1, a1]
+		const isEmptySelector = selector.length.isValue() && 
+			selector.length.value[0] === 0 && 
+			selector.length.value[1] === 0;
+		if(isEmptySelector) {
+			vectorLogger.debug('Operation: update with empty selector - building matching selector');
+			// Construct selector matching source vector length: [1,1], [2,2], ..., [u1,u1]
+			const constructedSelector = this.buildSelectorMatchingSourceLength(value);
+			const result = this.applyUpdatePositive(value, constructedSelector, values, naValue);
+			vectorLogger.debug(`Operation: update empty selector result [length=${result.length.toString()}]`);
+			return result;
+		}
+
 		// Logical selector: use logical update
 		if(selectorKind === 'logical') {
 			const result = this.applyUpdateLogical(value, selector, values, naValue);
@@ -1549,8 +1578,74 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		return result;
 	}
 
+/**
+	 * Builds a selector that matches the source vector's abstract length.
+	 * Paper Section 4.8 (L757-769): For empty selector update:
+	 * ν2' = rvec[[l1,u1], ⟨[1,1][2,2]...[u1,u1]⟩, s1, a1]
+	 * @param value - The source vector to match
+	 * @returns A selector with positions 1..u1
+	 */
+	private buildSelectorMatchingSourceLength(
+		value: VectorDomain<Domain>
+	): VectorDomain<PosIntervalDomain> {
+		const posIntervalFactory: DomainFactory<PosIntervalDomain> = (c: unknown) => {
+			if(c === undefined || c === Bottom) {
+				return PosIntervalDomain.bottom();
+			}
+			if(c === Top) {
+				return PosIntervalDomain.top();
+			}
+			const values = [...(c as Set<number>)];
+			return new PosIntervalDomain([Math.min(...values), Math.max(...values)]);
+		};
+
+		// Get source length bounds
+		let upper = 0;
+		if(value.length.isValue()) {
+			upper = value.length.value[1];
+		} else {
+			// If length is not a value, return bottom (cannot construct selector)
+			return VectorDomain.bottom(posIntervalFactory);
+		}
+
+		// Handle infinite length
+		if(upper === +Infinity) {
+			// For infinite vectors, construct infinite selector
+			const infiniteSelector = VectorDomain.create(
+				posIntervalFactory,
+				new PosIntervalDomain([0, +Infinity]),
+				KnownInitialPositionsDomain.top(
+					NAAwareDomain.createSmartFactory(posIntervalFactory)
+				),
+				new NAAwareDomain({ inner: new PosIntervalDomain([1, +Infinity]), hasNA: false }, posIntervalFactory),
+				value.attributes,
+				value.type
+			);
+			return infiniteSelector;
+		}
+
+		// Build positions [1,1], [2,2], ..., [u1,u1]
+		const naFactory = NAAwareDomain.createSmartFactory(posIntervalFactory);
+		const positions: NAAwareDomain<PosIntervalDomain>[] = [];
+		for(let i = 1; i <= upper; i++) {
+			const posInterval = new PosIntervalDomain([i, i]);
+			positions.push(new NAAwareDomain({ inner: posInterval, hasNA: false }, posIntervalFactory));
+		}
+
+		const knownPositions = new KnownInitialPositionsDomain(positions, naFactory);
+		const summary = new NAAwareDomain({ inner: PosIntervalDomain.bottom(), hasNA: false }, posIntervalFactory);
+
+		return new VectorDomain({
+			length:     new PosIntervalDomain([0, upper]),
+			known:      knownPositions,
+			summary:    summary,
+			attributes: value.attributes,
+			type:       value.type
+		}, posIntervalFactory);
+	}
+
 	/**
-	 * Applies positive indexing update: x[c] \&lt;- v where c \&gt;= 0.
+	 * Applies positive indexing update: x[c] <- v where c >= 0.
 	 * Handles both finite and infinite selectors using cyclic value recycling.
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The positive selector VectorDomain

@@ -132,7 +132,9 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 	factory: DomainFactory<Domain>
 ): VectorDomain<Domain> {
 	if(domainValueSets.length === 0) {
-		return VectorDomain.bottom(factory);
+		// Empty vector: length [0,0], empty prefix ε, bottom summary/attributes
+		// Paper: genvecalpha(rEmpty) = ([0,0], ε, genvalbot, attrbot)
+		return VectorDomain.empty(factory);
 	}
 
 	// Wrap each element domain in NAAwareDomain (hasNA: false for concrete values)
