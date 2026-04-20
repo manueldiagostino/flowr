@@ -393,10 +393,10 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	/**
 	 * Creates an empty vector element.
 	 * Represents the empty R vector: length [0,0], empty prefix ε, bottom summary, bottom attributes.
-	 * 
+	 *
 	 * Paper reference (03-abstract.tex:106-111):
 	 * genvecalpha(rEmpty) def= ([0,0], ε, genvalbot, attrbot)
-	 * 
+	 *
 	 * This differs from bottom() which has bottom length (no values possible).
 	 */
 	public static empty<Domain extends AnyAbstractDomain>(

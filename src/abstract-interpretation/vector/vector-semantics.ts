@@ -420,49 +420,6 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 }
 
 /**
- * Generates cyclic known positions from a vector up to a target length.
- * Per paper Section 4.8: ρ_f^♯(ν, l, u_r)
- *
- * Cycles through the vector's known positions and summary to generate
- * values up to the target length.
- * @param vector - The source vector
- * @param targetLength - The target length to generate
- * @returns Array of abstract values
- */
-export function generateCyclicKnownPositions<Domain extends AnyAbstractDomain>(
-	vector: VectorDomain<Domain>,
-	targetLength: number
-): NAAwareDomain<Domain>[] {
-	vectorLogger.debug(`Semantic: generateCyclicKnownPositions [targetLength=${targetLength}]`);
-	const result: NAAwareDomain<Domain>[] = [];
-
-	if(vector.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
-		return result;
-	}
-
-	const knownPositions = vector.known.isValue()
-		? (vector.known.value as readonly NAAwareDomain<Domain>[])
-		: [];
-
-	for(let i = 0; i < targetLength; i++) {
-		if(i < knownPositions.length) {
-			result.push(knownPositions[i]);
-		} else {
-			const cyclicIdx = (i - knownPositions.length) % Math.max(1, knownPositions.length || 1);
-			if(knownPositions.length > 0 && cyclicIdx < knownPositions.length) {
-				result.push(knownPositions[cyclicIdx]);
-			} else {
-				result.push(vector.summary);
-			}
-		}
-	}
-
-	expensiveTrace(vectorLogger, () => `Semantic: generateCyclicKnownPositions result length=${result.length}`);
-	return result;
-}
-
-/**
  * Helper: Access abstract value at position j from vector.
  * Per paper: ν*♯(j) = p_ν,j if 1 ≤ j ≤ u_ν, otherwise α(NA)
  * Note: Uses 0-based indexing internally.
