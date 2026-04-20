@@ -1129,12 +1129,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * - value is not Bottom
 	 * - selector is not Bottom
 	 * - selector contains only non-negative positions or NA
-	 * 
+	 *
 	 * Postconditions:
 	 * - Result length is determined by selector length
 	 * - Result summary is ⊥ for finite selectors, Squash(value) for infinite
 	 * - Result attributes are preserved from source
-	 * 
 	 * @param value - The source VectorDomain to select from (not Bottom)
 	 * @param selector - The selector VectorDomain with positive intervals (not Bottom)
 	 * @param naValue - The NA value for out-of-bounds access
@@ -1147,7 +1146,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: selectPositive');
 		vectorLogger.debug(`  selector [length=${selector.length.toString()}, values=${selector.known.toString()}]`);
-		
+
 		// Adjust selector for zeros: removes zero indices and adjusts length bounds
 		const adjustedSelector = adjustForZeros(selector);
 		vectorLogger.debug(`  adjustedSelector [length=${adjustedSelector.length.toString()}, values=${adjustedSelector.known.toString()}]`);
@@ -1207,14 +1206,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 				idxNumber += 1;
 			}
 		}
-		
+
 		// Determine if selector is infinite
 		const selectorLen = adjustedSelector.length;
 		const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
 		if(isInfinite) {
 			vectorLogger.trace('Subcase: selectPositive - infinite selector, valorizing summary');
 		}
-		
+
 		// Summary: ⊥ for finite selectors, Squash(value) for infinite
 		const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
 		const resultValues = value.known.create(resultKnownPositions);
@@ -1273,12 +1272,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * - value is not Bottom
 	 * - selector is not Bottom
 	 * - selector contains only non-positive positions (no NA)
-	 * 
+	 *
 	 * Postconditions:
 	 * - Result length is reduced by number of excluded positions
 	 * - Result summary is ⊥ for non-enumerable selectors, preserved for enumerable
 	 * - Result attributes are preserved from source
-	 * 
 	 * @param value - The source VectorDomain to select from (not Bottom)
 	 * @param selector - The selector VectorDomain with negative intervals (not Bottom)
 	 * @param naValue - The NA value for out-of-bounds access
@@ -1589,10 +1587,53 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		const numericSelector = selector;
 
-		if(!numericSelector.known.isValue() || !Array.isArray(numericSelector.known.value)) {
-			// Cannot enumerate selector values, apply positive update conservatively
-			vectorLogger.debug('Operation: update cannot enumerate selector values, returning bottom');
+		// Check for Bottom: selector known positions are impossible
+		if(numericSelector.known.isBottom()) {
+			vectorLogger.debug('Operation: update returning bottom (selector known is bottom)');
 			return value.bottom();
+		}
+
+		// Check for Top: selector known positions are unknown, apply conservative fallback
+		if(numericSelector.known.isTop()) {
+			vectorLogger.debug('Operation: update cannot enumerate selector values (known is top), applying conservative fallback');
+			// Conservative fallback: result summary = squash(value) join squash(values)
+			// known positions empty, length = [l1, +Infinity] if value.length is a value else top length
+			// preserve attributes and type
+			const resultSummary = squash(value).join(squash(values));
+			const resultLength = value.length.isValue()
+				? value.length.create([value.length.value[0], +Infinity])
+				: value.length.top();
+			const result = value.create({
+				length:     resultLength,
+				known:      value.known.create([]),
+				summary:    resultSummary,
+				attributes: value.attributes,
+				type:       value.type
+			});
+			vectorLogger.debug(`Operation: update conservative fallback result [length=${result.length.toString()}]`);
+			return result;
+		}
+
+		// At this point, known must be a value (non-empty array)
+		if(!Array.isArray(numericSelector.known.value)) {
+		// This should not happen if isValue() and !isTop() and !isBottom() are all true
+			vectorLogger.debug('Operation: update returning bottom (selector known value is not an array)');
+			return value.bottom();
+		}
+
+		// Check if selector is all zeros (will become empty after adjustForZeros)
+		// In this case, return value unchanged (update does nothing; zeros ignored)
+		const selectorValues = numericSelector.known.value as readonly NAAwareDomain<IntervalDomain>[];
+		const allZeros = selectorValues.every(pos => {
+			if(!pos.isValue() || !pos.inner.isValue()) {
+				return false;
+			}
+			const [l, u] = pos.inner.value;
+			return l === 0 && u === 0;
+		});
+		if(allZeros) {
+			vectorLogger.debug('Operation: update with all-zero selector, returning value unchanged');
+			return value;
 		}
 
 		// Paper Section 4.8: abstract filter classifies selector positions
@@ -1617,8 +1658,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		}
 
 		// Build negative selector and apply update_neg (paper Section 4.8)
+		// IMPORTANT: Use buildIntervalSelector to preserve negative IntervalDomain values
+		// (not buildPosIntervalSelector which negates them)
 		if(filterResult.negative.length > 0 && !filterResult.negativeHasBottom) {
-			const negativeSelector = buildPosIntervalSelector(numericSelector, filterResult.negative);
+			const negativeSelector = buildIntervalSelector(numericSelector, filterResult.negative);
 			const resultNeg = this.applyUpdateNegative(value, negativeSelector, values, naValue);
 			vectorLogger.debug(`Operation: update negative result [length=${resultNeg.length.toString()}]`);
 			result = result.join(resultNeg);
@@ -1697,9 +1740,28 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	/**
 	 * Applies positive indexing update: x[c] <- v where c >= 0.
 	 * Handles both finite and infinite selectors using cyclic value recycling.
+	 * Paper Section 4.8.1 (lines 916-932).
+	 *
+	 * **Preconditions (expected by dispatcher):**
+	 * - `value`, `selector`, `values` are not Bottom (dispatcher ensures this)
+	 * - `selector` contains only non-negative positions (≥ 0) or NA
+	 * - `selector` has been classified as positive by abstractFilter
+	 *
+	 * **Structural Invariants:**
+	 * - After adjustForZeros, selector length may be [0,0] (empty), Top, or Bottom
+	 * - adjustForZeros can return Bottom/Top depending on selector content
+	 * - Enumerable positions: card(interval) ≤ θ (threshold for enumeration)
+	 * - Non-enumerable positions: use squash operation (join all values)
+	 *
+	 * **Postconditions:**
+	 * - Result length: [sourceLower, max(sourceUpper, selectorUpper)] for finite selectors
+	 * - Result length: [sourceLower, +∞] for infinite selectors
+	 * - Result summary: ⊥ for finite selectors, squash(values) for infinite
+	 * - Known positions: updated via cyclic recycling of values
+	 *
 	 * @param value - The target VectorDomain to update
-	 * @param selector - The positive selector VectorDomain
-	 * @param values - The values to assign
+	 * @param selector - The positive selector VectorDomain (contains only c ≥ 0)
+	 * @param values - The values to assign (cyclically recycled)
 	 * @param naValue - The NA value for out-of-bounds positions
 	 * @returns The resulting VectorDomain after positive update
 	 */
@@ -1812,11 +1874,32 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
-	 * Applies negative indexing update: x[c] \&lt;- v where c \&lt; 0.
+	 * Applies negative indexing update: x[c] <- v where c < 0.
 	 * Negative indices specify positions to update by their absolute values.
+	 * Paper Section 4.8.2 (lines 934-1026).
+	 *
+	 * **Preconditions (expected by dispatcher):**
+	 * - `value`, `selector`, `values` are not Bottom (dispatcher ensures this)
+	 * - `selector` contains only non-positive positions (≤ 0), no NA
+	 * - `selector` has been classified as negative by abstractFilter
+	 * - `value.length` must be a Value (not Top/Bottom) - defensive check inside
+	 *
+	 * **Structural Invariants:**
+	 * - Negative indices in range [-u₁, -1] map to positions [1, u₁]
+	 * - MustNotUpdated: positions definitely NOT updated (singleton negative indices)
+	 * - MayNotUpdated: positions possibly NOT updated (non-singleton intervals or summary)
+	 * - MustUpdated: positions definitely updated (in prefix, not in MustNotUpdated ∪ MayNotUpdated)
+	 * - Infinite source (u₁ = +∞) returns Top (cannot determine all positions)
+	 *
+	 * **Postconditions:**
+	 * - Paragraph 1 (non-enumerable): weak update with squash(values), summary updated if infinite
+	 * - Paragraph 2 (infinite selector): converts to positive selector, delegates to applyUpdatePositive
+	 * - Paragraph 3 (finite selector): strong update with cyclic recycling, summary = ⊥
+	 * - Result length: [sourceLower, max(sourceUpper, selectorUpper)] for finite selectors
+	 *
 	 * @param value - The target VectorDomain to update
-	 * @param selector - The negative selector VectorDomain
-	 * @param values - The values to assign
+	 * @param selector - The negative selector VectorDomain (contains only c ≤ 0)
+	 * @param values - The values to assign (cyclically recycled)
 	 * @param naValue - The NA value for out-of-bounds positions
 	 * @returns The resulting VectorDomain after negative update
 	 */
@@ -2104,12 +2187,32 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
-	 * Applies logical indexing update: x[c] \\&lt;- v where c is a logical vector.
+	 * Applies logical indexing update: x[c] <- v where c is a logical vector.
 	 * Values are assigned to positions where the selector is TRUE.
 	 * Uses cyclic recycling when selector is shorter than the source.
+	 * Paper Section 4.8.3 (logical update semantics).
+	 *
+	 * **Preconditions (expected by dispatcher):**
+	 * - `value`, `selector`, `values` are not Bottom (dispatcher ensures this)
+	 * - `selector` type is logical (contains TRUE/FALSE/NA values)
+	 * - `value.known` is not Bottom - defensive check inside
+	 *
+	 * **Structural Invariants:**
+	 * - Selector length > 1 cannot contain NA (sanity check: filter to first element if violated)
+	 * - After adjustForZeros, logical selector has zeros removed
+	 * - Cyclic recycling: values are repeated cyclically to match selector length
+	 * - Positions with TRUE selector: updated with cyclic values
+	 * - Positions with FALSE/NA selector: weakly updated (joined with cyclic values)
+	 *
+	 * **Postconditions:**
+	 * - Result length: [sourceLower, max(sourceUpper, selectorUpper)] for finite selectors
+	 * - Result length: [sourceLower, +∞] for infinite selectors
+	 * - Result summary: ⊥ for finite selectors, squash(values) for infinite
+	 * - Known positions: updated via cyclic recycling, with weak update for non-TRUE positions
+	 *
 	 * @param value - The target VectorDomain to update
-	 * @param selector - The logical selector VectorDomain
-	 * @param values - The values to assign
+	 * @param selector - The logical selector VectorDomain (contains TRUE/FALSE/NA)
+	 * @param values - The values to assign (cyclically recycled)
 	 * @param naValue - The NA value for out-of-bounds positions
 	 * @returns The resulting VectorDomain after logical update
 	 */
@@ -2276,6 +2379,63 @@ function buildPosIntervalSelector(
 				: NAAwareDomain.bottom(posIntervalFactory);
 	return VectorDomain.fromValues(
 		posIntervalFactory,
+		source.length,
+		naAwarePositions,
+		naAwareSummary,
+		source.attributes,
+		source.type
+	);
+}
+
+/**
+ * Builds an IntervalDomain-typed selector vector from filtered positions, preserving original values.
+ * Unlike buildPosIntervalSelector, this does NOT negate negative intervals.
+ * Used for update_neg where applyUpdateNegative expects negative IntervalDomain values
+ * and performs its own negation to compute positions to delete.
+ * @param source - The source selector VectorDomain<IntervalDomain>
+ * @param positions - Filtered positions (guaranteed to be negative or zero by abstractFilter)
+ * @returns A selector with preserved IntervalDomain values (not negated)
+ */
+function buildIntervalSelector(
+	source: VectorDomain<IntervalDomain>,
+	positions: readonly NAAwareDomain<IntervalDomain>[]
+): VectorDomain<IntervalDomain> {
+	if(positions.length === 0) {
+		return source.bottom();
+	}
+	const intervalFactory: DomainFactory<IntervalDomain> = source.plainFactory;
+	const naAwarePositions = positions.map(pos => {
+		if(pos.isBottom()) {
+			return NAAwareDomain.bottom(intervalFactory);
+		}
+		if(pos.isTop()) {
+			return NAAwareDomain.top(intervalFactory);
+		}
+		if(pos.isNA()) {
+			// Pure NA position - preserve as NA
+			return NAAwareDomain.na(intervalFactory);
+		}
+		// Preserve the original IntervalDomain value without negation
+		// abstractFilter guarantees: upper ≤ 0 for negative positions
+		const innerInterval = pos.inner;
+		if(!innerInterval.isValue()) {
+			return NAAwareDomain.bottom(intervalFactory);
+		}
+		// Keep the interval as-is (negative values)
+		return new NAAwareDomain({ inner: innerInterval, hasNA: pos.containsNA() }, intervalFactory);
+	});
+	const naAwareSummary = source.summary.isBottom()
+		? NAAwareDomain.bottom(intervalFactory)
+		: source.summary.isTop()
+			? NAAwareDomain.top(intervalFactory)
+			: source.summary.inner.isValue()
+				? new NAAwareDomain(
+					{ inner: source.summary.inner, hasNA: source.summary.containsNA() },
+					intervalFactory
+				)
+				: NAAwareDomain.bottom(intervalFactory);
+	return VectorDomain.fromValues(
+		intervalFactory,
 		source.length,
 		naAwarePositions,
 		naAwareSummary,
