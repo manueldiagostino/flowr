@@ -406,22 +406,32 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * @returns The mapped vector operations sequence for update
 	 */
 	private handleReplacement(node: RNode<ParentInformation>, source: RNode<ParentInformation> | undefined): VectorOperations<Domain> {
+		vectorLogger.debug(`Handler: handleReplacement [node.type=${node.type}, source.type=${source?.type}]`);
 		if(!RAccess.is(node)) {
+			vectorLogger.debug(`Handler: handleReplacement node is not RAccess, returning unknown`);
 			return this.unknownOperation();
 		}
 
 		const access = node;
 		const args = access.access;
 
+		vectorLogger.debug(`Handler: handleReplacement args.length=${args.length}`);
+
 		if(args.length === 1) {
 			const accessedNode = access.accessed;
 			const operand = accessedNode?.info.id;
 			const selectorArg = args[0];
-			const selector = selectorArg !== '<>' ? selectorArg?.info.id : undefined;
+			// Unwrap RArgument to get the inner value's node ID (not the wrapper's)
+			const selectorNode = selectorArg !== '<>' && selectorArg !== undefined ? (RArgument.is(selectorArg) ? selectorArg.value : selectorArg) : undefined;
+			const selector = selectorNode?.info.id;
 			const values = source?.info.id;
 
 			const resolvedOperand = operand !== undefined ? this.getVectorDomainValue(operand) : undefined;
-			const resolvedValues = values !== undefined ? this.getVectorDomainValue(values) : undefined;
+			// Try to get values from domain state; if not found, try to build from sourceNode directly
+			let resolvedValues = values !== undefined ? this.getVectorDomainValue(values) : undefined;
+			if(resolvedValues === undefined && source !== undefined) {
+				resolvedValues = buildVectorFromLiteral(source, this.plainFactory, this.valueConverter);
+			}
 			// Compute selector kind from the operand's type (logical vs numeric)
 			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
@@ -530,16 +540,21 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 */
 	protected override onReplacementCall({ call, target, source }: { call: DataflowGraphVertexFunctionCall, target?: NodeId, source?: NodeId }): void {
 		super.onReplacementCall({ call, target, source });
-		vectorLogger.debug(`Handler: onReplacementCall [nodeId=${call.id}]`);
+		vectorLogger.debug(`Handler: onReplacementCall [nodeId=${call.id}, target=${target}, source=${source}]`);
 
-		const node = this.getNormalizedAst(target);
+		// Use call.id to get the access node (x[1]), not target (which is just x)
+		const node = this.getNormalizedAst(call.id);
 		const sourceNode = source ? this.getNormalizedAst(source) : undefined;
 
+		vectorLogger.debug(`Handler: onReplacementCall node type=${node?.type}, sourceNode type=${sourceNode?.type}`);
+
 		if(node === undefined) {
+			vectorLogger.debug(`Handler: onReplacementCall node is undefined, returning`);
 			return;
 		}
 		const operations = this.handleReplacement(node, sourceNode);
-		this.applyVectorExpression(node, operations);
+		// Store result at target (the variable x), not at the access node (x[1])
+		this.applyVectorExpression(node, operations, target);
 	}
 
 	/**
@@ -623,9 +638,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * becomes the operand for the next.
 	 * @param node - The R node being processed
 	 * @param operations - The sequence of operations to apply (undefined if no operations)
+	 * @param overrideTargetNodeId - Optional node ID to store result at (for replacement: store at variable x, not at x[1])
 	 */
-	private applyVectorExpression(node: RNode<ParentInformation>, operations: VectorOperations<Domain>): void {
-		vectorLogger.debug(`Operation: applyVectorExpression [nodeId=${node.info.id}, operations=${operations.length}]`);
+	private applyVectorExpression(node: RNode<ParentInformation>, operations: VectorOperations<Domain>, overrideTargetNodeId?: NodeId): void {
+		const targetNodeId = overrideTargetNodeId ?? node.info.id;
+		vectorLogger.debug(`Operation: applyVectorExpression [nodeId=${node.info.id}, targetNodeId=${targetNodeId}, operations=${operations.length}]`);
 		if(operations.length === 0 || operations[0].operation === 'unknown') {
 			return;
 		} else if(this.operations !== undefined) {
@@ -661,9 +678,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			if(operand !== undefined && isOperandModification) {
 				// operand is a VectorDomain - we need to find the original node ID to update
 				// For now, update the current node (this is a simplification)
-				this.updateState(node.info.id, value);
+				this.updateState(targetNodeId, value);
 			} else {
-				this.updateState(node.info.id, value);
+				this.updateState(targetNodeId, value);
 			}
 		}
 	}
@@ -686,12 +703,14 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		if('selector' in args && typeof args.selector === 'string') {
 			const selectorId = Number(args.selector) as NodeId;
 			const selectorValue = this.getVectorDomainValue(selectorId);
+			vectorLogger.debug(`resolveOperationArgs selector [id=${selectorId}, found=${selectorValue !== undefined}, value=${selectorValue?.length.toString() ?? 'undefined'}]`);
 			resolved.selector = selectorValue ?? VectorDomain.bottom(this.plainFactory);
 		}
 
-		if('values' in args && typeof args.known === 'string') {
-			const valuesId = Number(args.known) as NodeId;
+		if('values' in args && typeof args.values === 'string') {
+			const valuesId = Number(args.values) as NodeId;
 			const valuesValue = this.getVectorDomainValue(valuesId);
+			vectorLogger.debug(`resolveOperationArgs values [id=${valuesId}, found=${valuesValue !== undefined}, value=${valuesValue?.length.toString() ?? 'undefined'}]`);
 			resolved.values = valuesValue ?? VectorDomain.bottom(this.plainFactory);
 		}
 
