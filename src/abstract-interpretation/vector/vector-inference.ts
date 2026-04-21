@@ -1032,9 +1032,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			return value.bottom();
 		}
 
-		// INVARIANT 2: Empty Selector
-		// If selector is empty (length = [0, 0]), return source vector unchanged
-		// Paper Section 4.7 (L498-503): rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
+		// Paper Section 4.7 (L498-503): Empty selector is a special case
+		// rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
+		// The empty vector has length [0,0]
+		const isEmptySelector = selector.length.isValue() && 
+			selector.length.value[0] === 0 && 
 		const isEmptySelector = selector.length.isValue() &&
 			selector.length.value[0] === 0 &&
 			selector.length.value[1] === 0;
