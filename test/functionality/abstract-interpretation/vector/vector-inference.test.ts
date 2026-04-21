@@ -172,14 +172,14 @@ y <- x[c(1, NA, 3)]`;
 			}
 		});
 
-	test('positive selection with only 0 x[c(0, 0)] returns empty vector', async() => {
-		const code = `x <- c(10, 20, 30)
+		test('positive selection with only 0 x[c(0, 0)] returns empty vector', async() => {
+			const code = `x <- c(10, 20, 30)
 y <- x[c(0, 0)]`;
-		const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
-		// In R, x[c(0, 0)] returns an empty vector (length 0), not bottom
-		// The result should be a vector with length [0, 0]
-		assertLength(vector, [0, 0]);
-	});
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			// In R, x[c(0, 0)] returns an empty vector (length 0), not bottom
+			// The result should be a vector with length [0, 0]
+			assertLength(vector, [0, 0]);
+		});
 
 		test('positive selection with 0 at different positions x[c(1, 0, 3, 0, 5)] - 0s ignored, returns 3 elements', async() => {
 			const code = `x <- c(10, 20, 30, 40, 50)
@@ -238,27 +238,27 @@ y <- x[sel]`;
 			}
 		});
 
-	test('all zeros selector c(0, 0, 0) - returns empty vector', async() => {
+		test('all zeros selector c(0, 0, 0) - returns empty vector', async() => {
 		// Selector with only zeros should return empty vector (length 0)
-		const code = `x <- c(10, 20, 30, 40, 50)
+			const code = `x <- c(10, 20, 30, 40, 50)
 y <- x[c(0, 0, 0)]`;
-		const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
-		// In R, x[c(0, 0, 0)] returns an empty vector (length 0)
-		assertLength(vector, [0, 0]);
-	});
+			const vector = await getVectorForCriterion(shell, code, '2@y', intervalFactory, valueToDomain);
+			// In R, x[c(0, 0, 0)] returns an empty vector (length 0)
+			assertLength(vector, [0, 0]);
+		});
 
-	test('selector with only zero intervals [[0,0][0,0]] - returns empty vector', async() => {
+		test('selector with only zero intervals [[0,0][0,0]] - returns empty vector', async() => {
 		// Selector where all positions are exactly [0,0] should return empty vector
 		// This is the concrete version of the bug: c(0, 0) should not be treated as negative
-		const code = `x <- c(10, 20, 30, 40, 50)
+			const code = `x <- c(10, 20, 30, 40, 50)
 a <- 0
 b <- 0
 sel <- c(a, b)
 y <- x[sel]`;
-		const vector = await getVectorForCriterion(shell, code, '5@y', intervalFactory, valueToDomain);
-		// In R, x[c(0, 0)] returns an empty vector (length 0)
-		assertLength(vector, [0, 0]);
-	});
+			const vector = await getVectorForCriterion(shell, code, '5@y', intervalFactory, valueToDomain);
+			// In R, x[c(0, 0)] returns an empty vector (length 0)
+			assertLength(vector, [0, 0]);
+		});
 
 	});
 

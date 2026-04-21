@@ -1035,8 +1035,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		// Paper Section 4.7 (L498-503): Empty selector is a special case
 		// rSelectSharp(ν1, genvecalpha(rEmpty)) = ν1
 		// The empty vector has length [0,0]
-		const isEmptySelector = selector.length.isValue() && 
-			selector.length.value[0] === 0 && 
 		const isEmptySelector = selector.length.isValue() &&
 			selector.length.value[0] === 0 &&
 			selector.length.value[1] === 0;
@@ -1760,7 +1758,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * - Result length: [sourceLower, +∞] for infinite selectors
 	 * - Result summary: ⊥ for finite selectors, squash(values) for infinite
 	 * - Known positions: updated via cyclic recycling of values
-	 *
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The positive selector VectorDomain (contains only c ≥ 0)
 	 * @param values - The values to assign (cyclically recycled)
@@ -1899,7 +1896,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * - Paragraph 2 (infinite selector): converts to positive selector, delegates to applyUpdatePositive
 	 * - Paragraph 3 (finite selector): strong update with cyclic recycling, summary = ⊥
 	 * - Result length: [sourceLower, max(sourceUpper, selectorUpper)] for finite selectors
-	 *
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The negative selector VectorDomain (contains only c ≤ 0)
 	 * @param values - The values to assign (cyclically recycled)
@@ -2206,7 +2202,6 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	 * - Result length: [sourceLower, +∞] for infinite selectors
 	 * - Result summary: ⊥ for finite selectors, squash(values) for infinite
 	 * - Known positions: updated via cyclic recycling, with weak update for non-TRUE positions
-	 *
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The logical selector VectorDomain (contains TRUE/FALSE/NA)
 	 * @param values - The values to assign (cyclically recycled)
