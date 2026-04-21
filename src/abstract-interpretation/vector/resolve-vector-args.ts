@@ -10,7 +10,6 @@ import { VectorDomain } from './vector-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { VectorAttrDomain } from '../domains/vector-attr-domain';
-import { NA } from '../domains/lattice';
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import { RNa } from '../../r-bridge/lang-4.x/convert-values';
@@ -153,8 +152,8 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
 		length:     new PosIntervalDomain([domainValueSets.length, domainValueSets.length]),
 		known:      knownPositions,
 		summary:    summaryBottom,
-		attributes: VectorAttrDomain.top(),
-		type:       RVectorTypeDomain.top()
+		attributes: VectorAttrDomain.bottom(),
+		type:       RVectorTypeDomain.bottom()
 	}, factory);
 }
 
@@ -186,7 +185,7 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
 			length:     new PosIntervalDomain([1, 1]),
 			known:      knownPositions,
 			summary:    summaryBottom,
-			attributes: VectorAttrDomain.top(),
+			attributes: VectorAttrDomain.bottom(),
 			type:       RVectorTypeDomain.of('logical')
 		}, factory);
 	}

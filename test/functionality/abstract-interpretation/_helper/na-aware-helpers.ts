@@ -95,8 +95,8 @@ export function createNAAwareVector(
 		length:     len,
 		known:      vals,
 		summary:    sum,
-		attributes: VectorAttrDomain.top(),
-		type:       RVectorTypeDomain.top()
+		attributes: VectorAttrDomain.bottom(),
+		type:       RVectorTypeDomain.bottom()
 	}, intervalFactory);
 }
 

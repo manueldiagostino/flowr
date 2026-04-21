@@ -33,7 +33,7 @@ export const mkVector = (
 	const sum = new NAAwareDomain({ inner: sumInner, hasNA: false }, intervalFactory);
 	const attrs = attributes
 		? VectorAttrDomain.from(attributes.must, attributes.may)
-		: VectorAttrDomain.top();
+		: VectorAttrDomain.bottom();
 	const vecType = type ?? RVectorTypeDomain.top();
 
 	return VectorDomain.fromValues(intervalFactory, len, vals, sum, attrs, vecType);

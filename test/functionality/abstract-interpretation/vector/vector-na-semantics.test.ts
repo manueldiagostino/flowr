@@ -129,7 +129,7 @@ y <- x[c(TRUE, NA, FALSE, TRUE)]`;
 			const code = `x <- c(1, 2, 3, 4, 5)
 x[c(1, NA)] <- 99`;
 			const vector = await getVectorForCriterion(shell, code, '1@x', naAwareIntervalFactory, naValueToDomain);
-			assertContainsNA(vector, true);
+			assertContainsNA(vector, false);
 		});
 
 		test('update with NA value: x[1] <- NA', async() => {

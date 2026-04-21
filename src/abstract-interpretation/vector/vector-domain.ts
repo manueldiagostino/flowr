@@ -33,16 +33,6 @@ export interface AbstractFilterResult {
 }
 
 /**
- * Classification result for an NAAware interval position.
- *
- * - `'positive'`: all values are in Z≥0 ∪ {NA} → goes to positive filter only
- * - `'negative'`: all values are in Z≤0 and no NA → goes to negative filter only
- * - `'ambiguous'`: spans both positive and negative (or negative+NA) → needs splitting
- * - `'bottom'`: impossible position → skipped with bottom flag set
- */
-export type PositionClassification = 'positive' | 'negative' | 'ambiguous' | 'bottom';
-
-/**
  * Splits an ambiguous NA-aware interval position into its positive and negative components.
  *
  * Splitting rules (paper Section 4.7):
