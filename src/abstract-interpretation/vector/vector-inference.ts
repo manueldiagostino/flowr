@@ -1780,8 +1780,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		guard(adjustedSelector.length.isValue(), 'adjustedSelector length is not a Value');
 		const [_adjustedL, adjustedU] = adjustedSelector.length.value;
-		if(adjustedU == 0) {
-			return value.bottom();
+		if(adjustedU === 0) {
+			vectorLogger.debug('Operation: updatePositive - all-zero selector, returning value unchanged');
+			return value;
 		}
 
 		const hasNonEnumerable = adjustedSelector.known.isValue() && (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
@@ -1912,19 +1913,13 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		// 1. Entry logging
 		vectorLogger.trace(`applyUpdateNegative [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
 
-		// 2. Guard: bottom inputs
-		if(value.isBottom() || selector.isBottom() || values.isBottom()) {
-			vectorLogger.trace('Subcase: updateNegative - bottom input');
-			return value.bottom();
-		}
-
-		// 3. Guard: extract source length bounds
+		// 2. Guard: extract source length bounds (dispatcher already checked value/selector/values not Bottom)
 		let sourceLower = 0;
 		let sourceUpper = 0;
 		if(value.length.isValue()) {
 			sourceLower = value.length.value[0];
 			sourceUpper = value.length.value[1];
-			// 4. Guard: infinite source
+			// 3. Guard: infinite source
 			if(sourceUpper === +Infinity) {
 				vectorLogger.trace('Subcase: updateNegative - infinite source, returning top');
 				return value.top();
@@ -2223,8 +2218,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		naValue: NAAwareDomain<Domain>
 	): VectorDomain<Domain> {
 		vectorLogger.debug('Operation: updateLogical');
-		if(value.isBottom() || selector.isBottom() || values.isBottom() || value.known.isBottom()) {
-			vectorLogger.trace('Subcase: updateLogical - bottom input');
+		// Dispatcher already checked value/selector/values not Bottom
+		// Keep defensive check for value.known.isBottom() as it's not covered by dispatcher
+		if(value.known.isBottom()) {
+			vectorLogger.trace('Subcase: updateLogical - value.known is bottom');
 			return value.bottom();
 		}
 

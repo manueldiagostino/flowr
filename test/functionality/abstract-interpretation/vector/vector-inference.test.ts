@@ -1150,5 +1150,21 @@ y <- x[c(1, 5)]`;
 				assertLength(vector, [2, 2]);
 			});
 		});
+
+		describe('All-Zero Selector Update', () => {
+			test('all-zero selector x[c(0, 0)] <- 99 leaves x unchanged', async() => {
+				const code = `x <- c(10, 20, 30)
+x[c(0, 0)] <- 99`;
+				const vector = await getVectorForCriterion(shell, code, '2@x', intervalFactory, valueToDomain);
+				assertLength(vector, [3, 3]);
+			});
+
+			test('all-zero selector x[c(0, 0, 0)] <- 99 leaves x unchanged', async() => {
+				const code = `x <- c(10, 20, 30)
+x[c(0, 0, 0)] <- 99`;
+				const vector = await getVectorForCriterion(shell, code, '2@x', intervalFactory, valueToDomain);
+				assertLength(vector, [3, 3]);
+			});
+		});
 	});
 }));
