@@ -43,7 +43,7 @@ import { expensiveTrace } from '../../util/log';
 
 type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'random' | 'unknown';
 
-type VectorOperationName = 'setAttr' | 'recycle' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
+type VectorOperationName = 'setAttr' | 'binary_op' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
 interface VectorOperation<Domain extends AnyAbstractDomain, Name extends VectorOperationName = VectorOperationName> {
 	operation:     Name;
@@ -304,7 +304,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		vectorLogger.debug(`Handler: handleArithmetic binary [lhsLength=${lhsValue?.length.toString()}, rhsLength=${rhsValue?.length.toString()}]`);
 
 		return [{
-			operation: 'recycle',
+			operation: 'binary_op',
+			operator:  node.operator,
 			operand:   lhsValue,
 			other:     rhsValue
 		}];
@@ -733,8 +734,8 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		switch(operation) {
 			case 'setAttr':
 				return this.applySetAttr(value, args.attrs as VectorAttrDomain);
-			case 'recycle':
-				return this.applyRecycle(value, args.other as VectorDomain<Domain>);
+			case 'binary_op':
+				return this.applyBinaryOp(value, args.other as VectorDomain<Domain>, args.operator as string);
 			case 'concatenate':
 				return this.applyConcatenate(value, args.other as VectorDomain<Domain> | undefined);
 			case 'select':
@@ -858,6 +859,149 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
+	 * Recycles a pair of vectors to the same length for binary operations.
+	 * Per paper Section 4.5: aligns two vectors by extending shorter one cyclically.
+	 * @param v1 - The first vector
+	 * @param v2 - The second vector
+	 * @returns A tuple [v1_recycled, v2_recycled] with aligned lengths
+	 */
+	private recyclePair(
+		v1: VectorDomain<Domain>,
+		v2: VectorDomain<Domain>
+	): [VectorDomain<Domain>, VectorDomain<Domain>] {
+		vectorLogger.debug('Operation: recyclePair');
+
+		// Handle bottom cases
+		if(v1.isBottom() || v2.isBottom()) {
+			vectorLogger.debug('Operation: recyclePair - one operand is bottom');
+			return [v1.bottom(), v2.bottom()];
+		}
+
+		// Get length bounds
+		const len1 = v1.length;
+		const len2 = v2.length;
+		const known1 = v1.known;
+		const known2 = v2.known;
+
+		if(!len1.isValue() || !len2.isValue() || !known1.length || !known2.length) {
+			vectorLogger.debug('Operation: recyclePair - lengths not values, returning top');
+			return [v1.top(), v2.top()];
+		}
+
+		const [l1, u1] = len1.value;
+		const [l2, u2] = len2.value;
+		const uPrime = Math.max(u1, u2);
+		const lPrime = Math.max(l1, l2);
+		const knownMaxLength = Math.max(known1.length, known2.length);
+
+		vectorLogger.debug(`Operation: recyclePair computed [l1=${l1}, u1=${u1}, l2=${l2}, u2=${u2}, lPrime=${lPrime}, uPrime=${uPrime}]`);
+
+
+		// Check incompatibility (same as applyRecycle)
+		const incompatible = u1 !== +Infinity && u2 !== +Infinity && (u1 % u2 !== 0) && (u2 % u1 !== 0);
+		if(incompatible) {
+			vectorLogger.warn('Operation: recyclePair - incompatible lengths');
+			// return [v1.top(), v2.top()];
+		}
+
+		// Recycle v1
+		let v1Recycled = v1;
+
+		let rhoFResult = rhoF(v1.known, l1, lPrime, v1.naAwareFactory);
+		for(let d = l1; d < knownMaxLength; d++) {
+			rhoFResult = rhoFResult.join(rhoF(v1.known, l1, d, v1.naAwareFactory));
+		}
+		let cycledKnown = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
+		let newSummary = v1.summary;
+
+		vectorLogger.debug(`Operation: recyclePair - recycling v1 from ${u1} to ${uPrime}`);
+		if(uPrime === +Infinity) {
+			// Infinite target: fold known into summary
+			const squashedKnown = squash(v1);
+			newSummary = v1.summary.join(squashedKnown);
+		}
+
+		v1Recycled = v1.create({
+			length:     v1.length.create([lPrime, uPrime]),
+			known:      v1.known.create(cycledKnown),
+			summary:    newSummary,
+			attributes: v1.attributes,
+			type:       v1.type
+		});
+
+
+		// Recycle v2
+		let v2Recycled = v2;
+
+		rhoFResult = rhoF(v2.known, l1, lPrime, v2.naAwareFactory);
+		for(let d = l1; d < knownMaxLength; d++) {
+			rhoFResult = rhoFResult.join(rhoF(v2.known, l1, d, v2.naAwareFactory));
+		}
+		cycledKnown = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
+		newSummary = v2.summary;
+
+		vectorLogger.debug(`Operation: recyclePair - recycling v2 from ${u1} to ${uPrime}`);
+		if(uPrime === +Infinity) {
+			// Infinite target: fold known into summary
+			const squashedKnown = squash(v2);
+			newSummary = v2.summary.join(squashedKnown);
+		}
+
+		v2Recycled = v2.create({
+			length:     v2.length.create([lPrime, uPrime]),
+			known:      v2.known.create(cycledKnown),
+			summary:    newSummary,
+			attributes: v2.attributes,
+			type:       v2.type
+		});
+
+
+		vectorLogger.debug(`Operation: recyclePair result [v1=${v1Recycled.length.toString()}, v2=${v2Recycled.length.toString()}]`);
+		return [v1Recycled, v2Recycled];
+	}
+
+	/**
+	 * Applies a binary operation to two vectors with proper recycling and type coercion.
+	 * @param v1 - The first vector operand
+	 * @param v2 - The second vector operand
+	 * @param operator - The operator string (e.g., '+', '-', '*', '/')
+	 * @returns The resulting VectorDomain after the binary operation
+	 */
+	private applyBinaryOp(
+		v1: VectorDomain<Domain>,
+		v2: VectorDomain<Domain> | undefined,
+		operator: string
+	): VectorDomain<Domain> {
+		vectorLogger.debug(`Operation: binaryOp [operator=${operator}]`);
+
+		if(v2 === undefined) {
+			vectorLogger.debug('Operation: binaryOp - no second operand, returning v1');
+			return v1;
+		}
+
+		// Recycle the pair to aligned lengths
+		const [v1Recycled, v2Recycled] = this.recyclePair(v1, v2);
+
+		// Perform element-wise join on prefixes and summaries
+		const resultKnown = v1Recycled.known.join(v2Recycled.known);
+		const resultSummary = v1Recycled.summary.join(v2Recycled.summary);
+
+		// Perform type coercion: result type is the join of both types
+		const resultType = v1Recycled.type.join(v2Recycled.type);
+
+		const result = v1Recycled.create({
+			length:     v1Recycled.length,
+			known:      resultKnown,
+			summary:    resultSummary,
+			attributes: v1Recycled.attributes.join(v2Recycled.attributes),
+			type:       resultType
+		});
+
+		vectorLogger.debug(`Operation: binaryOp result [length=${result.length.toString()}, type=${result.type.toString()}]`);
+		return result;
+	}
+
+	/**
 	 * Applies the concatenate operation to join two vectors.
 	 * Computes new length interval as sum of both lengths and combines value domains.
 	 * @param value - The first VectorDomain operand
@@ -942,7 +1086,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 			known:      concatenatedValues,
 			summary:    combinedSummary,
 			attributes: value.attributes.join(other.attributes),
-			type:       value.type
+			type:       value.type.join(other.type)
 		});
 		vectorLogger.debug(`Operation: concatenate result [length=${result.length.toString()}, values=${result.known.toString()}]`);
 		return result;
@@ -1230,7 +1374,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private buildNegativeSets(
 		sourceUpper: number,
 		selectorValues: readonly NAAwareDomain<PosIntervalDomain>[],
-	): [ mustDeleted: Set<number>, mayDeleted: Set<number> ] {
+	): [mustDeleted: Set<number>, mayDeleted: Set<number>] {
 		const mustDeleted = new Set<number>();
 		const mayDeleted = new Set<number>();
 
@@ -1325,7 +1469,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		guard(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value), 'Adjusted selector known positions not enumerable');
 		const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
 		// Sets construction
-		[ mustDeleted, mayDeleted ] = this.buildNegativeSets(sourceUpper, selectorValues);
+		[mustDeleted, mayDeleted] = this.buildNegativeSets(sourceUpper, selectorValues);
 
 
 		// Compute MustNotDeleted
@@ -1616,7 +1760,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 
 		// At this point, known must be a value (non-empty array)
 		if(!Array.isArray(numericSelector.known.value)) {
-		// This should not happen if isValue() and !isTop() and !isBottom() are all true
+			// This should not happen if isValue() and !isTop() and !isBottom() are all true
 			vectorLogger.debug('Operation: update returning bottom (selector known value is not an array)');
 			return value.bottom();
 		}
