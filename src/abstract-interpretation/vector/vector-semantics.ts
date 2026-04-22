@@ -146,7 +146,7 @@ export function propagate(
 	summary: NAAwareDomain<IntervalDomain>,
 	k: number
 ): NAAwareDomain<IntervalDomain> {
-	vectorLogger.debug(`Semantic: propagate [knownPositions=${knownPositions.length}, k=${k}]`);
+	vectorLogger.debug(`Semantic: propagate [knownPositions.length=${knownPositions.length}, k=${k}]`);
 	if(knownPositions.length === 0) {
 		vectorLogger.trace(`Semantic: propagate base case result = ${summary.toString()}`);
 		return summary;
@@ -192,14 +192,14 @@ export function propagate(
 	// For Top or pure NA, continue to non-zero handling below
 
 	// Non-zero value
-	if(k > 0) {
+	if(k > 1) {
 		// Decrement counter and continue, joining with first (per paper L411)
 		vectorLogger.trace(`Semantic: propagate non-zero with k=${k}, decrementing and continuing`);
 		return first.join(propagate(rest, summary, k - 1));
 	}
 
 	// k = 0, return this value
-	vectorLogger.trace(`Semantic: propagate non-zero k=0 result = ${first.toString()}`);
+	vectorLogger.trace(`Semantic: propagate non-zero k=1 result = ${first.toString()}`);
 	return first;
 }
 
