@@ -408,7 +408,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	private handleReplacement(node: RNode<ParentInformation>, source: RNode<ParentInformation> | undefined): VectorOperations<Domain> {
 		vectorLogger.debug(`Handler: handleReplacement [node.type=${node.type}, source.type=${source?.type}]`);
 		if(!RAccess.is(node)) {
-			vectorLogger.debug(`Handler: handleReplacement node is not RAccess, returning unknown`);
+			vectorLogger.debug('Handler: handleReplacement node is not RAccess, returning unknown');
 			return this.unknownOperation();
 		}
 
@@ -549,7 +549,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 		vectorLogger.debug(`Handler: onReplacementCall node type=${node?.type}, sourceNode type=${sourceNode?.type}`);
 
 		if(node === undefined) {
-			vectorLogger.debug(`Handler: onReplacementCall node is undefined, returning`);
+			vectorLogger.debug('Handler: onReplacementCall node is undefined, returning');
 			return;
 		}
 		const operations = this.handleReplacement(node, sourceNode);

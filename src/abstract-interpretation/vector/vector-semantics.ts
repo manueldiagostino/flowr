@@ -8,7 +8,6 @@ import type { NAAwareDomain } from './na-aware-domain';
 import { ConstraintType } from '../data-frame/semantics';
 import { guard } from '../../util/assert';
 import { vectorLogger } from './logger';
-import { expensiveTrace } from '../../util/log';
 import { formatVectorDomain, formatExtremeResult } from './log-utils';
 
 export { ConstraintType };
@@ -23,24 +22,24 @@ export { ConstraintType };
 export function card(interval: PosIntervalDomain): number {
 	vectorLogger.debug('Semantic: card');
 	if(interval.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'interval is bottom'));
+		vectorLogger.trace(formatExtremeResult('bottom', 'interval is bottom'));
 		return 0;
 	}
 	if(interval.isTop()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'interval is top'));
+		vectorLogger.trace(formatExtremeResult('top', 'interval is top'));
 		return +Infinity;
 	}
 	if(!interval.isValue()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'interval is not a value'));
+		vectorLogger.trace(formatExtremeResult('top', 'interval is not a value'));
 		return +Infinity;
 	}
 	const [l, u] = interval.value;
 	if(u === +Infinity) {
-		expensiveTrace(vectorLogger, () => 'Semantic: card result = +Infinity (upper bound is infinity)');
+		vectorLogger.trace('Semantic: card result = +Infinity (upper bound is infinity)');
 		return +Infinity;
 	}
 	const result = u - l + 1;
-	expensiveTrace(vectorLogger, () => `Semantic: card result = ${result}`);
+	vectorLogger.trace(`Semantic: card result = ${result}`);
 	return result;
 }
 
@@ -55,7 +54,7 @@ export function isEnumerable(interval: PosIntervalDomain, threshold = 50): boole
 	vectorLogger.debug(`Semantic: isEnumerable [threshold=${threshold}]`);
 	const c = card(interval);
 	const result = c !== +Infinity && c <= threshold;
-	expensiveTrace(vectorLogger, () => `Semantic: isEnumerable result = ${result} (card=${c}, threshold=${threshold})`);
+	vectorLogger.trace(`Semantic: isEnumerable result = ${result} (card=${c}, threshold=${threshold})`);
 	return result;
 }
 
@@ -71,21 +70,22 @@ export function squash<Domain extends AnyAbstractDomain>(
 ): NAAwareDomain<Domain> {
 	vectorLogger.debug('Semantic: squash');
 	if(value.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
+		vectorLogger.trace(formatExtremeResult('bottom', 'vector is bottom'));
 		return value.summary.bottom();
 	}
 	if(value.isTop()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
+		vectorLogger.trace(formatExtremeResult('top', 'vector is top'));
 		return value.summary;
 	}
 
 	let result = value.summary;
 
 	for(const elem of value.known.toArray()) {
+		vectorLogger.trace(`Semantic: squash joining ${elem.toString()} into ${result.toString()}`);
 		result = result.join(elem);
 	}
 
-	expensiveTrace(vectorLogger, () => `Semantic: squash result = ${result.toString()}`);
+	vectorLogger.trace(`Semantic: squash result = ${result.toString()}`);
 	return result;
 }
 
@@ -103,11 +103,11 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 ): NAAwareDomain<Domain> {
 	vectorLogger.debug(`Semantic: squashedExcept [excluded=${excludedIndices.size}]`);
 	if(value.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
+		vectorLogger.trace(formatExtremeResult('bottom', 'vector is bottom'));
 		return value.summary.bottom();
 	}
 	if(value.isTop()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
+		vectorLogger.trace(formatExtremeResult('top', 'vector is top'));
 		return value.summary.top();
 	}
 
@@ -117,12 +117,15 @@ export function squashedExcept<Domain extends AnyAbstractDomain>(
 		const valuesArray = value.known.value as readonly NAAwareDomain<Domain>[];
 		for(let i = 0; i < valuesArray.length; i++) {
 			if(!excludedIndices.has(i + 1)) {
+				vectorLogger.trace(`Semantic: squashedExcept joining position ${i + 1}=${valuesArray[i].toString()} into ${result.toString()}`);
 				result = result.join(valuesArray[i]);
+			} else {
+				vectorLogger.trace(`Semantic: squashedExcept skipping excluded position ${i + 1}`);
 			}
 		}
 	}
 
-	expensiveTrace(vectorLogger, () => `Semantic: squashedExcept result = ${result.toString()}`);
+	vectorLogger.trace(`Semantic: squashedExcept result = ${result.toString()}`);
 	return result;
 }
 
@@ -145,12 +148,14 @@ export function propagate(
 ): NAAwareDomain<IntervalDomain> {
 	vectorLogger.debug(`Semantic: propagate [knownPositions=${knownPositions.length}, k=${k}]`);
 	if(knownPositions.length === 0) {
-		expensiveTrace(vectorLogger, () => `Semantic: propagate base case result = ${summary.toString()}`);
+		vectorLogger.trace(`Semantic: propagate base case result = ${summary.toString()}`);
 		return summary;
 	}
 
 	const first = knownPositions[0];
 	const rest = knownPositions.slice(1);
+
+	vectorLogger.trace(`Semantic: propagate first=${first.toString()}, rest.length=${rest.length}, k=${k}`);
 
 	if(first.inner.isValue()) {
 		const [l, u] = first.inner.value;
@@ -158,26 +163,30 @@ export function propagate(
 		// Check if definitely zero: γ(c₁) = {0}
 		if(l === 0 && u === 0) {
 			// Skip and increment counter
+			vectorLogger.trace('Semantic: propagate zero detected, skipping and incrementing k');
 			const result = propagate(rest, summary, k + 1);
-			expensiveTrace(vectorLogger, () => `Semantic: propagate zero-skip result = ${result.toString()}`);
+			vectorLogger.trace(`Semantic: propagate zero-skip result = ${result.toString()}`);
 			return result;
 		}
 
 		// Check if may contain zero: 0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0}
 		if(l <= 0 && u >= 0) {
 			// Join with propagated value from rest (paper specifies ⊔)
+			vectorLogger.trace('Semantic: propagate may contain zero, joining with propagated rest');
 			const propagated = propagate(rest, summary, k);
 			const result = first.join(propagated);
-			expensiveTrace(vectorLogger, () => `Semantic: propagate may-zero result = ${result.toString()}`);
+			vectorLogger.trace(`Semantic: propagate may-zero result = ${result.toString()}`);
 			return result;
 		}
 	} else if(first.isNA()) {
 		// position is a pure NA - treat as non-zero and continue
 		// NA values are not zeros, so they don't affect the zero counter
+		vectorLogger.trace('Semantic: propagate first is NA, treating as non-zero');
 	} else if(first.isBottom()) {
 		// position is bottom (no possible values) - propagate bottom
+		vectorLogger.trace('Semantic: propagate first is bottom');
 		const result = summary.bottom();
-		expensiveTrace(vectorLogger, () => `Semantic: propagate bottom result = ${result.toString()}`);
+		vectorLogger.trace(`Semantic: propagate bottom result = ${result.toString()}`);
 		return result;
 	}
 	// For Top or pure NA, continue to non-zero handling below
@@ -185,11 +194,12 @@ export function propagate(
 	// Non-zero value
 	if(k > 0) {
 		// Decrement counter and continue, joining with first (per paper L411)
+		vectorLogger.trace(`Semantic: propagate non-zero with k=${k}, decrementing and continuing`);
 		return first.join(propagate(rest, summary, k - 1));
 	}
 
 	// k = 0, return this value
-	expensiveTrace(vectorLogger, () => `Semantic: propagate non-zero k=0 result = ${first.toString()}`);
+	vectorLogger.trace(`Semantic: propagate non-zero k=0 result = ${first.toString()}`);
 	return first;
 }
 
@@ -213,18 +223,18 @@ export function adjustForZeros(
 ): VectorDomain<IntervalDomain> {
 	vectorLogger.debug('Semantic: adjustForZeros');
 	if(vector.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
+		vectorLogger.trace(formatExtremeResult('bottom', 'vector is bottom'));
 		return vector;
 	}
 	if(vector.isTop()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
+		vectorLogger.trace(formatExtremeResult('top', 'vector is top'));
 		return vector;
 	}
 
 	const { length, known, summary, attributes } = vector;
 
 	if(!length.isValue()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'length is not value'));
+		vectorLogger.trace(formatExtremeResult('top', 'length is not value'));
 		return vector.top();
 	}
 
@@ -243,12 +253,19 @@ export function adjustForZeros(
 				if(vl === 0 && vu === 0) {
 					definiteZeros++;
 					possibleZeros++;
+					vectorLogger.trace(`Semantic: adjustForZeros position is definite zero, definiteZeros=${definiteZeros}, possibleZeros=${possibleZeros}`);
 				} else if(vl <= 0 && vu >= 0) {
 					possibleZeros++;
+					vectorLogger.trace(`Semantic: adjustForZeros position may be zero, possibleZeros=${possibleZeros}`);
+				} else {
+					vectorLogger.trace(`Semantic: adjustForZeros position is non-zero [${vl}, ${vu}]`);
 				}
 			} else if(!val.isBottom()) {
 				// Top or other non-specific - may contain zero
 				possibleZeros++;
+				vectorLogger.trace(`Semantic: adjustForZeros position is top/unknown, possibleZeros=${possibleZeros}`);
+			} else {
+				vectorLogger.trace('Semantic: adjustForZeros position is bottom');
 			}
 		}
 	}
@@ -256,6 +273,7 @@ export function adjustForZeros(
 	// Compute new length bounds
 	const newL = Math.max(0, l - possibleZeros);
 	const newU = u === +Infinity ? +Infinity : Math.max(0, u - definiteZeros);
+	vectorLogger.trace(`Semantic: adjustForZeros newL=${newL}, newU=${newU} (l=${l}, u=${u}, definiteZeros=${definiteZeros}, possibleZeros=${possibleZeros})`);
 	const newLength = length.create([newL, newU]);
 
 	// Build modified known positions using Propagate
@@ -276,9 +294,11 @@ export function adjustForZeros(
 					}
 				}
 			}
+			vectorLogger.trace(`Semantic: adjustForZeros position ${i + 1}, zerosBefore=${zerosBefore}`);
 
 			const remainingValues = knownPositionValues.slice(i);
 			const propagated = propagate(remainingValues, summary, zerosBefore);
+			vectorLogger.trace(`Semantic: adjustForZeros propagated for position ${i + 1} = ${propagated.toString()}`);
 			newKnownPositionValues.push(propagated);
 		}
 	}
@@ -292,7 +312,7 @@ export function adjustForZeros(
 		attributes: attributes,
 		type:       vector.type
 	});
-	expensiveTrace(vectorLogger, () => `Semantic: adjustForZeros result = ${formatVectorDomain(result)}`);
+	vectorLogger.trace(`Semantic: adjustForZeros result = ${formatVectorDomain(result)}`);
 	return result;
 }
 
@@ -320,20 +340,23 @@ export function initKnownPositions<Domain extends AnyAbstractDomain>(
 
 	// First l elements: keep as-is (positions 1 to l)
 	for(let i = 0; i < Math.min(l, knownPositions.length); i++) {
+		vectorLogger.trace(`Semantic: initKnownPositions keeping position ${i + 1} = ${knownPositions[i].toString()}`);
 		result.push(knownPositions[i]);
 	}
 
 	// Positions l+1 to u: join with NA
 	for(let i = l; i < Math.min(u, knownPositions.length); i++) {
+		vectorLogger.trace(`Semantic: initKnownPositions joining position ${i + 1} with NA`);
 		result.push(knownPositions[i].join(naValue));
 	}
 
 	// Positions u+1 to u_r: fill with NA
 	for(let i = u; i < uR; i++) {
+		vectorLogger.trace(`Semantic: initKnownPositions filling position ${i + 1} with NA`);
 		result.push(naValue);
 	}
 
-	expensiveTrace(vectorLogger, () => `Semantic: initKnownPositions result length=${result.length}`);
+	vectorLogger.trace(`Semantic: initKnownPositions result length=${result.length}`);
 	return result;
 }
 
@@ -357,7 +380,7 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 ): NAAwareDomain<Domain>[] {
 	vectorLogger.debug(`Semantic: updateKnownPositions [selectorPositions=${selectorPositions.length}]`);
 	if(selectorPositions.length === 0 || values.length === 0) {
-		expensiveTrace(vectorLogger, () => 'Semantic: updateKnownPositions early return');
+		vectorLogger.trace('Semantic: updateKnownPositions early return');
 		return knownPositions;
 	}
 
@@ -365,17 +388,21 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 	let valueIdx = 0;
 
 	for(const posInterval of selectorPositions) {
+		vectorLogger.trace(`Semantic: updateKnownPositions processing selector interval ${posInterval.toString()}`);
 		if(posInterval.isBottom()) {
+			vectorLogger.trace('Semantic: updateKnownPositions skipping bottom interval');
 			continue;
 		}
 
 		const valueToWrite = values[valueIdx % values.length];
+		vectorLogger.trace(`Semantic: updateKnownPositions valueToWrite=${valueToWrite.toString()}`);
 
 		if(posInterval.isValue() && posInterval.inner.isValue()) {
 			const [l, u] = posInterval.inner.value;
 
 			// Skip zero index
 			if(l === 0 && u === 0) {
+				vectorLogger.trace('Semantic: updateKnownPositions skipping zero index');
 				continue;
 			}
 			guard(l>=0, `Negative index detected for position ${valueIdx}.`);
@@ -383,28 +410,34 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 			// Get actual positions (1-indexed to 0-indexed)
 			const startPos = l == 0 ? 1 : l;
 			const endPos = u;
+			vectorLogger.trace(`Semantic: updateKnownPositions startPos=${startPos}, endPos=${endPos}`);
 
 			if(isEnumerable(posInterval.inner)) {
 				// Enumerable: update specific positions
 				const isSingleton = card(posInterval.inner) === 1;
+				vectorLogger.trace(`Semantic: updateKnownPositions enumerable, isSingleton=${isSingleton}`);
 				for(let pos = startPos; pos <= endPos && pos <= result.length; pos++) {
 					const idx = pos - 1;
 					if(isSingleton) {
 						// Strong update: replace
+						vectorLogger.trace(`Semantic: updateKnownPositions strong update at position ${pos}=${valueToWrite.toString()}`);
 						result[idx] = valueToWrite;
 					} else {
 						// Weak update: join
+						vectorLogger.trace(`Semantic: updateKnownPositions weak update at position ${pos}, joining ${result[idx].toString()} with ${valueToWrite.toString()}`);
 						result[idx] = result[idx].join(valueToWrite);
 					}
 				}
 			} else {
 				// Not enumerable: weak update all positions
+				vectorLogger.trace('Semantic: updateKnownPositions not enumerable, weak updating all positions');
 				for(let i = 0; i < result.length; i++) {
 					result[i] = result[i].join(valueToWrite);
 				}
 			}
 		} else {
 			// Non-specific interval: weak update all
+			vectorLogger.trace('Semantic: updateKnownPositions non-specific interval, weak updating all positions');
 			for(let i = 0; i < result.length; i++) {
 				result[i] = result[i].join(valueToWrite);
 			}
@@ -413,7 +446,7 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 		valueIdx++;
 	}
 
-	expensiveTrace(vectorLogger, () => `Semantic: updateKnownPositions result length=${result.length}`);
+	vectorLogger.trace(`Semantic: updateKnownPositions result length=${result.length}`);
 	return result;
 }
 
@@ -432,11 +465,11 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 ): NAAwareDomain<Domain> {
 	vectorLogger.debug(`Semantic: accessPosition [pos=${pos}]`);
 	if(vector.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'vector is bottom'));
+		vectorLogger.trace(formatExtremeResult('bottom', 'vector is bottom'));
 		return vector.summary;
 	}
 	if(vector.isTop()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'vector is top'));
+		vectorLogger.trace(formatExtremeResult('top', 'vector is top'));
 		return vector.summary;
 	}
 
@@ -444,18 +477,18 @@ export function accessPosition<Domain extends AnyAbstractDomain>(
 
 	if(lengthUpperBound === undefined) {
 		const result = squash(vector);
-		expensiveTrace(vectorLogger, () => `Semantic: accessPosition undefined-bound result = ${result.toString()}`);
+		vectorLogger.trace(`Semantic: accessPosition undefined-bound result = ${result.toString()}`);
 		return result;
 	}
 
 	if(lengthUpperBound === +Infinity) {
 		const result = accessFromInfiniteLengthVector(vector, pos);
-		expensiveTrace(vectorLogger, () => `Semantic: accessPosition infinite-length result = ${result.toString()}`);
+		vectorLogger.trace(`Semantic: accessPosition infinite-length result = ${result.toString()}`);
 		return result;
 	}
 
 	const result = accessFromFiniteLengthVector(vector, pos, naValue, lengthUpperBound);
-	expensiveTrace(vectorLogger, () => `Semantic: accessPosition finite-length result = ${result.toString()}`);
+	vectorLogger.trace(`Semantic: accessPosition finite-length result = ${result.toString()}`);
 	return result;
 }
 
@@ -513,11 +546,11 @@ export function countZerosInIntervalVector(
 ): PosIntervalDomain {
 	vectorLogger.debug('Semantic: countZerosInIntervalVector');
 	if(selector.isBottom()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('bottom', 'selector is bottom'));
+		vectorLogger.trace(formatExtremeResult('bottom', 'selector is bottom'));
 		return selector.length.bottom();
 	}
 	if(selector.isTop()) {
-		expensiveTrace(vectorLogger, () => formatExtremeResult('top', 'selector is top'));
+		vectorLogger.trace(formatExtremeResult('top', 'selector is top'));
 		return selector.length.create([0, +Infinity]);
 	}
 
@@ -535,13 +568,20 @@ export function countZerosInIntervalVector(
 					// Definitely zero
 					definiteZeros++;
 					possibleZeros++;
+					vectorLogger.trace(`Semantic: countZerosInIntervalVector definite zero, definiteZeros=${definiteZeros}`);
 				} else if(l <= 0 && u >= 0) {
 					// May contain zero
 					possibleZeros++;
+					vectorLogger.trace(`Semantic: countZerosInIntervalVector may contain zero, possibleZeros=${possibleZeros}`);
+				} else {
+					vectorLogger.trace(`Semantic: countZerosInIntervalVector non-zero [${l}, ${u}]`);
 				}
 			} else if(!val.isBottom()) {
 				// Top or other non-specific value - may contain zero
 				possibleZeros++;
+				vectorLogger.trace(`Semantic: countZerosInIntervalVector top/unknown, possibleZeros=${possibleZeros}`);
+			} else {
+				vectorLogger.trace('Semantic: countZerosInIntervalVector bottom');
 			}
 		}
 	}
@@ -559,7 +599,7 @@ export function countZerosInIntervalVector(
 	}
 
 	const result = selector.length.create([definiteZeros, possibleZeros]);
-	expensiveTrace(vectorLogger, () => `Semantic: countZerosInIntervalVector result = ${result.toString()}`);
+	vectorLogger.trace(`Semantic: countZerosInIntervalVector result = ${result.toString()}`);
 	return result;
 }
 
@@ -587,7 +627,7 @@ export function rhoC<Domain extends AnyAbstractDomain>(
 	vectorLogger.debug(`Semantic: rhoC [i=${i}, h=${h}]`);
 
 	if(prefix.isBottom() || prefix.isTop() || h === 0) {
-		expensiveTrace(vectorLogger, () => 'Semantic: rhoC early return (bottom/top or h=0)');
+		vectorLogger.trace('Semantic: rhoC early return (bottom/top or h=0)');
 		return KnownInitialPositionsDomain.top(factory);
 	}
 
@@ -613,17 +653,20 @@ export function rhoC<Domain extends AnyAbstractDomain>(
 	const remainder = h % iPrime;
 
 	for(let repeat = 0; repeat < fullRepeats; repeat++) {
+		vectorLogger.trace(`Semantic: rhoC full repeat ${repeat + 1}/${fullRepeats}`);
 		for(let j = 0; j < iPrime; j++) {
+			vectorLogger.trace(`Semantic: rhoC pushing sourceElements[${j}]`);
 			result.push(sourceElements[j]);
 		}
 	}
 
 	// first r = h mod i' elements
 	for(let j = 0; j < remainder; j++) {
+		vectorLogger.trace(`Semantic: rhoC pushing remainder sourceElements[${j}]`);
 		result.push(sourceElements[j]);
 	}
 
-	expensiveTrace(vectorLogger, () => `Semantic: rhoC result length=${result.length}`);
+	vectorLogger.trace(`Semantic: rhoC result length=${result.length}`);
 	return new KnownInitialPositionsDomain(result, factory);
 }
 
@@ -651,7 +694,7 @@ export function rhoF<Domain extends AnyAbstractDomain>(
 	vectorLogger.debug(`Semantic: rhoF [l=${l}, n=${n}]`);
 
 	if(prefix.isBottom() || prefix.isTop() || n === 0) {
-		expensiveTrace(vectorLogger, () => 'Semantic: rhoF early return (bottom/top or n=0)');
+		vectorLogger.trace('Semantic: rhoF early return (bottom/top or n=0)');
 		return KnownInitialPositionsDomain.bottom(factory);
 	}
 
@@ -664,9 +707,11 @@ export function rhoF<Domain extends AnyAbstractDomain>(
 
 	let result = rhoC(prefix, l, n, factory);
 	for(let i = l + 1; i <= n; i++) {
-		result = result.join(rhoC(prefix, i, n, factory));
+		const rhoCResult = rhoC(prefix, i, n, factory);
+		vectorLogger.trace(`Semantic: rhoF joining rhoC(i=${i}) length=${rhoCResult.length} into result`);
+		result = result.join(rhoCResult);
 	}
 
-	expensiveTrace(vectorLogger, () => `Semantic: rhoF result = ${result.toString()}`);
+	vectorLogger.trace(`Semantic: rhoF result = ${result.toString()}`);
 	return result;
 }
