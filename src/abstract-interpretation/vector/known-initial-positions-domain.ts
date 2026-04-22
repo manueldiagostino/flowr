@@ -111,9 +111,6 @@ export class KnownInitialPositionsDomain<
 		if(this.isBottom() || other.isBottom()) {
 			return false;
 		}
-		if(this.isTop() || other.isTop()) {
-			return false;
-		}
 		const thisValue = this.value as KnownInitialPositionsValue<Domain>;
 		const otherValue = other.value as KnownInitialPositionsValue<Domain>;
 		if(thisValue.length !== otherValue.length) {

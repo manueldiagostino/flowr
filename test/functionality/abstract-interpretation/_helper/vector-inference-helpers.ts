@@ -3,7 +3,8 @@ import type { VectorDomain } from '../../../../src/abstract-interpretation/vecto
 import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { FlowrConfig } from '../../../../src/config';
 import { extractCfg } from '../../../../src/control-flow/extract-cfg';
-import { createDataflowPipeline } from '../../../../src/core/steps/pipeline/default-pipelines';
+import type { PipelineOutput } from '../../../../src/core/steps/pipeline/pipeline';
+import { type DEFAULT_DATAFLOW_PIPELINE, createDataflowPipeline } from '../../../../src/core/steps/pipeline/default-pipelines';
 import { contextFromInput } from '../../../../src/project/context/flowr-analyzer-context';
 import { SlicingCriterion } from '../../../../src/slicing/criterion/parse';
 import type { RShell } from '../../../../src/r-bridge/shell';
@@ -39,7 +40,7 @@ export interface VectorInferenceResult<Domain extends AnyAbstractDomain> {
 	/** The underlying visitor for advanced use cases */
 	visitor:        VectorInferenceVisitor<Domain>;
 	/** The pipeline result with dataflow graph and normalized AST */
-	pipelineResult: unknown;
+	pipelineResult: PipelineOutput<typeof DEFAULT_DATAFLOW_PIPELINE>;
 }
 
 /**
