@@ -5,7 +5,7 @@ import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/
 import { Bottom, Top } from '../../../../src/abstract-interpretation/domains/lattice';
 import type { NA } from '../../../../src/abstract-interpretation/domains/lattice';
 
-describe('Sequence Prefix Domain', () => {
+describe('Sequence Known Domain', () => {
 	const intervalFactory = (concrete: ReadonlySet<number> | typeof Top | typeof Bottom | typeof NA | undefined): IntervalDomain => {
 		if(concrete === undefined) {
 			return IntervalDomain.bottom();
@@ -134,21 +134,21 @@ describe('Sequence Prefix Domain', () => {
 			assert.strictEqual(bottom.leq(top), true);
 		});
 
-		test('shorter prefix is leq longer prefix if elements are leq', () => {
+		test('shorter known is leq longer known if elements are leq', () => {
 			const short = mkSeq([[1, 3]]);
 			const long = mkSeq([[1, 3], [5, 7]]);
 			assert.strictEqual(short.leq(long), true);
 			assert.strictEqual(long.leq(short), false);
 		});
 
-		test('prefix order with interval elements', () => {
+		test('known order with interval elements', () => {
 			const a = mkSeq([[1, 3], [5, 7]]);
 			const b = mkSeq([[1, 4], [5, 8]]);
 			assert.strictEqual(a.leq(b), true);
 			assert.strictEqual(b.leq(a), false);
 		});
 
-		test('prefix order requires all elements to be leq', () => {
+		test('known order requires all elements to be leq', () => {
 			const a = mkSeq([[1, 3], [10, 20]]);
 			const b = mkSeq([[1, 4], [5, 8]]);
 			assert.strictEqual(a.leq(b), false);
@@ -228,7 +228,7 @@ describe('Sequence Prefix Domain', () => {
 			assert.strictEqual(result.toString(), '[[3, 5], [15, 20]]');
 		});
 
-		test('meet of different length sequences truncates to common prefix', () => {
+		test('meet of different length sequences truncates to common known', () => {
 			const a = mkSeq([[1, 5], [10, 20], [30, 40]]);
 			const b = mkSeq([[3, 7], [15, 25]]);
 			const result = a.meet(b);
@@ -276,7 +276,7 @@ describe('Sequence Prefix Domain', () => {
 			assert.strictEqual(result.toString(), '[[1, +∞], [5, +∞]]');
 		});
 
-		test('widen of different length sequences truncates to common prefix', () => {
+		test('widen of different length sequences truncates to common known', () => {
 			const a = mkSeq([[1, 3], [5, 7], [9, 11]]);
 			const b = mkSeq([[2, 4], [6, 8]]);
 			const result = a.widen(b);

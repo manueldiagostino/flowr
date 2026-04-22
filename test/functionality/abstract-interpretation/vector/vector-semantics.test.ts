@@ -1,5 +1,5 @@
 import { assert, describe, test } from 'vitest';
-import { propagate, adjustForZeros, rhoC } from '../../../../src/abstract-interpretation/vector/vector-semantics';
+import { propagate, adjustForZeros, rhoC, rhoF } from '../../../../src/abstract-interpretation/vector/vector-semantics';
 import { IntervalDomain, IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
@@ -351,7 +351,7 @@ describe('adjustForZeros', () => {
  * Helper to create a KnownInitialPositionsDomain for rhoC tests.
  * Accepts either range tuples (which get wrapped) or already-wrapped NAAwareDomain values.
  */
-function createTestPrefix(
+function createTestKnown(
 	rangesOrPositions: Array<[number, number]> | readonly NAAwareDomain<IntervalDomain>[]
 ): KnownInitialPositionsDomain<NAAwareDomain<IntervalDomain>> {
 	const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
@@ -367,35 +367,35 @@ function createTestPrefix(
 }
 
 describe('rhoC', () => {
-	test('returns top when prefix is bottom', () => {
-		const prefix = KnownInitialPositionsDomain.bottom<NAAwareDomain<IntervalDomain>>(
+	test('returns top when known is bottom', () => {
+		const known = KnownInitialPositionsDomain.bottom<NAAwareDomain<IntervalDomain>>(
 			NAAwareDomain.createSmartFactory(intervalFactory)
 		);
-		const result = rhoC(prefix, 2, 4, NAAwareDomain.createSmartFactory(intervalFactory));
+		const result = rhoC(known, 2, 4, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isTop());
 	});
 
-	test('returns top when prefix is top', () => {
-		const prefix = KnownInitialPositionsDomain.top<NAAwareDomain<IntervalDomain>>(
+	test('returns top when known is top', () => {
+		const known = KnownInitialPositionsDomain.top<NAAwareDomain<IntervalDomain>>(
 			NAAwareDomain.createSmartFactory(intervalFactory)
 		);
-		const result = rhoC(prefix, 2, 4, NAAwareDomain.createSmartFactory(intervalFactory));
+		const result = rhoC(known, 2, 4, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isTop());
 	});
 
 	test('returns top when h=0', () => {
-		const prefix = createTestPrefix([[1, 1], [2, 2], [3, 3]]);
-		const result = rhoC(prefix, 2, 0, NAAwareDomain.createSmartFactory(intervalFactory));
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const result = rhoC(known, 2, 0, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isTop());
 	});
 
 	test('cycles elements to reach target length (exact multiple)', () => {
-		// prefix = [1, 2, 3], i=2, h=4
+		// known = [1, 2, 3], i=2, h=4
 		// i' = min(2, 3) = 2
 		// fullRepeats = floor(4/2) = 2, remainder = 0
 		// result = [1,2] ++ [1,2] = [1,2,1,2]
-		const prefix = createTestPrefix([[1, 1], [2, 2], [3, 3]]);
-		const result = rhoC(prefix, 2, 4, NAAwareDomain.createSmartFactory(intervalFactory));
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const result = rhoC(known, 2, 4, NAAwareDomain.createSmartFactory(intervalFactory));
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -410,12 +410,12 @@ describe('rhoC', () => {
 	});
 
 	test('cycles elements with remainder', () => {
-		// prefix = [1, 2, 3], i=2, h=5
+		// known = [1, 2, 3], i=2, h=5
 		// i' = min(2, 3) = 2
 		// fullRepeats = floor(5/2) = 2, remainder = 1
 		// result = [1,2] ++ [1,2] ++ [1] = [1,2,1,2,1]
-		const prefix = createTestPrefix([[1, 1], [2, 2], [3, 3]]);
-		const result = rhoC(prefix, 2, 5, NAAwareDomain.createSmartFactory(intervalFactory));
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const result = rhoC(known, 2, 5, NAAwareDomain.createSmartFactory(intervalFactory));
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -430,13 +430,13 @@ describe('rhoC', () => {
 		}
 	});
 
-	test('cycles all elements when i > prefix length', () => {
-		// prefix = [1, 2, 3], i=5, h=7
-		// i' = min(5, 3) = 3 (use all prefix elements)
+	test('cycles all elements when i > known length', () => {
+		// known = [1, 2, 3], i=5, h=7
+		// i' = min(5, 3) = 3 (use all known elements)
 		// fullRepeats = floor(7/3) = 2, remainder = 1
 		// result = [1,2,3] ++ [1,2,3] ++ [1] = [1,2,3,1,2,3,1]
-		const prefix = createTestPrefix([[1, 1], [2, 2], [3, 3]]);
-		const result = rhoC(prefix, 5, 7, NAAwareDomain.createSmartFactory(intervalFactory));
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const result = rhoC(known, 5, 7, NAAwareDomain.createSmartFactory(intervalFactory));
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -454,12 +454,12 @@ describe('rhoC', () => {
 	});
 
 	test('single element repeated', () => {
-		// prefix = [1], i=1, h=5
+		// known = [1], i=1, h=5
 		// i' = min(1, 1) = 1
 		// fullRepeats = floor(5/1) = 5, remainder = 0
 		// result = [1,1,1,1,1]
-		const prefix = createTestPrefix([[1, 1]]);
-		const result = rhoC(prefix, 1, 5, NAAwareDomain.createSmartFactory(intervalFactory));
+		const known = createTestKnown([[1, 1]]);
+		const result = rhoC(known, 1, 5, NAAwareDomain.createSmartFactory(intervalFactory));
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -473,22 +473,22 @@ describe('rhoC', () => {
 	});
 
 	test('returns top when iPrime=0', () => {
-		// prefix = [1, 2, 3], i=0, h=4
+		// known = [1, 2, 3], i=0, h=4
 		// i' = min(0, 3) = 0 → returns top
-		const prefix = createTestPrefix([[1, 1], [2, 2], [3, 3]]);
-		const result = rhoC(prefix, 0, 4, NAAwareDomain.createSmartFactory(intervalFactory));
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const result = rhoC(known, 0, 4, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isTop());
 	});
 
 	test('preserves NAAwareDomain wrappers', () => {
-		// prefix with NA values: [1, NA, 3], i=2, h=4
+		// known with NA values: [1, NA, 3], i=2, h=4
 		// i' = min(2, 3) = 2
 		// result = [1, NA] ++ [1, NA] = [1, NA, 1, NA]
 		const naValue = asNaAwareWithNA([2, 2]);  // hasNA: true, inner: [2,2]
-		const prefix = createTestPrefix(toNAAwares([asNaAware([1, 1]), naValue, asNaAware([3, 3])]));
+		const known = createTestKnown(toNAAwares([asNaAware([1, 1]), naValue, asNaAware([3, 3])]));
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
-		const result = rhoC(prefix, 2, 4, smartFactory);
+		const result = rhoC(known, 2, 4, smartFactory);
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -503,6 +503,111 @@ describe('rhoC', () => {
 			assertNAAwareEquals(values[2], asNaAware([1, 1]));
 			// Fourth element: recycled [2,2] with NA flag preserved
 			assertNAAwareEquals(values[3], asNaAwareWithNA([2, 2]));
+		}
+	});
+});
+
+describe('rhoF', () => {
+	test('returns bottom when known is bottom', () => {
+		const known = KnownInitialPositionsDomain.bottom<NAAwareDomain<IntervalDomain>>(
+			NAAwareDomain.createSmartFactory(intervalFactory)
+		);
+		const result = rhoF(known, 1, 3, NAAwareDomain.createSmartFactory(intervalFactory));
+		assert.ok(result.isBottom());
+	});
+
+	test('returns bottom when known is top', () => {
+		const known = KnownInitialPositionsDomain.top<NAAwareDomain<IntervalDomain>>(
+			NAAwareDomain.createSmartFactory(intervalFactory)
+		);
+		const result = rhoF(known, 1, 3, NAAwareDomain.createSmartFactory(intervalFactory));
+		assert.ok(result.isBottom());
+	});
+
+	test('returns bottom when n=0', () => {
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const result = rhoF(known, 1, 0, NAAwareDomain.createSmartFactory(intervalFactory));
+		assert.ok(result.isBottom());
+	});
+
+	test('single starting position equals rhoC', () => {
+		// known = [1, 2, 3], l=2, n=2
+		// rhoF should equal rhoC(known, 2, 2) since only i=2 is in range [2,2]
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
+
+		const rhoFResult = rhoF(known, 2, 2, smartFactory);
+		const rhoCResult = rhoC(known, 2, 2, smartFactory);
+
+		assert.ok(rhoFResult.equals(rhoCResult));
+	});
+
+	test('joins multiple rhoC results', () => {
+		// known = [1, 2], l=1, n=2
+		// rhoF = rhoC(i=1) ⊔ rhoC(i=2)
+		// rhoC(i=1, h=2): i'=min(1,2)=1, fullRepeats=2, result=[1,1]
+		// rhoC(i=2, h=2): i'=min(2,2)=2, fullRepeats=1, result=[1,2]
+		// Join: [1,1] ⊔ [1,2] = [1, join(1,2)] = [1, [1,2]]
+		const known = createTestKnown([[1, 1], [2, 2]]);
+		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
+
+		const result = rhoF(known, 1, 2, smartFactory);
+
+		assert.ok(result.isValue());
+		if(result.isValue()) {
+			assert.strictEqual(result.length, 2);
+			const values = result.value;
+			// Position 0: 1 ⊔ 1 = 1
+			assertNAAwareEquals(values[0], asNaAware([1, 1]));
+			// Position 1: 1 ⊔ 2 = [1, 2]
+			assertNAAwareEquals(values[1], asNaAware([1, 2]));
+		}
+	});
+
+	test('larger range produces wider join', () => {
+		// known = [1, 2, 3], l=1, n=3
+		// rhoF joins rhoC(i=1), rhoC(i=2), rhoC(i=3) all with h=3
+		// rhoC(i=1, h=3): i'=1, fullRepeats=3, result=[1,1,1]
+		// rhoC(i=2, h=3): i'=2, fullRepeats=1, rem=1, result=[1,2,1]
+		// rhoC(i=3, h=3): i'=3, fullRepeats=1, rem=0, result=[1,2,3]
+		// Join: [1,1,1] ⊔ [1,2,1] ⊔ [1,2,3] = [1, [1,2], [1,3]]
+		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
+		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
+
+		const result = rhoF(known, 1, 3, smartFactory);
+
+		assert.ok(result.isValue());
+		if(result.isValue()) {
+			assert.strictEqual(result.length, 3);
+			const values = result.value;
+			// Position 0: 1 ⊔ 1 ⊔ 1 = 1
+			assertNAAwareEquals(values[0], asNaAware([1, 1]));
+			// Position 1: 1 ⊔ 2 ⊔ 2 = [1, 2]
+			assertNAAwareEquals(values[1], asNaAware([1, 2]));
+			// Position 2: 1 ⊔ 1 ⊔ 3 = [1, 3]
+			assertNAAwareEquals(values[2], asNaAware([1, 3]));
+		}
+	});
+
+	test('preserves NAAwareDomain properties through join', () => {
+		// known with NA: [1, NA], l=1, n=2
+		// rhoC(i=1, h=2): i'=min(1,2)=1, fullRepeats=2 → [1, 1]
+		// rhoC(i=2, h=2): i'=min(2,2)=2, fullRepeats=1 → [1, NA]
+		// Join: [1, 1] ⊔ [1, NA] = [[1,1], [1,2]+NA]
+		const naValue = asNaAwareWithNA([2, 2]);  // hasNA: true, inner: [2,2]
+		const known = createTestKnown(toNAAwares([asNaAware([1, 1]), naValue]));
+		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
+
+		const result = rhoF(known, 1, 2, smartFactory);
+
+		assert.ok(result.isValue());
+		if(result.isValue()) {
+			assert.strictEqual(result.length, 2);
+			const values = result.value;
+			// Position 0: [1,1] ⊔ [1,1] = [1,1] (no NA)
+			assertNAAwareEquals(values[0], asNaAware([1, 1]));
+			// Position 1: [1,1] ⊔ [2,2]+NA = [1,2]+NA
+			assertNAAwareEquals(values[1], asNaAwareWithNA([1, 2]));
 		}
 	});
 });

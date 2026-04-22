@@ -226,7 +226,7 @@ describe('Vector Domain', () => {
 			assert.strictEqual(result.length.isBottom(), true);
 		});
 
-		test('meet of different length values truncates to common prefix', () => {
+		test('meet of different length values truncates to common known', () => {
 			const a = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
 			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const result = a.meet(b);

@@ -48,7 +48,7 @@
     "test:vector": "npx vitest run test/functionality/abstract-interpretation/vector",
     "test:vector:debug": "LOG_LEVEL=debug npx vitest run test/functionality/abstract-interpretation/vector --reporter=verbose",
     "test:vector:trace": "LOG_LEVEL=trace npx vitest run test/functionality/abstract-interpretation/vector --reporter=verbose",
-    "test:file": "npx vitest run --sequence.concurrent=false --maxWorkers=1 --pool=forks",
+    "test:file": "npx vitest run",
     "test:file:debug": "LOG_LEVEL=debug npx vitest run --reporter=verbose --sequence.concurrent=false --maxWorkers=1 --pool=forks",
     "test:file:trace": "LOG_LEVEL=trace npx vitest run --reporter=verbose --sequence.concurrent=false --maxWorkers=1 --pool=forks",
     "lint:fix": "npm run lint-local -- --fix",
