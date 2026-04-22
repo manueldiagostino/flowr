@@ -5,95 +5,21 @@ import { vectorLogger } from '../logger';
 import { squash, rhoF } from '../vector-semantics';
 
 /**
- * Applies the recycle operation to align two vectors to the same length for binary operations.
- * Combines length intervals and value domains of both operands.
- * @param value - The first VectorDomain operand
- * @param other - The second VectorDomain operand to recycle against
- * @returns The resulting VectorDomain after recycling
- */
-export function applyRecycle<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>,
-	other: VectorDomain<Domain>
-): VectorDomain<Domain> {
-	vectorLogger.debug('Operation: recycle');
-	const len1 = value.length;
-	const len2 = other.length;
-	vectorLogger.debug(`Operation: recycle lengths [len1=${len1.toString()}, len2=${len2.toString()}]`);
-
-	if(len1.isBottom() || len2.isBottom()) {
-		vectorLogger.debug('Operation: recycle returning bottom');
-		return value.bottom();
-	}
-	const combinedSummary = value.summary.join(other.summary);
-	if(len1.isTop() || len2.isTop()) {
-		vectorLogger.debug('Operation: recycle returning top (length is top)');
-		const result = value.create({
-			length:     len1.top(),
-			known:      value.known.top(),
-			summary:    combinedSummary,
-			attributes: value.attributes.join(other.attributes),
-			type:       value.type
-		});
-		return result;
-	}
-	if(!len1.isValue() || !len2.isValue()) {
-		vectorLogger.debug('Operation: recycle returning top (not value)');
-		const result = value.create({
-			length:     len1.top(),
-			known:      value.known.top(),
-			summary:    combinedSummary,
-			attributes: value.attributes.join(other.attributes),
-			type:       value.type
-		});
-		return result;
-	}
-	const [l1, u1] = len1.value;
-	const [l2, u2] = len2.value;
-	const newUpper = Math.max(u1, u2);
-	const newLower = Math.max(l1, l2);
-	const incompatible = u1 !== +Infinity && u2 !== +Infinity && (u1 % u2 !== 0) && (u2 % u1 !== 0);
-	vectorLogger.debug(`Operation: recycle computed [l1=${l1}, u1=${u1}, l2=${l2}, u2=${u2}, newLower=${newLower}, newUpper=${newUpper}, incompatible=${incompatible}]`);
-
-	if(incompatible) {
-		vectorLogger.debug('Operation: recycle incompatible lengths, returning top');
-		const result = value.create({
-			length:     len1.top(),
-			known:      value.known.top(),
-			summary:    combinedSummary,
-			attributes: value.attributes.join(other.attributes),
-			type:       value.type
-		});
-		return result;
-	}
-	const recycledLength = len1.create([newLower, newUpper]);
-	const combinedValues = value.known.join(other.known);
-	const result = value.create({
-		length:     recycledLength,
-		known:      combinedValues,
-		summary:    combinedSummary,
-		attributes: value.attributes.join(other.attributes),
-		type:       value.type
-	});
-	vectorLogger.debug(`Operation: recycle result [length=${result.length.toString()}, values=${result.known.toString()}]`);
-	return result;
-}
-
-/**
  * Recycles a pair of vectors to the same length for binary operations.
  * Per paper Section 4.5: aligns two vectors by extending shorter one cyclically.
  * @param v1 - The first vector
  * @param v2 - The second vector
  * @returns A tuple [v1_recycled, v2_recycled] with aligned lengths
  */
-export function recyclePair<Domain extends AnyAbstractDomain>(
+export function applyRecycle<Domain extends AnyAbstractDomain>(
 	v1: VectorDomain<Domain>,
 	v2: VectorDomain<Domain>
 ): [VectorDomain<Domain>, VectorDomain<Domain>] {
-	vectorLogger.debug('Operation: recyclePair');
+	vectorLogger.debug('Operation: applyRecycle');
 
 	// Handle bottom cases
 	if(v1.isBottom() || v2.isBottom()) {
-		vectorLogger.debug('Operation: recyclePair - one operand is bottom');
+		vectorLogger.debug('Operation: applyRecycle - one operand is bottom');
 		return [v1.bottom(), v2.bottom()];
 	}
 
@@ -104,7 +30,7 @@ export function recyclePair<Domain extends AnyAbstractDomain>(
 	const known2 = v2.known;
 
 	if(!len1.isValue() || !len2.isValue() || !known1.length || !known2.length) {
-		vectorLogger.debug('Operation: recyclePair - lengths not values, returning top');
+		vectorLogger.debug('Operation: applyRecycle - lengths not values, returning top');
 		return [v1.top(), v2.top()];
 	}
 
@@ -114,13 +40,13 @@ export function recyclePair<Domain extends AnyAbstractDomain>(
 	const lPrime = Math.max(l1, l2);
 	const knownMaxLength = Math.max(known1.length, known2.length);
 
-	vectorLogger.debug(`Operation: recyclePair computed [l1=${l1}, u1=${u1}, l2=${l2}, u2=${u2}, lPrime=${lPrime}, uPrime=${uPrime}]`);
+	vectorLogger.debug(`Operation: applyRecycle computed [l1=${l1}, u1=${u1}, l2=${l2}, u2=${u2}, lPrime=${lPrime}, uPrime=${uPrime}]`);
 
 
-	// Check incompatibility (same as applyRecycle)
+	// Check incompatibility
 	const incompatible = u1 !== +Infinity && u2 !== +Infinity && (u1 % u2 !== 0) && (u2 % u1 !== 0);
 	if(incompatible) {
-		vectorLogger.warn('Operation: recyclePair - incompatible lengths');
+		vectorLogger.warn('Operation: applyRecycle - incompatible lengths');
 		// return [v1.top(), v2.top()];
 	}
 
@@ -134,7 +60,7 @@ export function recyclePair<Domain extends AnyAbstractDomain>(
 	let cycledKnown = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 	let newSummary = v1.summary;
 
-	vectorLogger.debug(`Operation: recyclePair - recycling v1 from ${u1} to ${uPrime}`);
+	vectorLogger.debug(`Operation: applyRecycle - recycling v1 from ${u1} to ${uPrime}`);
 	if(uPrime === +Infinity) {
 		// Infinite target: fold known into summary
 		const squashedKnown = squash(v1);
@@ -160,7 +86,7 @@ export function recyclePair<Domain extends AnyAbstractDomain>(
 	cycledKnown = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 	newSummary = v2.summary;
 
-	vectorLogger.debug(`Operation: recyclePair - recycling v2 from ${u1} to ${uPrime}`);
+	vectorLogger.debug(`Operation: applyRecycle - recycling v2 from ${u1} to ${uPrime}`);
 	if(uPrime === +Infinity) {
 		// Infinite target: fold known into summary
 		const squashedKnown = squash(v2);
@@ -176,7 +102,7 @@ export function recyclePair<Domain extends AnyAbstractDomain>(
 	});
 
 
-	vectorLogger.debug(`Operation: recyclePair result [v1=${v1Recycled.length.toString()}, v2=${v2Recycled.length.toString()}]`);
+	vectorLogger.debug(`Operation: applyRecycle result [v1=${v1Recycled.length.toString()}, v2=${v2Recycled.length.toString()}]`);
 	return [v1Recycled, v2Recycled];
 }
 
@@ -200,7 +126,7 @@ export function applyBinaryOp<Domain extends AnyAbstractDomain>(
 	}
 
 	// Recycle the pair to aligned lengths
-	const [v1Recycled, v2Recycled] = recyclePair(v1, v2);
+	const [v1Recycled, v2Recycled] = applyRecycle(v1, v2);
 
 	// Perform element-wise join on prefixes and summaries
 	const resultKnown = v1Recycled.known.join(v2Recycled.known);

@@ -5,7 +5,7 @@
  */
 
 export { applyConcatenate } from './concatenate';
-export { applyRecycle, recyclePair, applyBinaryOp, applyNegate } from './arithmetic';
+export { applyRecycle, applyBinaryOp, applyNegate } from './arithmetic';
 export {
 	applySelect,
 	applySelectPositive,

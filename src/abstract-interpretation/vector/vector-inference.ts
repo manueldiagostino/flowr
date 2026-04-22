@@ -29,7 +29,6 @@ import { guard } from '../../util/assert';
 import {
 	applyConcatenate,
 	applyRecycle,
-	recyclePair,
 	applyBinaryOp,
 	applyNegate,
 	applySelect,
@@ -759,31 +758,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends Ab
 	}
 
 	/**
-	 * Applies the recycle operation to align two vectors to the same length for binary operations.
-	 * Combines length intervals and value domains of both operands.
-	 * @param value - The first VectorDomain operand
-	 * @param other - The second VectorDomain operand to recycle against
-	 * @returns The resulting VectorDomain after recycling
-	 */
-	private applyRecycle(
-		value: VectorDomain<Domain>,
-		other: VectorDomain<Domain>
-	): VectorDomain<Domain> {
-		return applyRecycle(value, other);
-	}
-
-	/**
 	 * Recycles a pair of vectors to the same length for binary operations.
 	 * Per paper Section 4.5: aligns two vectors by extending shorter one cyclically.
 	 * @param v1 - The first vector
 	 * @param v2 - The second vector
 	 * @returns A tuple [v1_recycled, v2_recycled] with aligned lengths
 	 */
-	private recyclePair(
+	private applyRecycle(
 		v1: VectorDomain<Domain>,
 		v2: VectorDomain<Domain>
 	): [VectorDomain<Domain>, VectorDomain<Domain>] {
-		return recyclePair(v1, v2);
+		return applyRecycle(v1, v2);
 	}
 
 	/**
