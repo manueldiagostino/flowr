@@ -402,7 +402,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 			length:     new PosIntervalDomain([0, 0]),
 			known:      emptyPrefix,
 			summary:    summaryBottom,
-			attributes: VectorAttrDomain.bottom(),
+			attributes: VectorAttrDomain.empty(),
 			type:       RVectorTypeDomain.bottom()
 		}, factory);
 	}
