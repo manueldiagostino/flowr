@@ -1,5 +1,6 @@
 /* eslint-disable tsdoc/syntax */
 import type { AnyAbstractDomain } from '../../domains/abstract-domain';
+import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import { VectorDomain } from '../vector-domain';
 import { NAAwareDomain } from '../na-aware-domain';
 import type { IntervalDomain } from '../../domains/interval-domain';
@@ -30,7 +31,7 @@ import { buildPosIntervalSelector, buildPosIntervalSelectorFromSource } from '..
  * @param naValue - The NA value for out-of-bounds access
  * @returns The resulting VectorDomain after selection
  */
-export function applySelect<Domain extends AnyAbstractDomain>(
+export function applySelect<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<IntervalDomain>,
 	naValue: NAAwareDomain<Domain>
@@ -154,7 +155,7 @@ export function applySelect<Domain extends AnyAbstractDomain>(
  * @param naValue - The NA value for out-of-bounds access
  * @returns The resulting VectorDomain after positive selection
  */
-export function applySelectPositive<Domain extends AnyAbstractDomain>(
+export function applySelectPositive<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<PosIntervalDomain>,
 	naValue: NAAwareDomain<Domain>
@@ -303,7 +304,7 @@ export function buildNegativeSets(
  * @param naValue - The NA value for out-of-bounds access
  * @returns The resulting VectorDomain after negative selection
  */
-export function applySelectNegative<Domain extends AnyAbstractDomain>(
+export function applySelectNegative<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<PosIntervalDomain>,
 	naValue: NAAwareDomain<Domain>
@@ -463,7 +464,7 @@ export function applySelectNegative<Domain extends AnyAbstractDomain>(
  * @param naValue - The NA value for positions with NA selector
  * @returns The resulting VectorDomain after logical selection
  */
-export function applySelectLogical<Domain extends AnyAbstractDomain>(
+export function applySelectLogical<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<PosIntervalDomain>,
 	naValue: NAAwareDomain<Domain>

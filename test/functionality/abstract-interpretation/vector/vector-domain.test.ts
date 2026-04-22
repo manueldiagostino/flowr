@@ -1,8 +1,8 @@
 import { assert, test, describe } from 'vitest';
 import './log-config';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
-import { mkVector } from '../_helper/vector-helpers';
-import { intervalFactory } from '../_helper/interval-factory';
+import { mkVector } from '../_helper/vector-creation-helpers';
+import { intervalFactory } from '../_helper/vector-interval-factory';
 
 describe('Vector Domain', () => {
 

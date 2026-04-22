@@ -4,7 +4,7 @@ import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vec
 import type { AbstractFilterResult } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { intervalFactory } from '../_helper/na-aware-helpers';
+import { intervalFactory } from '../_helper/vector-na-creation-helpers';
 
 /**
  * Helper: create an NAAwareDomain wrapping an IntervalDomain.

@@ -19,7 +19,7 @@ import {
  * @param v2 - The second vector
  * @returns A tuple [v1_recycled, v2_recycled] with aligned lengths
  */
-export function applyRecycle<Domain extends AnyAbstractDomain>(
+export function applyRecycle<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	v1: VectorDomain<Domain>,
 	v2: VectorDomain<Domain>
 ): [VectorDomain<Domain>, VectorDomain<Domain>] {

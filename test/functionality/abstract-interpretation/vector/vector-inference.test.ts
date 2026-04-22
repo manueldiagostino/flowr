@@ -2,7 +2,7 @@ import { assert, test, describe } from 'vitest';
 import './log-config';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { withShell } from '../../_helper/shell';
-import { intervalFactory } from '../_helper/interval-factory';
+import { intervalFactory } from '../_helper/vector-interval-factory';
 import {
 	getVectorForCriterion,
 	assertLength,

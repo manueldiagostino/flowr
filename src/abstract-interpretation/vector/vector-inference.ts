@@ -11,6 +11,7 @@ import { vectorLogger } from './logger';
 import { NA } from '../domains/lattice';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
+import type { ArithmeticDomain } from '../domains/arithmetic-domain';
 import type { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { type ValueToDomainConverter, buildVectorFromLiteral } from './resolve-vector-args';
 import type { RNumber } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
@@ -47,13 +48,13 @@ import { detectVectorFunctionType, type VectorFunctionType } from './helpers/fun
 
 type VectorOperationName = 'setAttr' | 'binary_op' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
-interface VectorOperation<Domain extends AnyAbstractDomain, Name extends VectorOperationName = VectorOperationName> {
+interface VectorOperation<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>, Name extends VectorOperationName = VectorOperationName> {
 	operation:     Name;
 	operand:       VectorDomain<Domain> | undefined;
 	[key: string]: unknown;
 }
 
-type VectorOperations<Domain extends AnyAbstractDomain> = VectorOperation<Domain>[];
+type VectorOperations<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>> = VectorOperation<Domain>[];
 
 /**
  * Configuration options for the VectorInferenceVisitor.
@@ -69,7 +70,7 @@ interface VectorInferenceConfiguration extends AbsintVisitorConfiguration {
  * Maps R vector operations to abstract vector semantics and computes abstract values.
  * @template Domain - The abstract domain type for vector elements
  */
-export class VectorInferenceVisitor<Domain extends AnyAbstractDomain> extends AbstractInterpretationVisitor<VectorDomain<Domain>, VectorInferenceConfiguration> {
+export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>> extends AbstractInterpretationVisitor<VectorDomain<Domain>, VectorInferenceConfiguration> {
 	private readonly operations?:    Map<NodeId, VectorOperations<Domain>>;
 	private readonly plainFactory:   DomainFactory<Domain>;
 	private readonly naAwareFactory: DomainFactory<NAAwareDomain<Domain>>;

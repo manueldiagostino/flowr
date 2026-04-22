@@ -4,7 +4,9 @@ import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domai
 import { VectorAttrDomain, type VectorAttr } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
-import { intervalFactory } from './interval-factory';
+import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
+import { intervalFactory } from './vector-interval-factory';
+import { asNaAware, asNaAwares, toNAAwareDomains } from './vector-assertion-helpers';
 
 export type { VectorAttr };
 
@@ -38,3 +40,22 @@ export const mkVector = (
 
 	return VectorDomain.fromValues(intervalFactory, len, vals, sum, attrs, vecType);
 };
+
+/**
+ * Helper to create a KnownInitialPositionsDomain for tests.
+ * Accepts either range tuples (which get wrapped) or already-wrapped NAAwareDomain values.
+ */
+export function createTestKnown(
+	rangesOrPositions: Array<[number, number]> | readonly NAAwareDomain<IntervalDomain>[]
+): KnownInitialPositionsDomain<NAAwareDomain<IntervalDomain>> {
+	const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
+	if(rangesOrPositions.length > 0 && rangesOrPositions[0] instanceof NAAwareDomain) {
+		// Already wrapped values
+		return new KnownInitialPositionsDomain(rangesOrPositions as readonly NAAwareDomain<IntervalDomain>[], smartFactory);
+	} else {
+		// Range tuples - wrap them
+		const ranges = rangesOrPositions as Array<[number, number]>;
+		const positions = toNAAwareDomains(asNaAwares(...ranges.map(r => asNaAware(r))));
+		return new KnownInitialPositionsDomain(positions, smartFactory);
+	}
+}

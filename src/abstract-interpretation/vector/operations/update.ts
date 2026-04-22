@@ -1,4 +1,5 @@
 import type { AnyAbstractDomain } from '../../domains/abstract-domain';
+import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import { VectorDomain, type DomainFactory } from '../vector-domain';
 import { NAAwareDomain } from '../na-aware-domain';
 import { IntervalDomain } from '../../domains/interval-domain';
@@ -38,7 +39,7 @@ import {
  * @param naValue - The NA value for out-of-bounds positions
  * @returns The resulting VectorDomain after update
  */
-export function applyUpdate<Domain extends AnyAbstractDomain>(
+export function applyUpdate<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<IntervalDomain>,
 	values: VectorDomain<Domain>,
@@ -169,7 +170,7 @@ export function applyUpdate<Domain extends AnyAbstractDomain>(
  * @param value - The source vector to match
  * @returns A selector with positions 1..u1
  */
-export function buildSelectorMatchingSourceLength<Domain extends AnyAbstractDomain>(
+export function buildSelectorMatchingSourceLength<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>
 ): VectorDomain<PosIntervalDomain> {
 	const posIntervalFactory: DomainFactory<PosIntervalDomain> = (c: unknown) => {
@@ -255,7 +256,7 @@ export function buildSelectorMatchingSourceLength<Domain extends AnyAbstractDoma
  * @param naValue - The NA value for out-of-bounds positions
  * @returns The resulting VectorDomain after positive update
  */
-export function applyUpdatePositive<Domain extends AnyAbstractDomain>(
+export function applyUpdatePositive<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<IntervalDomain>,
 	values: VectorDomain<Domain>,
@@ -393,7 +394,7 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain>(
  * @param naValue - The NA value for out-of-bounds positions
  * @returns The resulting VectorDomain after negative update
  */
-export function applyUpdateNegative<Domain extends AnyAbstractDomain>(
+export function applyUpdateNegative<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<IntervalDomain>,
 	values: VectorDomain<Domain>,
@@ -699,7 +700,7 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain>(
  * @param naValue - The NA value for out-of-bounds positions
  * @returns The resulting VectorDomain after logical update
  */
-export function applyUpdateLogical<Domain extends AnyAbstractDomain>(
+export function applyUpdateLogical<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<IntervalDomain>,
 	values: VectorDomain<Domain>,

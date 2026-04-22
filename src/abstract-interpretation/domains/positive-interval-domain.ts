@@ -93,6 +93,8 @@ export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
 		return PosIntervalDomain.abstract(concrete);
 	}
 
+	public subtract(other: this): this;
+	public subtract(other: PosIntervalLift): this;
 	public subtract(other: this | PosIntervalLift): this {
 		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
 
@@ -108,8 +110,8 @@ export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
 	 * Since all bounds are ≥ 0: [a,b] * [c,d] = [a*c, b*d]
 	 * Inherits Bottom/Top handling from IntervalDomain.multiply.
 	 */
-	public override multiply(other: this | PosIntervalLift): this {
-		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
+	public override multiply(other: this): this {
+		const otherValue = other.value;
 
 		if(this.value === Bottom || otherValue === Bottom) {
 			return this.bottom();
@@ -127,8 +129,8 @@ export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
 	 * Since all bounds are ≥ 0 and divisor lower bound \> 0: [a,b] / [c,d] = [a/d, b/c]
 	 * If divisor contains zero (i.e., c = 0), returns Top.
 	 */
-	public override divide(other: this | PosIntervalLift): this {
-		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
+	public override divide(other: this): this {
+		const otherValue = other.value;
 
 		if(this.value === Bottom || otherValue === Bottom) {
 			return this.bottom();

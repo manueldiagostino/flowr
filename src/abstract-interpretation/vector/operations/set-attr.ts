@@ -1,4 +1,5 @@
 import type { AnyAbstractDomain } from '../../domains/abstract-domain';
+import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import type { VectorDomain } from '../vector-domain';
 import type { VectorAttrDomain } from '../../domains/vector-attr-domain';
 import { vectorLogger } from '../logger';
@@ -10,7 +11,7 @@ import { vectorLogger } from '../logger';
  * @param attrs - The vector attribute domain to set
  * @returns The resulting VectorDomain with updated attributes
  */
-export function applySetAttr<Domain extends AnyAbstractDomain>(
+export function applySetAttr<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	attrs: VectorAttrDomain
 ): VectorDomain<Domain> {

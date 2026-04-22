@@ -11,6 +11,7 @@ import type { RShell } from '../../../../src/r-bridge/shell';
 import type { ParentInformation } from '../../../../src/r-bridge/lang-4.x/ast/model/processing/decorate';
 import type { RNode } from '../../../../src/r-bridge/lang-4.x/ast/model/model';
 import type { AnyAbstractDomain } from '../../../../src/abstract-interpretation/domains/abstract-domain';
+import type { ArithmeticDomain } from '../../../../src/abstract-interpretation/domains/arithmetic-domain';
 import type { ValueToDomainConverter } from '../../../../src/abstract-interpretation/vector/resolve-vector-args';
 import { assert } from 'vitest';
 
@@ -30,7 +31,7 @@ export const defaultValueToDomain: ValueToDomainConverter<IntervalDomain> = (val
 /**
  * Result of running vector inference, providing methods to query abstract values.
  */
-export interface VectorInferenceResult<Domain extends AnyAbstractDomain> {
+export interface VectorInferenceResult<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>> {
 	/** Get the abstract vector value for a specific slicing criterion */
 	getForCriterion(criterion: `${number}@${string}`): VectorDomain<Domain> | undefined;
 	/** Get the abstract vector value for a specific AST node */
@@ -59,7 +60,7 @@ export interface VectorInferenceResult<Domain extends AnyAbstractDomain> {
  * // Can call getForCriterion multiple times without re-running inference
  * ```
  */
-export async function runVectorInference<Domain extends AnyAbstractDomain>(
+export async function runVectorInference<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	shell: RShell,
 	code: string,
 	factory: import('../../../../src/abstract-interpretation/vector/vector-domain').DomainFactory<Domain>,
@@ -122,7 +123,7 @@ export async function runVectorInference<Domain extends AnyAbstractDomain>(
  * assertLength(vector, [3, 3]);
  * ```
  */
-export async function getVectorForCriterion<Domain extends AnyAbstractDomain>(
+export async function getVectorForCriterion<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	shell: RShell,
 	code: string,
 	criterion: `${number}@${string}`,
@@ -144,7 +145,7 @@ export async function getVectorForCriterion<Domain extends AnyAbstractDomain>(
  * assertLength(vector, [3, 3]); // Exact length of 3
  * ```
  */
-export function assertLength<Domain extends AnyAbstractDomain>(
+export function assertLength<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain> | undefined,
 	expected: [number, number]
 ): void {
@@ -169,7 +170,7 @@ export function assertLength<Domain extends AnyAbstractDomain>(
  * assertLengthOrTop(vector); // Just check that we got a result
  * ```
  */
-export function assertLengthOrTop<Domain extends AnyAbstractDomain>(
+export function assertLengthOrTop<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain> | undefined
 ): void {
 	assert.ok(vector !== undefined, 'Expected a VectorDomain result but got undefined');
@@ -187,7 +188,7 @@ export function assertLengthOrTop<Domain extends AnyAbstractDomain>(
  * assertLengthRange(vector, 2, 5); // Length between 2 and 5
  * ```
  */
-export function assertLengthRange<Domain extends AnyAbstractDomain>(
+export function assertLengthRange<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain> | undefined,
 	min: number,
 	max: number
@@ -216,7 +217,7 @@ export function assertLengthRange<Domain extends AnyAbstractDomain>(
  * assertKnownPositions(vector, [[1, 1], [2, 2], [3, 3]]); // Positions 1, 2, 3 have values 1, 2, 3
  * ```
  */
-export function assertKnownPositions<Domain extends AnyAbstractDomain>(
+export function assertKnownPositions<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain> | undefined,
 	expectedValues: [number, number][]
 ): void {
@@ -263,7 +264,7 @@ export function assertKnownPositions<Domain extends AnyAbstractDomain>(
  * assertSelection(vector, [2, 2], [[10, 10], [30, 30]]);
  * ```
  */
-export function assertSelection<Domain extends AnyAbstractDomain>(
+export function assertSelection<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain> | undefined,
 	expectedLength: [number, number],
 	expectedPositions?: [number, number][]

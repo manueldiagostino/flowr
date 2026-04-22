@@ -195,6 +195,8 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 	/**
 	 * Adds another abstract value to the current abstract value by adding the two lower and upper bounds, respectively.
 	 */
+	public add(other: this): this;
+	public add(other: IntervalLift): this;
 	public add(other: this | IntervalLift): this {
 		const otherValue = other instanceof IntervalDomain ? other.value : other;
 
@@ -208,6 +210,8 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 	/**
 	 * Subtracts another abstract value from the current abstract value by subtracting the two lower and upper bounds from each other, respectively.
 	 */
+	public subtract(other: this): this;
+	public subtract(other: IntervalLift): this;
 	public subtract(other: this | IntervalLift): this {
 		const otherValue = other instanceof IntervalDomain ? other.value : other;
 
@@ -223,8 +227,8 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 	 * [a,b] * [c,d] = [min(ac, ad, bc, bd), max(ac, ad, bc, bd)]
 	 * Handles Bottom/Top short-circuiting.
 	 */
-	public multiply(other: this | IntervalLift): this {
-		const otherValue = other instanceof IntervalDomain ? other.value : other;
+	public multiply(other: this): this {
+		const otherValue = other.value;
 
 		if(this.value === Bottom || otherValue === Bottom) {
 			return this.bottom();
@@ -249,8 +253,8 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 	 * If the divisor interval contains zero, returns Top (sound over-approximation).
 	 * Handles Bottom/Top short-circuiting.
 	 */
-	public divide(other: this | IntervalLift): this {
-		const otherValue = other instanceof IntervalDomain ? other.value : other;
+	public divide(other: this): this {
+		const otherValue = other.value;
 
 		if(this.value === Bottom || otherValue === Bottom) {
 			return this.bottom();
@@ -273,7 +277,7 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 		// [a,b] / [c,d] = [a,b] * [1/d, 1/c]
 		// Since 0 ∉ [c,d], either c > 0 or d < 0, so 1/d < 1/c
 		const reciprocals: IntervalValue = [1 / otherValue[1], 1 / otherValue[0]];
-		return this.multiply(reciprocals);
+		return this.multiply(this.create(reciprocals));
 	}
 
 	/**

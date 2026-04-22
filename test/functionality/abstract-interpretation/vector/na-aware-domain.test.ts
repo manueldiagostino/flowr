@@ -3,7 +3,7 @@ import './log-config';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Top, Bottom, NA } from '../../../../src/abstract-interpretation/domains/lattice';
-import { intervalFactory, createNAAwareInterval, wrapIntervalWithNA } from '../_helper/na-aware-helpers';
+import { intervalFactory, createNAAwareInterval, wrapIntervalWithNA } from '../_helper/vector-na-creation-helpers';
 
 describe('NAAwareDomain', () => {
 	describe('Basic Lattice Elements', () => {

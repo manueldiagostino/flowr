@@ -1,5 +1,6 @@
 /* eslint-disable tsdoc/syntax */
 import { type AnyAbstractDomain } from '../domains/abstract-domain';
+import type { ArithmeticDomain } from '../domains/arithmetic-domain';
 import { type IntervalDomain } from '../domains/interval-domain';
 import { type PosIntervalDomain } from '../domains/positive-interval-domain';
 import { type VectorDomain } from './vector-domain';
@@ -65,7 +66,7 @@ export function isEnumerable(interval: PosIntervalDomain, threshold = 50): boole
  * @param value - The abstract vector
  * @returns The joined abstract value representing all elements (as NAAwareDomain)
  */
-export function squash<Domain extends AnyAbstractDomain>(
+export function squash<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>
 ): NAAwareDomain<Domain> {
 	vectorLogger.debug('Semantic: squash');
@@ -97,7 +98,7 @@ export function squash<Domain extends AnyAbstractDomain>(
  * @param excludedIndices - Set of 1-based indices to exclude from the join
  * @returns The joined abstract value representing all non-excluded elements (as NAAwareDomain)
  */
-export function squashedExcept<Domain extends AnyAbstractDomain>(
+export function squashedExcept<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	excludedIndices: ReadonlySet<number>
 ): NAAwareDomain<Domain> {
@@ -458,7 +459,7 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 /**
  *
  */
-export function accessPosition<Domain extends AnyAbstractDomain>(
+export function accessPosition<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain>,
 	pos: number,
 	naValue: NAAwareDomain<Domain>
@@ -499,7 +500,7 @@ function getLengthUpperBound(length: PosIntervalDomain): number | undefined {
 	return length.value[1];
 }
 
-function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
+function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain>,
 	pos: number,
 ): NAAwareDomain<Domain> {
@@ -512,7 +513,7 @@ function accessFromInfiniteLengthVector<Domain extends AnyAbstractDomain>(
 	return vector.summary;
 }
 
-function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain>(
+function accessFromFiniteLengthVector<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	vector: VectorDomain<Domain>,
 	pos: number,
 	naValue: NAAwareDomain<Domain>,

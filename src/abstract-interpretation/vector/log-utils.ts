@@ -1,11 +1,12 @@
 import type { VectorDomain } from './vector-domain';
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
+import type { ArithmeticDomain } from '../domains/arithmetic-domain';
 
 /**
  * Format a VectorDomain for logging.
  * Shows: length, number of known positions, summary, attributes.
  */
-export function formatVectorDomain<Domain extends AnyAbstractDomain>(
+export function formatVectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	domain: VectorDomain<Domain>
 ): string {
 	const lengthStr = domain.length.toString();

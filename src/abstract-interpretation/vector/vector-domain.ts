@@ -1,6 +1,7 @@
 /* eslint-disable tsdoc/syntax */
 /* eslint-disable @typescript-eslint/unified-signatures */
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
+import type { ArithmeticDomain } from '../domains/arithmetic-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import { ProductDomain } from '../domains/product-domain';
 import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
@@ -9,6 +10,7 @@ import { VectorAttrDomain } from '../domains/vector-attr-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import { RVectorTypeDomain } from '../domains/vector-type-domain';
 import { IntervalDomain } from '../domains/interval-domain';
+import { applyBinaryOp, applyNegate } from './operations/arithmetic';
 
 export type { DomainFactory } from './known-initial-positions-domain';
 
@@ -205,7 +207,9 @@ const SafetyMaxKnownLength = 1000;
  * to maintain consistency between components.
  * @template Domain - The abstract domain for individual vector elements
  */
-export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomain<VectorProduct<Domain>> {
+export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>
+	extends ProductDomain<VectorProduct<Domain>>
+	implements ArithmeticDomain<VectorDomain<Domain>> {
 	private readonly _factory: DomainFactory<Domain>;
 
 	/**
@@ -282,6 +286,55 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	}
 
 	/**
+	 * Element-wise addition with recycling: this + other
+	 * Delegates to applyBinaryOp.
+	 * @param other - The vector to add
+	 * @returns The resulting VectorDomain after addition
+	 */
+	public add(other: this): this {
+		return applyBinaryOp(this, other, '+') as this;
+	}
+
+	/**
+	 * Element-wise subtraction with recycling: this - other
+	 * Delegates to applyBinaryOp.
+	 * @param other - The vector to subtract
+	 * @returns The resulting VectorDomain after subtraction
+	 */
+	public subtract(other: this): this {
+		return applyBinaryOp(this, other, '-') as this;
+	}
+
+	/**
+	 * Element-wise multiplication with recycling: this * other
+	 * Delegates to applyBinaryOp.
+	 * @param other - The vector to multiply
+	 * @returns The resulting VectorDomain after multiplication
+	 */
+	public multiply(other: this): this {
+		return applyBinaryOp(this, other, '*') as this;
+	}
+
+	/**
+	 * Element-wise division with recycling: this / other
+	 * Delegates to applyBinaryOp.
+	 * @param other - The vector to divide by
+	 * @returns The resulting VectorDomain after division
+	 */
+	public divide(other: this): this {
+		return applyBinaryOp(this, other, '/') as this;
+	}
+
+	/**
+	 * Unary negation: -this
+	 * Delegates to applyNegate.
+	 * @returns The resulting VectorDomain after negation
+	 */
+	public negate(): this {
+		return applyNegate(this) as this;
+	}
+
+	/**
 	 * Factory method to create a VectorDomain with explicit NAAwareDomain wrapping.
 	 *
 	 * All values and summary must be explicitly wrapped in NAAwareDomain, making NA-awareness
@@ -306,7 +359,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * );
 	 * ```
 	 */
-	public static create<Domain extends AnyAbstractDomain>(
+	public static create<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 		factory: DomainFactory<Domain>,
 		length: PosIntervalDomain,
 		known: KnownInitialPositionsDomain<NAAwareDomain<Domain>>,
@@ -344,7 +397,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * );
 	 * ```
 	 */
-	public static fromValues<Domain extends AnyAbstractDomain>(
+	public static fromValues<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 		factory: DomainFactory<Domain>,
 		length: PosIntervalDomain,
 		known: readonly NAAwareDomain<Domain>[],
@@ -364,7 +417,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * Creates the top element of the vector domain.
 	 * Represents any possible vector: unknown length, empty content, summary is top, attributes is top.
 	 */
-	public static top<Domain extends AnyAbstractDomain>(
+	public static top<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
 		const smartFactory = NAAwareDomain.createSmartFactory(factory);
@@ -389,7 +442,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 *
 	 * This differs from bottom() which has bottom length (no values possible).
 	 */
-	public static empty<Domain extends AnyAbstractDomain>(
+	public static empty<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
 		const smartFactory = NAAwareDomain.createSmartFactory(factory);
@@ -411,7 +464,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain> extends ProductDomai
 	 * Creates the bottom element of the vector domain.
 	 * Represents no possible vector: bottom length, bottom known positions, bottom summary, bottom attributes.
 	 */
-	public static bottom<Domain extends AnyAbstractDomain>(
+	public static bottom<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 		factory: DomainFactory<Domain>
 	): VectorDomain<Domain> {
 		const smartFactory = NAAwareDomain.createSmartFactory(factory);

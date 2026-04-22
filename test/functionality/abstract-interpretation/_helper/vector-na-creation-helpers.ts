@@ -113,11 +113,12 @@ export function createPureNAVector(length: [number, number]): VectorDomain<Inter
 
 /**
  * Assertion helper to check if a vector contains NA values.
- * Supports both VectorDomain<IntervalDomain> (where values are NAAwareDomain wrapped internally)
- * and VectorDomain<NAAwareDomain<IntervalDomain>> (explicit NA-aware domain).
+ * Supports VectorDomain<IntervalDomain> (where values are NAAwareDomain wrapped internally).
+ * Note: VectorDomain<NAAwareDomain<IntervalDomain>> is not valid because NAAwareDomain
+ * doesn't implement ArithmeticDomain, which VectorDomain requires.
  */
 export function assertContainsNA(
-	vector: VectorDomain<IntervalDomain> | VectorDomain<NAAwareDomain<IntervalDomain>> | undefined,
+	vector: VectorDomain<IntervalDomain> | undefined,
 	expected: boolean,
 	message?: string
 ): void {

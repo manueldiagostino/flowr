@@ -1,3 +1,4 @@
+/* eslint-disable tsdoc/syntax */
 import { VectorDomain, type DomainFactory } from '../vector-domain';
 import { NAAwareDomain } from '../na-aware-domain';
 import { PosIntervalDomain } from '../../domains/positive-interval-domain';

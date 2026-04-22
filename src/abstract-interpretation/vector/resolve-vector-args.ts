@@ -6,6 +6,7 @@ import type { RNode } from '../../r-bridge/lang-4.x/ast/model/model';
 import { RType } from '../../r-bridge/lang-4.x/ast/model/type';
 import { unliftRValue, unwrapRValue, unwrapRVector } from '../../util/r-value';
 import type { AnyAbstractDomain, ConcreteDomain } from '../domains/abstract-domain';
+import type { ArithmeticDomain } from '../domains/arithmetic-domain';
 import { VectorDomain } from './vector-domain';
 import type { DomainFactory } from './known-initial-positions-domain';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
@@ -23,7 +24,7 @@ import { RVectorTypeDomain } from '../domains/vector-type-domain';
  * @param value - The primitive value to convert
  * @returns A set of concrete domain values, or undefined to indicate NA
  */
-export type ValueToDomainConverter<Domain extends AnyAbstractDomain> = (
+export type ValueToDomainConverter<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>> = (
 	value: string | number | boolean
 ) => ReadonlySet<ConcreteDomain<Domain>> | undefined;
 
@@ -38,7 +39,7 @@ export type ValueToDomainConverter<Domain extends AnyAbstractDomain> = (
  * @param valueToDomain - A function that converts primitive values to domain concrete values
  * @returns The VectorDomain representation of the resolved value, or undefined if resolution fails
  */
-export function resolveIdToVectorValue<Domain extends AnyAbstractDomain>(
+export function resolveIdToVectorValue<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	id: NodeId | RArgument<ParentInformation> | undefined,
 	info: ResolveInfo,
 	factory: DomainFactory<Domain>,
@@ -126,7 +127,7 @@ export function resolveIdToVectorLength(
  * @param factory - The domain factory for creating element domain values
  * @returns A VectorDomain with the specified values
  */
-export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
+export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	domainValueSets: (ReadonlySet<ConcreteDomain<Domain>> | undefined)[],
 	factory: DomainFactory<Domain>
 ): VectorDomain<Domain> {
@@ -165,7 +166,7 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain>(
  * @param valueToDomain - A function that converts primitive values to domain concrete values
  * @returns A VectorDomain with the literal value, or undefined if the node is not a literal
  */
-export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
+export function buildVectorFromLiteral<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	node: RNode<ParentInformation>,
 	factory: DomainFactory<Domain>,
 	valueToDomain: ValueToDomainConverter<Domain>
@@ -214,7 +215,7 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain>(
  * @param factory - The domain factory for creating element domain values
  * @returns A VectorDomain representing any possible vector
  */
-export function buildVectorTop<Domain extends AnyAbstractDomain>(
+export function buildVectorTop<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	factory: DomainFactory<Domain>
 ): VectorDomain<Domain> {
 	return VectorDomain.top(factory);
@@ -226,7 +227,7 @@ export function buildVectorTop<Domain extends AnyAbstractDomain>(
  * @param factory - The domain factory for creating element domain values
  * @returns A VectorDomain representing no possible vector
  */
-export function buildVectorBottom<Domain extends AnyAbstractDomain>(
+export function buildVectorBottom<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	factory: DomainFactory<Domain>
 ): VectorDomain<Domain> {
 	return VectorDomain.bottom(factory);

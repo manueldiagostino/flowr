@@ -1,4 +1,5 @@
 import type { AnyAbstractDomain } from '../../domains/abstract-domain';
+import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import type { VectorDomain } from '../vector-domain';
 import type { NAAwareDomain } from '../na-aware-domain';
 import { vectorLogger } from '../logger';
@@ -10,7 +11,7 @@ import { vectorLogger } from '../logger';
  * @param other - The second VectorDomain operand (undefined for single-element concatenations)
  * @returns The resulting VectorDomain after concatenation
  */
-export function applyConcatenate<Domain extends AnyAbstractDomain>(
+export function applyConcatenate<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	other: VectorDomain<Domain> | undefined
 ): VectorDomain<Domain> {

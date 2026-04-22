@@ -1,34 +1,17 @@
 import { assert, describe, test } from 'vitest';
 import { propagate, adjustForZeros, rhoC, rhoF } from '../../../../src/abstract-interpretation/vector/vector-semantics';
-import { IntervalDomain, IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { intervalFactory } from '../_helper/interval-factory';
-import { asNaAware, asNaAwares, NaInterval, asNaAwareWithNA, type AbstractNaValue } from '../_helper/vector-evaluation-helpers';
+import { intervalFactory } from '../_helper/vector-interval-factory';
+import { asNaAware, asNaAwares, NaInterval, asNaAwareWithNA, toNAAwareDomain, toNAAwareDomains, type AbstractNaValue } from '../_helper/vector-assertion-helpers';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
+import { createTestKnown } from '../_helper/vector-creation-helpers';
 import './log-config';
-
-/** Converts an AbstractNaValue<IntervalDomain> to a real NAAwareDomain<IntervalDomain>. */
-function toNAAware({ inner, hasNA }: AbstractNaValue<IntervalDomain>): NAAwareDomain<IntervalDomain> {
-	let domainValue: IntervalDomain;
-	if(inner === IntervalTop) {
-		domainValue = IntervalDomain.top();
-	} else if(inner === Bottom) {
-		domainValue = IntervalDomain.bottom();
-	} else {
-		domainValue = new IntervalDomain(inner);
-	}
-	return new NAAwareDomain({ inner: domainValue, hasNA }, intervalFactory);
-}
-
-/** Converts a list of AbstractNaValue<IntervalDomain> to real NAAwareDomain<IntervalDomain> instances. */
-function toNAAwares(values: readonly AbstractNaValue<IntervalDomain>[]): NAAwareDomain<IntervalDomain>[] {
-	return values.map(toNAAware);
-}
 
 /** Asserts that a NAAwareDomain<IntervalDomain> equals the expected AbstractNaValue<IntervalDomain>. */
 function assertNAAwareEquals(
@@ -36,94 +19,9 @@ function assertNAAwareEquals(
 	expected: AbstractNaValue<IntervalDomain>,
 	message?: string
 ): void {
-	const expectedDomain = toNAAware(expected);
+	const expectedDomain = toNAAwareDomain(expected);
 	assert.ok(actual.equals(expectedDomain), message ?? `Expected ${expectedDomain.toString()} but got ${actual.toString()}`);
 }
-
-describe('propagate', () => {
-	test('propagate with empty positions returns summary', () => {
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate([], summary, 0);
-		assertNAAwareEquals(result, asNaAware([10, 10]));
-	});
-
-	test('propagate with definite zero increments counter and skips', () => {
-		const positions = toNAAwares(asNaAwares([0, 0], [5, 5]));
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		// First is zero (skipped), k becomes 1
-		// propagate([5,5], summary, 1): first [5,5] non-zero, k=1 ≤ 1 → return [5,5]
-		// Result: [5,5]
-		assertNAAwareEquals(result, asNaAware([5, 5]));
-	});
-
-	test('propagate with possible zero joins first with propagated rest', () => {
-		const positions = toNAAwares(asNaAwares([-1, 1], [5, 5]));
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		// [-1,1] contains 0 but not exactly {0}
-		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
-		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
-		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
-		assertNAAwareEquals(result, asNaAware([-1, 5]));
-	});
-
-	test('propagate with possible zero joins first with propagated rest (NA version)', () => {
-		const positions = toNAAwares([...asNaAwares([-1, 1]), asNaAwareWithNA([5, 5])]);
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		// [-1,1] contains 0 but not exactly {0}
-		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
-		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
-		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
-		assertNAAwareEquals(result, asNaAwareWithNA([-1, 5]));
-	});
-
-	test('pure NA considered as non-zero value', () => {
-		const positions = toNAAwares(asNaAwares(NaInterval, [5, 7]));
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		// [-1,1] contains 0 but not exactly {0}
-		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
-		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
-		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
-		assertNAAwareEquals(result, NaInterval);
-	});
-
-	test('propagate non-zero with k>1 joins first with propagated rest (paper L411)', () => {
-		const positions = toNAAwares(asNaAwares([3, 3], [5, 5]));
-		const summary = toNAAware(asNaAware([10, 10]));
-		// k=2: first [3,3] non-zero, k=2>1 → [3,3] ⊔ propagate([5,5], summary, 1)
-		// propagate([5,5], summary, 1): first [5,5] non-zero, k=1 ≤ 1 → return [5,5]
-		// Result: [3,3] ⊔ [5,5] = [3, 5]
-		const result = propagate(positions, summary, 2);
-		assertNAAwareEquals(result, asNaAware([3, 5]));
-	});
-
-	test('propagate non-zero with k=0 returns first value unchanged (paper L414)', () => {
-		const positions = toNAAwares(asNaAwares([3, 3], [5, 5]));
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		assertNAAwareEquals(result, asNaAware([3, 3]));
-	});
-
-	test('propagate possible zero with k>0 joins first with propagated rest', () => {
-		const positions = toNAAwares(asNaAwares([0, 2], [5, 5]));
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 1);
-		// [0,2] may contain zero, so: [0,2] ⊔ propagate([5,5], [10,10], 1)
-		// propagate([5,5], [10,10], 1): [5,5] non-zero, k=1 ≤ 1 → return [5,5]
-		// Final: [0,2] ⊔ [5,5] = [0, 5]
-		assertNAAwareEquals(result, asNaAware([0, 5]));
-	});
-
-	test('propagate with bottom position returns bottom', () => {
-		const positions = [toNAAware(NaInterval)];
-		const summary = toNAAware(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		assertNAAwareEquals(result, NaInterval);
-	});
-});
 
 /**
  * Helper to create a test VectorDomain<IntervalDomain> with specified length,
@@ -138,7 +36,7 @@ function createTestVector(
 	positionRanges: Array<[number, number]>,
 	summaryRange?: [number, number]
 ): VectorDomain<IntervalDomain> {
-	const positions = toNAAwares(positionRanges.map(r => asNaAware(r)));
+	const positions = toNAAwareDomains(positionRanges.map(r => asNaAware(r)));
 	const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 	const knownPositions = new KnownInitialPositionsDomain(positions, smartFactory);
 
@@ -147,8 +45,8 @@ function createTestVector(
 	// - Infinite vectors (upper === +Infinity): summary must be valorized
 	const isInfinite = length[1] === +Infinity;
 	const summary = isInfinite
-		? toNAAware(asNaAware(summaryRange ?? [0, 100]))
-		: toNAAware(asNaAware(Bottom));
+		? toNAAwareDomain(asNaAware(summaryRange ?? [0, 100]))
+		: toNAAwareDomain(asNaAware(Bottom));
 
 	return VectorDomain.create(
 		intervalFactory,
@@ -159,6 +57,91 @@ function createTestVector(
 		RVectorTypeDomain.of('integer')
 	);
 }
+
+describe('propagate', () => {
+	test('propagate with empty positions returns summary', () => {
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate([], summary, 0);
+		assertNAAwareEquals(result, asNaAware([10, 10]));
+	});
+
+	test('propagate with definite zero increments counter and skips', () => {
+		const positions = toNAAwareDomains(asNaAwares([0, 0], [5, 5]));
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 0);
+		// First is zero (skipped), k becomes 1
+		// propagate([5,5], summary, 1): first [5,5] non-zero, k=1 ≤ 1 → return [5,5]
+		// Result: [5,5]
+		assertNAAwareEquals(result, asNaAware([5, 5]));
+	});
+
+	test('propagate with possible zero joins first with propagated rest', () => {
+		const positions = toNAAwareDomains(asNaAwares([-1, 1], [5, 5]));
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 0);
+		// [-1,1] contains 0 but not exactly {0}
+		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
+		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
+		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
+		assertNAAwareEquals(result, asNaAware([-1, 5]));
+	});
+
+	test('propagate with possible zero joins first with propagated rest (NA version)', () => {
+		const positions = toNAAwareDomains([...asNaAwares([-1, 1]), asNaAwareWithNA([5, 5])]);
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 0);
+		// [-1,1] contains 0 but not exactly {0}
+		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
+		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
+		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
+		assertNAAwareEquals(result, asNaAwareWithNA([-1, 5]));
+	});
+
+	test('pure NA considered as non-zero value', () => {
+		const positions = toNAAwareDomains(asNaAwares(NaInterval, [5, 7]));
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 0);
+		// [-1,1] contains 0 but not exactly {0}
+		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
+		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
+		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
+		assertNAAwareEquals(result, NaInterval);
+	});
+
+	test('propagate non-zero with k>1 joins first with propagated rest (paper L411)', () => {
+		const positions = toNAAwareDomains(asNaAwares([3, 3], [5, 5]));
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		// k=2: first [3,3] non-zero, k=2>1 → [3,3] ⊔ propagate([5,5], summary, 1)
+		// propagate([5,5], summary, 1): first [5,5] non-zero, k=1 ≤ 1 → return [5,5]
+		// Result: [3,3] ⊔ [5,5] = [3, 5]
+		const result = propagate(positions, summary, 2);
+		assertNAAwareEquals(result, asNaAware([3, 5]));
+	});
+
+	test('propagate non-zero with k=0 returns first value unchanged (paper L414)', () => {
+		const positions = toNAAwareDomains(asNaAwares([3, 3], [5, 5]));
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 0);
+		assertNAAwareEquals(result, asNaAware([3, 3]));
+	});
+
+	test('propagate possible zero with k>0 joins first with propagated rest', () => {
+		const positions = toNAAwareDomains(asNaAwares([0, 2], [5, 5]));
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 1);
+		// [0,2] may contain zero, so: [0,2] ⊔ propagate([5,5], [10,10], 1)
+		// propagate([5,5], [10,10], 1): [5,5] non-zero, k=1 ≤ 1 → return [5,5]
+		// Final: [0,2] ⊔ [5,5] = [0, 5]
+		assertNAAwareEquals(result, asNaAware([0, 5]));
+	});
+
+	test('propagate with bottom position returns bottom', () => {
+		const positions = [toNAAwareDomain(NaInterval)];
+		const summary = toNAAwareDomain(asNaAware([10, 10]));
+		const result = propagate(positions, summary, 0);
+		assertNAAwareEquals(result, NaInterval);
+	});
+});
 
 describe('adjustForZeros', () => {
 	test('returns bottom vector unchanged', () => {
@@ -271,8 +254,8 @@ describe('adjustForZeros', () => {
 		// Using asNaAwareWithNA to create a value that has NA flag set
 		// Per invariant: finite vector [2,2] must have bottom summary
 		const naValue = asNaAwareWithNA([1, 1]);  // hasNA: true, inner: [1,1]
-		const positions = toNAAwares([naValue, asNaAware([2, 2])]);
-		const summary = toNAAware(asNaAware(Bottom));
+		const positions = toNAAwareDomains([naValue, asNaAware([2, 2])]);
+		const summary = toNAAwareDomain(asNaAware(Bottom));
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 		const knownPositions = new KnownInitialPositionsDomain(positions, smartFactory);
 
@@ -298,7 +281,7 @@ describe('adjustForZeros', () => {
 		// Per invariant: finite vector [0,0] must have bottom summary
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 		const emptyKnown = KnownInitialPositionsDomain.top<NAAwareDomain<IntervalDomain>>(smartFactory);
-		const summary = toNAAware(asNaAware(Bottom));
+		const summary = toNAAwareDomain(asNaAware(Bottom));
 
 		const vector = VectorDomain.create(
 			intervalFactory,
@@ -322,10 +305,10 @@ describe('adjustForZeros', () => {
 		// Per invariant: finite vector [2,2] must have bottom summary
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 		const knownPositions = new KnownInitialPositionsDomain(
-			toNAAwares([asNaAware([0, 0]), asNaAware([1, 1])]),
+			toNAAwareDomains([asNaAware([0, 0]), asNaAware([1, 1])]),
 			smartFactory
 		);
-		const summary = toNAAware(asNaAware(Bottom));
+		const summary = toNAAwareDomain(asNaAware(Bottom));
 		const attrs = VectorAttrDomain.empty();
 
 		const vector = VectorDomain.create(
@@ -346,25 +329,6 @@ describe('adjustForZeros', () => {
 		}
 	});
 });
-
-/**
- * Helper to create a KnownInitialPositionsDomain for rhoC tests.
- * Accepts either range tuples (which get wrapped) or already-wrapped NAAwareDomain values.
- */
-function createTestKnown(
-	rangesOrPositions: Array<[number, number]> | readonly NAAwareDomain<IntervalDomain>[]
-): KnownInitialPositionsDomain<NAAwareDomain<IntervalDomain>> {
-	const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
-	if(rangesOrPositions.length > 0 && rangesOrPositions[0] instanceof NAAwareDomain) {
-		// Already wrapped values
-		return new KnownInitialPositionsDomain(rangesOrPositions as readonly NAAwareDomain<IntervalDomain>[], smartFactory);
-	} else {
-		// Range tuples - wrap them
-		const ranges = rangesOrPositions as Array<[number, number]>;
-		const positions = toNAAwares(ranges.map(r => asNaAware(r)));
-		return new KnownInitialPositionsDomain(positions, smartFactory);
-	}
-}
 
 describe('rhoC', () => {
 	test('returns top when known is bottom', () => {
@@ -485,7 +449,7 @@ describe('rhoC', () => {
 		// i' = min(2, 3) = 2
 		// result = [1, NA] ++ [1, NA] = [1, NA, 1, NA]
 		const naValue = asNaAwareWithNA([2, 2]);  // hasNA: true, inner: [2,2]
-		const known = createTestKnown(toNAAwares([asNaAware([1, 1]), naValue, asNaAware([3, 3])]));
+		const known = createTestKnown(toNAAwareDomains([asNaAware([1, 1]), naValue, asNaAware([3, 3])]));
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
 		const result = rhoC(known, 2, 4, smartFactory);
@@ -595,7 +559,7 @@ describe('rhoF', () => {
 		// rhoC(i=2, h=2): i'=min(2,2)=2, fullRepeats=1 → [1, NA]
 		// Join: [1, 1] ⊔ [1, NA] = [[1,1], [1,2]+NA]
 		const naValue = asNaAwareWithNA([2, 2]);  // hasNA: true, inner: [2,2]
-		const known = createTestKnown(toNAAwares([asNaAware([1, 1]), naValue]));
+		const known = createTestKnown(toNAAwareDomains([asNaAware([1, 1]), naValue]));
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
 		const result = rhoF(known, 1, 2, smartFactory);
