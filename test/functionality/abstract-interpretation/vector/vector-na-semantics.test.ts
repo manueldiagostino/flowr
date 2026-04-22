@@ -1,12 +1,14 @@
 import { describe, test, assert } from 'vitest';
 import './log-config';
-import type { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
+import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { withShell } from '../../_helper/shell';
 import { getVectorForCriterion } from '../_helper/vector-inference-helpers';
-import { naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA } from '../_helper/na-aware-helpers';
+import { naAwareIntervalFactory, createNAAwareVector, createPureNAVector, assertContainsNA, intervalFactory } from '../_helper/na-aware-helpers';
 import type { ValueToDomainConverter } from '../../../../src/abstract-interpretation/vector/resolve-vector-args';
 import { NA, Top } from '../../../../src/abstract-interpretation/domains/lattice';
+import { adjustForZeros, propagate } from '../../../../src/abstract-interpretation/vector/vector-semantics';
 
 const naValueToDomain: ValueToDomainConverter<NAAwareDomain<IntervalDomain>> = (value) => {
 	if(typeof value === 'number') {
@@ -288,6 +290,257 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			const joined = v1.join(v2);
 			assert.ok(joined.isValue());
 			assertContainsNA(joined, true);
+		});
+	});
+
+	describe('adjustForZeros', () => {
+		test('empty vector returns unchanged', () => {
+			const vector = createNAAwareVector(
+				[0, 0],
+				[]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [0, 0]);
+			}
+		});
+
+		test('vector with no zeros returns unchanged length', () => {
+			const vector = createNAAwareVector(
+				[3, 3],
+				[
+					{ range: [1, 1], hasNA: false },
+					{ range: [2, 2], hasNA: false },
+					{ range: [3, 3], hasNA: false }
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [3, 3]);
+			}
+			// Known positions should be preserved
+			if(result.known.isValue()) {
+				const vals = result.known.value as readonly NAAwareDomain<IntervalDomain>[];
+				assert.strictEqual(vals.length, 3);
+			}
+		});
+
+		test('vector with definite zeros adjusts length and removes zeros', () => {
+			const vector = createNAAwareVector(
+				[4, 4],
+				[
+					{ range: [0, 0], hasNA: false },  // definite zero
+					{ range: [0, 0], hasNA: false },  // definite zero
+					{ range: [1, 1], hasNA: false },  // non-zero
+					{ range: [2, 2], hasNA: false }   // non-zero
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			// Length should be [2, 2] (4 - 2 definite zeros for upper, 4 - 2 possible zeros for lower)
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [2, 2]);
+			}
+			// Known positions should have propagated values past zeros
+			if(result.known.isValue()) {
+				const vals = result.known.value as readonly NAAwareDomain<IntervalDomain>[];
+				assert.strictEqual(vals.length, 4);
+				// First position: after skipping 2 zeros, should get value [1,1]
+				assert.strictEqual(vals[0].inner.isValue(), true);
+				if(vals[0].inner.isValue()) {
+					assert.deepStrictEqual(vals[0].inner.value, [1, 1]);
+				}
+			}
+		});
+
+		test('vector with possible zeros (interval containing 0) adjusts bounds', () => {
+			const vector = createNAAwareVector(
+				[3, 3],
+				[
+					{ range: [-1, 1], hasNA: false },  // possible zero (contains 0)
+					{ range: [2, 2], hasNA: false },   // non-zero
+					{ range: [3, 3], hasNA: false }    // non-zero
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			// l' = 3 - 1 (possible zero) = 2, u' = 3 - 0 (no definite zeros) = 3
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [2, 3]);
+			}
+		});
+
+		test('vector with mix of definite and possible zeros', () => {
+			const vector = createNAAwareVector(
+				[5, 5],
+				[
+					{ range: [0, 0], hasNA: false },   // definite zero
+					{ range: [-1, 1], hasNA: false },  // possible zero
+					{ range: [0, 0], hasNA: false },   // definite zero
+					{ range: [2, 2], hasNA: false },   // non-zero
+					{ range: [3, 3], hasNA: false }    // non-zero
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			// definiteZeros = 2, possibleZeros = 3
+			// l' = 5 - 3 = 2, u' = 5 - 2 = 3
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [2, 3]);
+			}
+		});
+
+		test('single zero returns empty selector', () => {
+			const vector = createNAAwareVector(
+				[1, 1],
+				[
+					{ range: [0, 0], hasNA: false }  // single definite zero
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			// l' = 1 - 1 = 0, u' = 1 - 1 = 0
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [0, 0]);
+			}
+		});
+
+		test('propagates values through zeros', () => {
+			const vector = createNAAwareVector(
+				[4, 4],
+				[
+					{ range: [0, 0], hasNA: false },  // zero
+					{ range: [0, 0], hasNA: false },  // zero
+					{ range: [5, 5], hasNA: false },  // non-zero
+					{ range: [6, 6], hasNA: false }   // non-zero
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			if(result.known.isValue()) {
+				const vals = result.known.value as readonly NAAwareDomain<IntervalDomain>[];
+				// Position 0: skip 2 zeros, get [5,5]
+				assert.strictEqual(vals[0].inner.isValue(), true);
+				if(vals[0].inner.isValue()) {
+					assert.deepStrictEqual(vals[0].inner.value, [5, 5]);
+				}
+				// Position 1: skip 2 zeros, get [6,6]
+				assert.strictEqual(vals[1].inner.isValue(), true);
+				if(vals[1].inner.isValue()) {
+					assert.deepStrictEqual(vals[1].inner.value, [6, 6]);
+				}
+			}
+		});
+
+		test('handles NA in positions (not treated as zeros)', () => {
+			const vector = createNAAwareVector(
+				[3, 3],
+				[
+					{ range: [0, 0], hasNA: true },   // zero with NA
+					{ range: [1, 1], hasNA: false },  // non-zero
+					{ range: [2, 2], hasNA: false }   // non-zero
+				]
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			// NA with [0,0] should still be counted as definite zero
+			// l' = 3 - 1 = 2, u' = 3 - 1 = 2
+			if(result.length.isValue()) {
+				assert.deepStrictEqual(result.length.value, [2, 2]);
+			}
+		});
+
+		test('updates length bounds correctly with infinity', () => {
+			const vector = createNAAwareVector(
+				[2, Infinity],
+				[
+					{ range: [0, 0], hasNA: false },  // definite zero
+					{ range: [1, 1], hasNA: false }   // non-zero
+				],
+				{ range: [5, 5], hasNA: false }  // summary for infinite part
+			);
+			const result = adjustForZeros(vector);
+
+			assert.ok(result.isValue());
+			// l' = 2 - 1 = 1, u' = Infinity - 1 = Infinity
+			if(result.length.isValue()) {
+				assert.strictEqual(result.length.value[0], 1);
+				assert.strictEqual(result.length.value[1], Infinity);
+			}
+		});
+
+		test('propagate function with empty positions returns summary', () => {
+			const summary = new NAAwareDomain(
+				{ inner: new IntervalDomain([10, 10]), hasNA: false },
+				intervalFactory
+			);
+			const result = propagate([], summary, 0);
+
+			assert.strictEqual(result.inner.isValue(), true);
+			if(result.inner.isValue()) {
+				assert.deepStrictEqual(result.inner.value, [10, 10]);
+			}
+		});
+
+		test('propagate function skips definite zeros', () => {
+			const positions = [
+				new NAAwareDomain({ inner: new IntervalDomain([0, 0]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
+			];
+			const summary = new NAAwareDomain(
+				{ inner: IntervalDomain.bottom(), hasNA: false },
+				intervalFactory
+			);
+			const result = propagate(positions, summary, 0);
+
+			// Should skip the zero and return [5, 5]
+			assert.strictEqual(result.inner.isValue(), true);
+			if(result.inner.isValue()) {
+				assert.deepStrictEqual(result.inner.value, [5, 5]);
+			}
+		});
+
+		test('propagate function joins with may-contain-zero positions', () => {
+			const positions = [
+				new NAAwareDomain({ inner: new IntervalDomain([-1, 1]), hasNA: false }, intervalFactory),
+				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
+			];
+			const summary = new NAAwareDomain(
+				{ inner: IntervalDomain.bottom(), hasNA: false },
+				intervalFactory
+			);
+			const result = propagate(positions, summary, 0);
+
+			// [-1,1] may contain zero, so result should be join of [-1,1] and [5,5] = [-1, 5]
+			assert.strictEqual(result.inner.isValue(), true);
+			if(result.inner.isValue()) {
+				assert.strictEqual(result.inner.value[0], -1);
+				assert.strictEqual(result.inner.value[1], 5);
+			}
+		});
+
+		test('bottom vector returns bottom', () => {
+			const bottomVector = VectorDomain.bottom(intervalFactory);
+			const result = adjustForZeros(bottomVector);
+
+			assert.strictEqual(result.isBottom(), true);
+		});
+
+		test('top vector returns top', () => {
+			const topVector = VectorDomain.top(intervalFactory);
+			const result = adjustForZeros(topVector);
+
+			assert.strictEqual(result.isTop(), true);
 		});
 	});
 });

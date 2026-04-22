@@ -43,7 +43,8 @@ export interface ExpectedVector<Domain extends AnyAbstractDomain> extends Record
 /** A test case for vector evaluation, mapping identifiers as slicing criteria to their expected abstract vector values. */
 export type TestCase<Domain extends AnyAbstractDomain> = Record<`${number}@${string}`, ExpectedVector<Domain> | undefined>;
 
-/** Type of an entry for a validation test case, containing the slicing criterion, the inferred vector domain for this criterion,
+/**
+ * Type of an entry for a validation test case, containing the slicing criterion, the inferred vector domain for this criterion,
  * the R symbol node corresponding to this criterion, and the line of code where this criterion is located.
  */
 export interface TestEntry<Domain extends AnyAbstractDomain> {
