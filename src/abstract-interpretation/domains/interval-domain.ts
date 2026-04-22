@@ -3,6 +3,7 @@ import { Ternary } from '../../util/logic';
 import { AbstractDomain } from './abstract-domain';
 import { Bottom, BottomSymbol, Top } from './lattice';
 import { type SatisfiableDomain, NumericalComparator } from './satisfiable-domain';
+import type { ArithmeticDomain } from './arithmetic-domain';
 /* eslint-disable @typescript-eslint/unified-signatures */
 
 /** The Top element of the interval domain as interval [-∞, +∞] */
@@ -24,7 +25,7 @@ export type IntervalLift = IntervalValue | IntervalBottom;
  */
 export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 	extends AbstractDomain<number, IntervalValue, IntervalTop, IntervalBottom, Value>
-	implements SatisfiableDomain<number> {
+	implements SatisfiableDomain<number>, ArithmeticDomain<IntervalDomain> {
 
 	constructor(value: Value) {
 		if(Array.isArray(value)) {
@@ -215,6 +216,64 @@ export class IntervalDomain<Value extends IntervalLift = IntervalLift>
 		} else {
 			return this.create([this.value[0] - otherValue[0], this.value[1] - otherValue[1]]);
 		}
+	}
+
+	/**
+	 * Multiplies two intervals using standard interval arithmetic.
+	 * [a,b] * [c,d] = [min(ac, ad, bc, bd), max(ac, ad, bc, bd)]
+	 * Handles Bottom/Top short-circuiting.
+	 */
+	public multiply(other: this | IntervalLift): this {
+		const otherValue = other instanceof IntervalDomain ? other.value : other;
+
+		if(this.value === Bottom || otherValue === Bottom) {
+			return this.bottom();
+		}
+		// If either is Top, return Top
+		if(this.isTop() || otherValue === IntervalTop) {
+			return this.top();
+		}
+
+		const products = [
+			this.value[0] * otherValue[0],
+			this.value[0] * otherValue[1],
+			this.value[1] * otherValue[0],
+			this.value[1] * otherValue[1]
+		];
+		return this.create([Math.min(...products), Math.max(...products)]);
+	}
+
+	/**
+	 * Divides two intervals using standard interval arithmetic.
+	 * [a,b] / [c,d] = [a,b] * [1/d, 1/c] when 0 ∉ [c,d].
+	 * If the divisor interval contains zero, returns Top (sound over-approximation).
+	 * Handles Bottom/Top short-circuiting.
+	 */
+	public divide(other: this | IntervalLift): this {
+		const otherValue = other instanceof IntervalDomain ? other.value : other;
+
+		if(this.value === Bottom || otherValue === Bottom) {
+			return this.bottom();
+		}
+		// If dividend is Top, return Top
+		if(this.isTop()) {
+			return this.top();
+		}
+		// If divisor is Top, result is Top (could be refined to [-∞, +∞] but Top is sound)
+		if(otherValue === IntervalTop) {
+			return this.top();
+		}
+
+		// Check if divisor interval contains zero
+		if(otherValue[0] <= 0 && otherValue[1] >= 0) {
+			// Division by interval containing zero → Top (sound over-approximation)
+			return this.top();
+		}
+
+		// [a,b] / [c,d] = [a,b] * [1/d, 1/c]
+		// Since 0 ∉ [c,d], either c > 0 or d < 0, so 1/d < 1/c
+		const reciprocals: IntervalValue = [1 / otherValue[1], 1 / otherValue[0]];
+		return this.multiply(reciprocals);
 	}
 
 	/**

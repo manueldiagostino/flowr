@@ -1,8 +1,16 @@
 import type { AnyAbstractDomain } from '../../domains/abstract-domain';
+import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import type { VectorDomain } from '../vector-domain';
 import type { NAAwareDomain } from '../na-aware-domain';
 import { vectorLogger } from '../logger';
 import { squash, rhoF } from '../vector-semantics';
+import {
+	naAwareAdd,
+	naAwareSubtract,
+	naAwareMultiply,
+	naAwareDivide,
+	naAwareNegate
+} from '../na-aware-arithmetic';
 
 /**
  * Recycles a pair of vectors to the same length for binary operations.
@@ -108,16 +116,17 @@ export function applyRecycle<Domain extends AnyAbstractDomain>(
 
 /**
  * Applies a binary operation to two vectors with proper recycling and type coercion.
+ * Uses actual interval arithmetic instead of join-based over-approximation.
  * @param v1 - The first vector operand
- * @param v2 - The second vector operand
- * @param operator - The operator string (e.g., '+', '-', '*', '/')
+ * @param v2 - The second vector operand (undefined for unary operations)
+ * @param operator - The operator string: '+', '-', '*', '/'
  * @returns The resulting VectorDomain after the binary operation
  */
-export function applyBinaryOp<Domain extends AnyAbstractDomain>(
-	v1: VectorDomain<Domain>,
-	v2: VectorDomain<Domain> | undefined,
+export function applyBinaryOp<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
+	v1: VectorDomain<D>,
+	v2: VectorDomain<D> | undefined,
 	operator: string
-): VectorDomain<Domain> {
+): VectorDomain<D> {
 	vectorLogger.debug(`Operation: binaryOp [operator=${operator}]`);
 
 	if(v2 === undefined) {
@@ -128,11 +137,18 @@ export function applyBinaryOp<Domain extends AnyAbstractDomain>(
 	// Recycle the pair to aligned lengths
 	const [v1Recycled, v2Recycled] = applyRecycle(v1, v2);
 
-	// Perform element-wise join on prefixes and summaries
-	const resultKnown = v1Recycled.known.join(v2Recycled.known);
-	const resultSummary = v1Recycled.summary.join(v2Recycled.summary);
+	// Select the appropriate NA-aware arithmetic function
+	const arithmeticFn = selectArithmeticFn<D>(operator);
 
-	// Perform type coercion: result type is the join of both types
+	// Apply element-wise arithmetic on known positions
+	const resultKnown = applyElementWiseArithmetic(
+		v1Recycled, v2Recycled, arithmeticFn
+	);
+
+	// Apply the same operation to summaries
+	const resultSummary = arithmeticFn(v1Recycled.summary, v2Recycled.summary);
+
+	// Result type is the join of both types
 	const resultType = v1Recycled.type.join(v2Recycled.type);
 
 	const result = v1Recycled.create({
@@ -148,14 +164,63 @@ export function applyBinaryOp<Domain extends AnyAbstractDomain>(
 }
 
 /**
+ * Selects the appropriate NA-aware arithmetic function based on the operator string.
+ */
+function selectArithmeticFn<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
+	operator: string
+): (a: NAAwareDomain<D>, b: NAAwareDomain<D>) => NAAwareDomain<D> {
+	switch(operator) {
+		case '+': return naAwareAdd;
+		case '-': return naAwareSubtract;
+		case '*': return naAwareMultiply;
+		case '/': return naAwareDivide;
+		default:
+			vectorLogger.warn(`Unknown binary operator '${operator}', falling back to join`);
+			// Fallback: use join-based approach (preserves old behavior for unknown operators)
+			return (a, b) => a.join(b);
+	}
+}
+
+/**
+ * Applies element-wise arithmetic to the known positions of two recycled vectors.
+ */
+function applyElementWiseArithmetic<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
+	v1: VectorDomain<D>,
+	v2: VectorDomain<D>,
+	arithmeticFn: (a: NAAwareDomain<D>, b: NAAwareDomain<D>) => NAAwareDomain<D>
+): typeof v1.known {
+	if(v1.known.isBottom() || v2.known.isBottom()) {
+		return v1.known.bottom();
+	}
+	if(v1.known.isTop() || v2.known.isTop()) {
+		return v1.known.top();
+	}
+	if(!v1.known.isValue() || !v2.known.isValue()) {
+		return v1.known.top();
+	}
+
+	const values1 = v1.known.value as readonly NAAwareDomain<D>[];
+	const values2 = v2.known.value as readonly NAAwareDomain<D>[];
+
+	// After recycling, both vectors should have the same number of known positions
+	const resultValues: NAAwareDomain<D>[] = [];
+	const len = Math.min(values1.length, values2.length);
+	for(let i = 0; i < len; i++) {
+		resultValues.push(arithmeticFn(values1[i], values2[i]));
+	}
+
+	return v1.known.create(resultValues);
+}
+
+/**
  * Applies the negate operation to a vector.
  * Negates each known position and the summary, preserving length/attributes/type.
  * @param value - The VectorDomain to negate
  * @returns The resulting VectorDomain after negation
  */
-export function applyNegate<Domain extends AnyAbstractDomain>(
-	value: VectorDomain<Domain>
-): VectorDomain<Domain> {
+export function applyNegate<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
+	value: VectorDomain<D>
+): VectorDomain<D> {
 	vectorLogger.debug('Operation: negate');
 
 	if(value.isBottom()) {
@@ -167,28 +232,28 @@ export function applyNegate<Domain extends AnyAbstractDomain>(
 		return value.top();
 	}
 
-	// Negate known positions
+	// Negate known positions using naAwareNegate
 	let negatedKnown: typeof value.known;
 	if(value.known.isBottom()) {
 		negatedKnown = value.known.bottom();
 	} else if(value.known.isTop()) {
 		negatedKnown = value.known.top();
 	} else if(value.known.isValue()) {
-		const values = value.known.value as readonly NAAwareDomain<Domain>[];
-		const negatedValues = values.map(v => v.negate());
+		const values = value.known.value as readonly NAAwareDomain<D>[];
+		const negatedValues = values.map(v => naAwareNegate(v));
 		negatedKnown = value.known.create(negatedValues);
 	} else {
 		negatedKnown = value.known.top();
 	}
 
-	// Negate summary
+	// Negate summary using naAwareNegate
 	let negatedSummary: typeof value.summary;
 	if(value.summary.isBottom()) {
 		negatedSummary = value.summary.bottom();
 	} else if(value.summary.isTop()) {
 		negatedSummary = value.summary.top();
 	} else {
-		negatedSummary = value.summary.negate();
+		negatedSummary = naAwareNegate(value.summary);
 	}
 
 	const result = value.create({

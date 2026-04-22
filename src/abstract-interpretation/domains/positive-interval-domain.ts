@@ -1,4 +1,5 @@
 import { IntervalDomain } from './interval-domain';
+import type { ArithmeticDomain } from './arithmetic-domain';
 import { Bottom, Top } from './lattice';
 
 /** The Top element of the positive interval domain as interval [0, +∞] */
@@ -19,7 +20,8 @@ type PosIntervalLift = PosIntervalValue | PosIntervalBottom;
  * @template Value - Type of the constraint in the abstract domain (Top, Bottom, or an actual value)
  */
 export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
-	extends IntervalDomain<Value> {
+	extends IntervalDomain<Value>
+	implements ArithmeticDomain<PosIntervalDomain> {
 
 	constructor(value: Value) {
 		if(Array.isArray(value) && value[0] < 0) {
@@ -99,6 +101,58 @@ export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
 		} else {
 			return this.create([Math.max(this.value[0] - otherValue[0], 0), Math.max(this.value[1] - otherValue[1], 0)]);
 		}
+	}
+
+	/**
+	 * Multiplies two positive intervals.
+	 * Since all bounds are ≥ 0: [a,b] * [c,d] = [a*c, b*d]
+	 * Inherits Bottom/Top handling from IntervalDomain.multiply.
+	 */
+	public override multiply(other: this | PosIntervalLift): this {
+		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
+
+		if(this.value === Bottom || otherValue === Bottom) {
+			return this.bottom();
+		}
+		if(this.isTop() || otherValue === PosIntervalTop) {
+			return this.top();
+		}
+
+		// For positive intervals: min product = a*c, max product = b*d
+		return this.create([this.value[0] * otherValue[0], this.value[1] * otherValue[1]]);
+	}
+
+	/**
+	 * Divides two positive intervals.
+	 * Since all bounds are ≥ 0 and divisor lower bound \> 0: [a,b] / [c,d] = [a/d, b/c]
+	 * If divisor contains zero (i.e., c = 0), returns Top.
+	 */
+	public override divide(other: this | PosIntervalLift): this {
+		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
+
+		if(this.value === Bottom || otherValue === Bottom) {
+			return this.bottom();
+		}
+		if(this.isTop() || otherValue === PosIntervalTop) {
+			return this.top();
+		}
+
+		// Check if divisor contains zero (lower bound is 0)
+		if(otherValue[0] === 0) {
+			return this.top();
+		}
+
+		// For positive intervals: [a,b] / [c,d] = [a/d, b/c]
+		return this.create([this.value[0] / otherValue[1], this.value[1] / otherValue[0]]);
+	}
+
+	/**
+	 * Negation of a positive interval produces a non-positive interval,
+	 * which is outside the PosIntervalDomain's domain. Returns Bottom as the
+	 * closest approximation within this domain.
+	 */
+	public override negate(): this {
+		return this.bottom();
 	}
 
 	/**
