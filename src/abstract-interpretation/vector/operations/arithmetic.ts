@@ -62,7 +62,7 @@ export function applyRecycle<Domain extends AnyAbstractDomain & ArithmeticDomain
 	let v1Recycled = v1;
 
 	let rhoFResult = rhoF(v1.known, l1, lPrime, v1.naAwareFactory);
-	for(let d = l1; d < knownMaxLength; d++) {
+	for(let d = lPrime; d < knownMaxLength; d++) {
 		rhoFResult = rhoFResult.join(rhoF(v1.known, l1, d, v1.naAwareFactory));
 	}
 	let cycledKnown = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
@@ -87,9 +87,9 @@ export function applyRecycle<Domain extends AnyAbstractDomain & ArithmeticDomain
 	// Recycle v2
 	let v2Recycled = v2;
 
-	rhoFResult = rhoF(v2.known, l1, lPrime, v2.naAwareFactory);
-	for(let d = l1; d < knownMaxLength; d++) {
-		rhoFResult = rhoFResult.join(rhoF(v2.known, l1, d, v2.naAwareFactory));
+	rhoFResult = rhoF(v2.known, l2, lPrime, v2.naAwareFactory);
+	for(let d = lPrime; d < knownMaxLength; d++) {
+		rhoFResult = rhoFResult.join(rhoF(v2.known, l2, d, v2.naAwareFactory));
 	}
 	cycledKnown = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 	newSummary = v2.summary;
