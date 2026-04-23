@@ -451,6 +451,7 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 						const pos = posLower;
 						if(pos >= 1 && pos <= sourceUpper) {
 							mustNotUpdated.add(pos);
+							mayNotUpdated.add(pos);
 						}
 					} else {
 						// Non-singleton interval: range of possible positions
@@ -470,6 +471,7 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 		// adjustedSelector.known is Bot: all positions may be not updated
 		for(let pos = 1; pos <= sourceUpper; pos++) {
 			mayNotUpdated.add(pos);
+			mustNotUpdated.add(pos);
 		}
 	}
 

@@ -274,6 +274,7 @@ export function buildNegativeSets(
 			const pos = posLower;
 			if(pos >= 1 && pos <= sourceUpper) {
 				mustDeleted.add(pos);
+				mayDeleted.add(pos); // Must ⊆ May invariant
 			}
 		} else {
 			for(let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
@@ -350,7 +351,7 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 	[mustDeleted, mayDeleted] = buildNegativeSets(sourceUpper, selectorValues);
 
 
-	// Compute MustNotDeleted
+	// Compute MustNotDeleted (positions definitely kept = not in MayDeleted)
 	const mustNotDeleted = new Set<number>();
 	guard(value.known.isValue() && Array.isArray(value.known.value), 'Source known positions not enumerable');
 	for(let i = 1; i <= value.known.value.length; i++) {
@@ -404,9 +405,9 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 	// CountMustDeleted helper
 	const countMustDeleted = (i: number) => [...mustDeleted].filter(d => d < i).length;
 
-	// Length computation
-	const mustDeletedU1 = [...mustDeleted].filter(d => d <= sourceUpper).length;
+	// Length computation (Paper Section 4.7, L629-630)
 	const mayDeletedL1 = [...mayDeleted].filter(d => d <= sourceLower).length;
+	const mustDeletedU1 = [...mustDeleted].filter(d => d <= sourceUpper).length;
 	const newLower = Math.max(0, sourceLower - mayDeletedL1);
 	const newUpper = Math.max(0, sourceUpper - mustDeletedU1);
 
