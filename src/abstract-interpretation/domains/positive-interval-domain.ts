@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/unified-signatures */
 import { IntervalDomain } from './interval-domain';
-import { ArithmeticDomain } from './arithmetic-domain';
+import type { ArithmeticDomain } from './arithmetic-domain';
 import { Bottom, Top } from './lattice';
 
 /** The Top element of the positive interval domain as interval [0, +∞] */
