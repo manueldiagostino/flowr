@@ -4,7 +4,7 @@ import { RType } from '../../../r-bridge/lang-4.x/ast/model/type';
 import { Identifier } from '../../../dataflow/environments/identifier';
 import { vectorLogger } from '../logger';
 
-export type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'random' | 'unknown';
+export type VectorFunctionType = 'concatenate' | 'arithmetic' | 'length' | 'random' | 'sequence' | 'unknown';
 
 /**
  * Detects the type of vector function from an AST node.
@@ -46,6 +46,10 @@ export function detectVectorFunctionType(node: RNode<ParentInformation>): Vector
 	if(['runif', 'rnorm', 'rbinom', 'rexp', 'rpois'].includes(functionName)) {
 		vectorLogger.debug(`Decision: function type 'random' for node type '${node.type}'`);
 		return 'random';
+	}
+	if(functionName === ':') {
+		vectorLogger.debug(`Decision: function type 'sequence' for node type '${node.type}'`);
+		return 'sequence';
 	}
 
 	vectorLogger.debug(`Decision: function type 'unknown' for node type '${node.type}' (functionName='${functionName}')`);

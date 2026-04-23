@@ -22,10 +22,10 @@ import type { RLogicalValue } from '../../r-bridge/lang-4.x/ast/model/nodes/r-lo
 
 /**
  * Maps a primitive JavaScript value to its corresponding R vector type.
- * - number -> 'double' (R treats numeric literals as double by default)
- * - number (markedAsInt=true) -> 'integer' (R integer literals like 42L)
- * - string -> 'character'
- * - boolean -> 'logical'
+ * - number -\> 'double' (R treats numeric literals as double by default)
+ * - number (markedAsInt=true) -\> 'integer' (R integer literals like 42L)
+ * - string -\> 'character'
+ * - boolean -\> 'logical'
  * @param value - The primitive value
  * @param isMarkedAsInt - Whether the number is marked as an R integer literal (e.g., 42L)
  */
@@ -86,7 +86,7 @@ function extractTypeFromLiftedValue(value: RStringValue | RNumberValue | RLogica
 		return 'character';
 	}
 	if(typeof value === 'object' && value !== null && 'num' in value) {
-		const numValue = value as RNumberValue;
+		const numValue = value;
 		return numValue.markedAsInt ? 'integer' : 'double';
 	}
 	if(typeof value === 'boolean') {
@@ -158,11 +158,11 @@ export function resolveIdToVectorValue<Domain extends AnyAbstractDomain & Arithm
 		// Extract primitive value for valueToDomain
 		let primitiveValue: string | number | boolean;
 		if(typeof val === 'object' && 'str' in val) {
-			primitiveValue = (val as RStringValue).str;
+			primitiveValue = (val).str;
 		} else if(typeof val === 'object' && 'num' in val) {
-			primitiveValue = (val as RNumberValue).num;
+			primitiveValue = (val).num;
 		} else {
-			primitiveValue = val as boolean;
+			primitiveValue = val;
 		}
 
 		const domainValues = valueToDomain(primitiveValue);

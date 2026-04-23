@@ -12,7 +12,9 @@ import { NA } from '../domains/lattice';
 import { PosIntervalDomain } from '../domains/positive-interval-domain';
 import type { IntervalDomain } from '../domains/interval-domain';
 import type { ArithmeticDomain } from '../domains/arithmetic-domain';
-import type { VectorAttrDomain } from '../domains/vector-attr-domain';
+import { VectorAttrDomain } from '../domains/vector-attr-domain';
+import { RVectorTypeDomain } from '../domains/vector-type-domain';
+import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { type ValueToDomainConverter, buildVectorFromLiteral } from './resolve-vector-args';
 import type { RNumber } from '../../r-bridge/lang-4.x/ast/model/nodes/r-number';
 import type { RString } from '../../r-bridge/lang-4.x/ast/model/nodes/r-string';
@@ -159,19 +161,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	 * @param call - The function call vertex from the dataflow graph
 	 * @returns Array of resolved argument info with id and VectorDomain value
 	 */
-	private resolveVectorArguments(call: DataflowGraphVertexFunctionCall): { id: NodeId; resolved: VectorDomain<Domain> | undefined }[] {
-		const args: { id: NodeId; resolved: VectorDomain<Domain> | undefined }[] = [];
+	private resolveVectorArguments(call: DataflowGraphVertexFunctionCall): { id: NodeId; resolved: VectorDomain<Domain> | undefined; named: boolean }[] {
+		const args: { id: NodeId; resolved: VectorDomain<Domain> | undefined; named: boolean }[] = [];
 		for(const arg of call.args) {
 			if(arg !== undefined && arg !== EmptyArgument) {
+				const isNamed = FunctionArgumentUtil.isNamed(arg);
 				const argId = FunctionArgumentUtil.getId(arg);
 				if(argId !== undefined) {
 					const argNode = this.getNode(argId);
 					if(argNode?.type === RType.Argument && argNode.value !== undefined) {
 						const resolved = this.getVectorDomainValue(argNode.value.info.id);
-						args.push({ id: argNode.value.info.id, resolved });
+						args.push({ id: argNode.value.info.id, resolved, named: isNamed });
 					} else {
 						const resolved = this.getVectorDomainValue(argId);
-						args.push({ id: argId, resolved });
+						args.push({ id: argId, resolved, named: isNamed });
 					}
 				}
 			}
@@ -205,26 +208,144 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 		}
 
 		if(args.length === 1) {
-			return [{ operation: 'concatenate', operand: args[0].resolved }];
+			const resolved = args[0].resolved;
+			if(resolved === undefined) {
+				return [{ operation: 'concatenate', operand: undefined }];
+			}
+			// Apply names attribute if single argument is named
+			if(args[0].named) {
+				const namedVector = resolved.create({
+					length:     resolved.length,
+					known:      resolved.known,
+					summary:    resolved.summary,
+					attributes: VectorAttrDomain.from(new Set(['names']), new Set(['names'])),
+					type:       resolved.type
+				});
+				return [{ operation: 'concatenate', operand: namedVector }];
+			}
+			return [{ operation: 'concatenate', operand: resolved }];
 		}
 
 		const operations: VectorOperations<Domain> = [];
 
+		// Apply names attribute to first argument if named
+		let firstResolved = args[0].resolved;
+		if(firstResolved !== undefined && args[0].named) {
+			firstResolved = firstResolved.create({
+				length:     firstResolved.length,
+				known:      firstResolved.known,
+				summary:    firstResolved.summary,
+				attributes: VectorAttrDomain.from(new Set(['names']), new Set(['names'])),
+				type:       firstResolved.type
+			});
+		}
+
+		// Apply names attribute to second argument if named
+		let secondResolved = args[1].resolved;
+		if(secondResolved !== undefined && args[1].named) {
+			secondResolved = secondResolved.create({
+				length:     secondResolved.length,
+				known:      secondResolved.known,
+				summary:    secondResolved.summary,
+				attributes: VectorAttrDomain.from(new Set(['names']), new Set(['names'])),
+				type:       secondResolved.type
+			});
+		}
+
 		operations.push({
 			operation: 'concatenate',
-			operand:   args[0].resolved,
-			other:     args[1].resolved
+			operand:   firstResolved,
+			other:     secondResolved
 		});
 
 		for(let i = 2; i < args.length; i++) {
+			// Apply names attribute to subsequent arguments if named
+			let argResolved = args[i].resolved;
+			if(argResolved !== undefined && args[i].named) {
+				argResolved = argResolved.create({
+					length:     argResolved.length,
+					known:      argResolved.known,
+					summary:    argResolved.summary,
+					attributes: VectorAttrDomain.from(new Set(['names']), new Set(['names'])),
+					type:       argResolved.type
+				});
+			}
 			operations.push({
 				operation: 'concatenate',
 				operand:   undefined,
-				other:     args[i].resolved
+				other:     argResolved
 			});
 		}
 
 		return operations;
+	}
+
+	/**
+	 * Handles sequence construction with the : operator (e.g., 1:3, 5:1).
+	 * Creates a vector with known consecutive integer values.
+	 * Reads numeric values directly from the AST instead of from abstracted domain values.
+	 * @param node - The R node of the binary operation
+	 * @param _call - The function call vertex from the dataflow graph
+	 * @returns The mapped vector operations sequence
+	 */
+	private handleSequence(node: RNode<ParentInformation>, _call: DataflowGraphVertexFunctionCall): VectorOperations<Domain> {
+		// Only handle binary operations (1:3, 5:1, etc.)
+		if(node.type !== RType.BinaryOp) {
+			return this.unknownOperation();
+		}
+
+		const binaryOp = node as RBinaryOp;
+		if(binaryOp.operator !== ':') {
+			return this.unknownOperation();
+		}
+
+		// Extract values directly from AST
+		const lhsNode = binaryOp.lhs;
+		const rhsNode = binaryOp.rhs;
+
+		// Both must be RNumber nodes
+		if(lhsNode.type !== RType.Number || rhsNode.type !== RType.Number) {
+			vectorLogger.debug('Handler: handleSequence operands not concrete numbers, returning unknown');
+			return this.unknownOperation();
+		}
+
+		const start = lhsNode.content.num;
+		const end = rhsNode.content.num;
+
+		vectorLogger.debug(`Handler: handleSequence range [start=${start}, end=${end}]`);
+
+		// Build sequence: c(start, start+1, ..., end-1, end)
+		// For 1:3, this creates [1, 2, 3]
+		// For 5:1, this creates [5, 4, 3, 2, 1] (descending)
+		const step = start <= end ? 1 : -1;
+		const length = Math.abs(end - start) + 1;
+
+		const sequenceValues: NAAwareDomain<Domain>[] = [];
+		for(let i = 0; i < length; i++) {
+			const val = start + (i * step);
+			const domainVal = this.valueConverter(val);
+			if(domainVal === undefined) {
+				vectorLogger.debug(`Handler: handleSequence failed to convert value ${val}`);
+				return this.unknownOperation();
+			}
+			const innerDomain = this.plainFactory(domainVal);
+			sequenceValues.push(new NAAwareDomain({ inner: innerDomain, hasNA: false }, this.plainFactory));
+		}
+
+		const smartFactory = NAAwareDomain.createSmartFactory(this.plainFactory);
+		const knownPositions = new KnownInitialPositionsDomain(sequenceValues, smartFactory);
+		const summaryBottom = NAAwareDomain.bottom(this.plainFactory);
+
+		const sequenceVector = new VectorDomain({
+			length:     new PosIntervalDomain([length, length]),
+			known:      knownPositions,
+			summary:    summaryBottom,
+			attributes: VectorAttrDomain.empty(),
+			type:       RVectorTypeDomain.of('double')
+		}, this.plainFactory);
+
+		vectorLogger.debug(`Handler: handleSequence created vector [length=${length}]`);
+		return [{ operation: 'concatenate', operand: sequenceVector }];
 	}
 
 	/**
@@ -483,6 +604,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 						operations = this.unknownOperation();
 					} else {
 						operations = this.handleRandomFunction(node, callVertex);
+					}
+				}
+				break;
+			}
+			case 'sequence': {
+				const vertexInfo = this.config.dfg.get(node.info.id);
+				if(vertexInfo === undefined) {
+					operations = this.unknownOperation();
+				} else {
+					const [callVertex] = vertexInfo;
+					if(callVertex?.tag !== VertexType.FunctionCall) {
+						operations = this.unknownOperation();
+					} else {
+						operations = this.handleSequence(node, callVertex);
 					}
 				}
 				break;

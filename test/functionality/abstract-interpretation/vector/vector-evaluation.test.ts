@@ -39,6 +39,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Scalar integer value', async() => {
 		const code = 'x <- 42L';
 		const expected = {
@@ -53,6 +54,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Scalar string value', async() => {
 		const code = 'x <- "Hello World!"';
@@ -67,7 +69,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<BoundedSetDomain<string>>;
 		await assertVectorDomainStrings(shell, code, expected);
 		await validateVectorDomainStrings(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	test('NULL value', async() => {
 		const code = 'x <- NULL';
 		const expected = {
@@ -76,6 +79,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector construction', async() => {
 		const code = 'v <- c(1, 2, 3)';
 		const expected = {
@@ -90,6 +94,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector construction with NA', async() => {
 		const code = 'v <- c(1, 2, NA, 4)';
 		const expected = {
@@ -104,6 +109,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector construction with booleans', async() => {
 		const code = 'v <- c(TRUE, FALSE, TRUE)';
@@ -118,7 +124,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<SingletonDomain<boolean>>;
 		await assertVectorDomainBooleans(shell, code, expected);
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	test('Vector construction with variables', async() => {
 		const code = `
 			a <- 42
@@ -137,6 +144,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Unknown vector construction', async() => {
 		const code = 'v <- c(runif(runif(1, 0, 10)))';
 		const expected = {
@@ -151,6 +159,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Named vector construction', async() => {
 		const code = 'v <- c(a = 1, b = 2, c = 3)';
 		const expected = {
@@ -165,6 +174,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector constuction with concatenation', async() => {
 		const code = 'v <- c(1, c(2, 3), c(4, c(5, 6)))';
 		const expected = {
@@ -179,6 +189,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector constuction with combination', async() => {
 		const code = `
 			v1 <- c(1, 2)
@@ -197,6 +208,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Conditional vector construction', async() => {
 		const code = 'v <- if (runif(1) > 0.5) c(1, 2) else c(3, 4, 5, 6)';
 		const expected = {
@@ -211,6 +223,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Conditional vector construction with scalar', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
@@ -232,6 +245,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Conditional vector construction with ifelse', async() => {
 		const code = 'v <- ifelse(runif(1, 12, 24) > 18, "adult", "minor")';
@@ -246,7 +260,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<BoundedSetDomain<string>>;
 		await assertVectorDomainStrings(shell, code, expected);
 		await validateVectorDomainStrings(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	test('Vector sequence construction', async() => {
 		const code = 'v <- 1:3';
 		const expected = {
@@ -261,6 +276,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('NULL construction', async() => {
 		const code = 'v <- c()';
 		const expected = {
@@ -269,6 +285,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Empty vector construction', async() => {
 		const code = 'v <- numeric()';
 		const expected = {
@@ -283,6 +300,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector addition', async() => {
 		const code = 'v <- c(1, 2) + c(3, 4)';
 		const expected = {
@@ -297,6 +315,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector addition with recycling', async() => {
 		const code = 'v <- c(1, 2) + 42';
 		const expected = {
@@ -311,6 +330,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector addition with advanced recycling', async() => {
 		const code = 'v <- c(1, 2) + c(1, 2, 3, 4, 5)';
 		const expected = {
@@ -325,6 +345,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector addition with recycling and NA', async() => {
 		const code = 'v <- c(1, 2) + c(1, NA, 3, 4, NA)';
 		const expected = {
@@ -339,6 +360,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector negation', async() => {
 		const code = 'v <- !c(TRUE, FALSE, TRUE)';
@@ -353,7 +375,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<SingletonDomain<boolean>>;
 		await assertVectorDomainBooleans(shell, code, expected);
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector disjunction with recycling', async() => {
 		const code = 'v <- c(TRUE, FALSE) | c(FALSE, FALSE, TRUE)';
@@ -368,7 +391,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<SingletonDomain<boolean>>;
 		await assertVectorDomainBooleans(shell, code, expected);
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector conjunction with recycling and NA', async() => {
 		const code = 'v <- c(TRUE, FALSE) & c(FALSE, NA, TRUE, FALSE, NA)';
@@ -383,7 +407,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<SingletonDomain<boolean>>;
 		await assertVectorDomainBooleans(shell, code, expected);
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	test('Vector multiplication', async() => {
 		const code = 'v <- c(1, 2) * c(3, 4)';
 		const expected = {
@@ -398,6 +423,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector division', async() => {
 		const code = 'v <- c(4, 6) / c(2, 3)';
 		const expected = {
@@ -412,6 +438,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector comparison', async() => {
 		const code = 'v <- c(1, 2, 3) > 2';
@@ -426,7 +453,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<SingletonDomain<boolean>>;
 		await assertVectorDomainBooleans(shell, code, expected);
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
-	}); */
+	});
+ */
 	test('Vector subset with single index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -444,6 +472,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with multiple indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -461,6 +490,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with multiple indices sequence', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -478,6 +508,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with condition', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -495,6 +526,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with NA condition', async() => {
 		const code = `
 			v <- c(1, NA, 3, 4, NA)
@@ -512,6 +544,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with negative index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -529,6 +562,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with negative indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -546,6 +580,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with double brackets', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -563,6 +598,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -580,6 +616,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with unknown recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -597,6 +634,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with boolean recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -614,6 +652,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset out of bounds', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -631,6 +670,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset by name', async() => {
 		const code = `
 			v <- c(a = 1, b = 2, c = 3)
@@ -648,6 +688,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset by name with double brackets', async() => {
 		const code = `
 			v <- c(a = 1, b = 2, c = 3)
@@ -665,6 +706,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with single index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -682,6 +724,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with single NA', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -699,6 +742,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with multiple indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -716,6 +760,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with multiple indices sequence', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -733,6 +778,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with condition', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -750,6 +796,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with NA condition', async() => {
 		const code = `
 			v <- c(1, NA, 3, 4, NA)
@@ -767,6 +814,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with negative index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -784,6 +832,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with negative indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -801,6 +850,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with double brackets', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -818,6 +868,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment by name', async() => {
 		const code = `
 			v <- c(a = 1, b = 2, c = 3)
@@ -835,6 +886,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment out of bounds', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -852,6 +904,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector assignment with boolean recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -869,6 +922,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector with custom attribute', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -886,6 +940,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector with names attribute', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -903,6 +958,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with 0 index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -920,6 +976,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector subset with 0 index to NA', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -937,6 +994,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 	test('Vector coercion to list', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
@@ -948,4 +1006,5 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
+
 }));

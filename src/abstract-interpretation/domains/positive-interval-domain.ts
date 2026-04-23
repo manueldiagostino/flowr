@@ -1,5 +1,5 @@
 import { IntervalDomain } from './interval-domain';
-import type { ArithmeticDomain } from './arithmetic-domain';
+import { ArithmeticDomain } from './arithmetic-domain';
 import { Bottom, Top } from './lattice';
 
 /** The Top element of the positive interval domain as interval [0, +∞] */
@@ -93,6 +93,20 @@ export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
 		return PosIntervalDomain.abstract(concrete);
 	}
 
+	public add(other: this): this;
+	public add(other: PosIntervalLift): this;
+	public add(other: this | PosIntervalLift): this {
+		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
+
+		if(this.value === Bottom || otherValue === Bottom) {
+			return this.bottom();
+		} else {
+			return this.create([this.value[0] + otherValue[0], this.value[1] + otherValue[1]]);
+		}
+	}
+
+	public subtract(other: this): this;
+	public subtract(other: PosIntervalLift): this;
 	public subtract(other: this | PosIntervalLift): this {
 		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
 

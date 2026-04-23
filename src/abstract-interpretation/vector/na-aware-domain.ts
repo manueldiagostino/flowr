@@ -433,15 +433,15 @@ export class NAAwareDomain<
 		return `${innerStr}${naMarker}`;
 	}
 
-	public isTop(): this is NAAwareDomain<Domain, NAAwareTop<Domain>> {
+	public isTop(): this is NAAwareDomain<Domain, NAAwareTop<Domain>> & AbstractDomain<ConcreteDomain<Domain> | typeof NA, NAAwareInnerValue<Domain>, NAAwareTop<Domain>, NAAwareBottom<Domain>, NAAwareTop<Domain>> {
 		return this.value.inner.isTop() && this.value.hasNA;
 	}
 
-	public isBottom(): this is NAAwareDomain<Domain, NAAwareBottom<Domain>> {
+	public isBottom(): this is NAAwareDomain<Domain, NAAwareBottom<Domain>> & AbstractDomain<ConcreteDomain<Domain> | typeof NA, NAAwareInnerValue<Domain>, NAAwareTop<Domain>, NAAwareBottom<Domain>, NAAwareBottom<Domain>> {
 		return this.value.inner.isBottom() && !this.value.hasNA;
 	}
 
-	public isValue(): this is NAAwareDomain<Domain, NAAwareInnerValue<Domain>> {
+	public isValue(): this is NAAwareDomain<Domain, NAAwareInnerValue<Domain>> & AbstractDomain<ConcreteDomain<Domain> | typeof NA, NAAwareInnerValue<Domain>, NAAwareTop<Domain>, NAAwareBottom<Domain>, NAAwareInnerValue<Domain>> {
 		return !this.isBottom();
 	}
 }
