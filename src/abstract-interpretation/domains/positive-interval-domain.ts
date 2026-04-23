@@ -93,8 +93,6 @@ export class PosIntervalDomain<Value extends PosIntervalLift = PosIntervalLift>
 		return PosIntervalDomain.abstract(concrete);
 	}
 
-	public subtract(other: this): this;
-	public subtract(other: PosIntervalLift): this;
 	public subtract(other: this | PosIntervalLift): this {
 		const otherValue = other instanceof PosIntervalDomain ? other.value : other;
 

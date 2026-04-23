@@ -51,7 +51,7 @@
     "test:file": "npx vitest run",
     "test:file:debug": "LOG_LEVEL=debug npx vitest run --reporter=verbose --sequence.concurrent=false --maxWorkers=1 --pool=forks",
     "test:file:trace": "LOG_LEVEL=trace npx vitest run --reporter=verbose --sequence.concurrent=false --maxWorkers=1 --pool=forks",
-    "lint:fix": "npm run lint-local -- --fix",
+    "lint:fix": "npx eslint --version && npx eslint --fix --rule \"no-warning-comments: off\"",
     "checkup": "npm run flowr -- --execute \":version\" && npm run lint && npm run test-full -- --allowOnly=false && npm run test:system -- --no-watch && docker build -t test-flowr -f scripts/Dockerfile . && npm run doc && npm run gen:readme && npm-run-all wiki:*"
   },
   "keywords": [

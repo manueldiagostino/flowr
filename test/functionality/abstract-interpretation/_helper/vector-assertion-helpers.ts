@@ -1,10 +1,9 @@
 import { assert } from 'vitest';
 import type { AbstractValue, AnyAbstractDomain } from '../../../../src/abstract-interpretation/domains/abstract-domain';
 import type { ArithmeticDomain } from '../../../../src/abstract-interpretation/domains/arithmetic-domain';
-import { BoundedSetDomain } from '../../../../src/abstract-interpretation/domains/bounded-set-domain';
 import { IntervalDomain, IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
-import { SingletonDomain } from '../../../../src/abstract-interpretation/domains/singleton-domain';
+import type { SingletonDomain } from '../../../../src/abstract-interpretation/domains/singleton-domain';
 import type { VectorAttr } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import type { RVectorType } from '../../../../src/abstract-interpretation/domains/vector-type-domain';

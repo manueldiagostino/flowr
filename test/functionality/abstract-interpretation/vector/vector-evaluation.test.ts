@@ -14,7 +14,6 @@ import {
 	asNaAware,
 	asNaAwares,
 	NaInterval,
-	NaBoolean,
 	assertVectorDomainIntervals,
 	validateVectorDomainIntervals,
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.

@@ -130,7 +130,7 @@ export function assertContainsNA(
 	if(vector.known.isValue()) {
 		const values = vector.known.value;
 		for(const val of values) {
-			const naVal = val as NAAwareDomain<IntervalDomain>;
+			const naVal = val;
 			if(naVal.containsNA()) {
 				containsNA = true;
 				break;
@@ -139,7 +139,7 @@ export function assertContainsNA(
 	}
 
 	if(!containsNA && !vector.summary.isBottom()) {
-		const summary = vector.summary as NAAwareDomain<IntervalDomain>;
+		const summary = vector.summary;
 		containsNA = summary.containsNA();
 	}
 
