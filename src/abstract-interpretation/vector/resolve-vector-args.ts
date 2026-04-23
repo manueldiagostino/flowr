@@ -15,7 +15,56 @@ import { KnownInitialPositionsDomain } from './known-initial-positions-domain';
 import { NAAwareDomain } from './na-aware-domain';
 import { RNa } from '../../r-bridge/lang-4.x/convert-values';
 import { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
+import type { RVectorTypes, RVectorType } from '../domains/vector-type-domain';
 import { RVectorTypeDomain } from '../domains/vector-type-domain';
+import type { RStringValue, RNumberValue } from '../../r-bridge/lang-4.x/convert-values';
+import type { RLogicalValue } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
+
+/**
+ * Maps a primitive JavaScript value to its corresponding R vector type.
+ * - number -> 'double' (R treats numeric literals as double by default)
+ * - number (markedAsInt=true) -> 'integer' (R integer literals like 42L)
+ * - string -> 'character'
+ * - boolean -> 'logical'
+ * @param value - The primitive value
+ * @param isMarkedAsInt - Whether the number is marked as an R integer literal (e.g., 42L)
+ */
+function primitiveToRType(value: string | number | boolean, isMarkedAsInt = false): RVectorType {
+	if(typeof value === 'string') {
+		return 'character';
+	}
+	if(typeof value === 'boolean') {
+		return 'logical';
+	}
+	// number -> integer if marked with L suffix, otherwise double
+	return isMarkedAsInt ? 'integer' : 'double';
+}
+
+/**
+ * Computes the vector type from an array of primitive values.
+ * Starts with the first element's type and LUBs (joins) with subsequent types.
+ * Returns Top if the array is empty.
+ */
+function computeVectorTypeFromValues(values: (string | number | boolean | undefined)[]): RVectorTypeDomain {
+	if(values.length === 0) {
+		return RVectorTypeDomain.top();
+	}
+
+	// Filter out undefined values
+	const definedValues = values.filter((v): v is string | number | boolean => v !== undefined);
+	if(definedValues.length === 0) {
+		return RVectorTypeDomain.top();
+	}
+
+	// Start with first value's type, then join with subsequent types
+	let resultType: RVectorType | typeof RVectorTypes = primitiveToRType(definedValues[0]);
+	for(let i = 1; i < definedValues.length; i++) {
+		const currentType = primitiveToRType(definedValues[i]);
+		resultType = RVectorTypeDomain.of(resultType).join(RVectorTypeDomain.of(currentType)).value;
+	}
+
+	return RVectorTypeDomain.of(resultType);
+}
 
 /**
  * Converts a primitive value (string, number, boolean) to the domain's concrete type.
@@ -27,6 +76,24 @@ import { RVectorTypeDomain } from '../domains/vector-type-domain';
 export type ValueToDomainConverter<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>> = (
 	value: string | number | boolean
 ) => ReadonlySet<ConcreteDomain<Domain>> | undefined;
+
+/**
+ * Extracts the R vector type from a lifted R value (RStringValue, RNumberValue, or RLogicalValue).
+ * Returns undefined for non-literal values (like 'fn-def' or null).
+ */
+function extractTypeFromLiftedValue(value: RStringValue | RNumberValue | RLogicalValue | 'fn-def' | null): RVectorType | undefined {
+	if(typeof value === 'object' && value !== null && 'str' in value) {
+		return 'character';
+	}
+	if(typeof value === 'object' && value !== null && 'num' in value) {
+		const numValue = value as RNumberValue;
+		return numValue.markedAsInt ? 'integer' : 'double';
+	}
+	if(typeof value === 'boolean') {
+		return 'logical';
+	}
+	return undefined;
+}
 
 /**
  * Resolves the value of a node ID to its VectorDomain representation.
@@ -67,21 +134,48 @@ export function resolveIdToVectorValue<Domain extends AnyAbstractDomain & Arithm
 		if(domainValues === undefined) {
 			return undefined;
 		}
-		return buildVectorFromDomainValues([domainValues], factory);
+		// Compute type from the lifted value (preserves markedAsInt info)
+		const elementType = extractTypeFromLiftedValue(unliftedValue);
+		const vectorType = elementType !== undefined ? RVectorTypeDomain.of(elementType) : undefined;
+		return buildVectorFromDomainValues([domainValues], factory, vectorType);
 	}
 
-	const unwrappedArray = unwrapRVector(unliftedValue);
-	if(unwrappedArray === undefined) {
-		return undefined;
-	}
-
+	// unliftedValue is (RStringValue | RNumberValue | RLogicalValue | 'fn-def' | null)[]
+	// Filter out non-literal values and extract both primitive values and type info
 	const domainValueSets: (ReadonlySet<ConcreteDomain<Domain>> | undefined)[] = [];
-	for(const val of unwrappedArray) {
-		const domainValues = valueToDomain(val);
+	const elementTypes: RVectorType[] = [];
+
+	for(const val of unliftedValue) {
+		if(val === null || val === 'fn-def') {
+			// Non-literal value - skip
+			continue;
+		}
+		const elementType = extractTypeFromLiftedValue(val);
+		if(elementType === undefined) {
+			continue;
+		}
+
+		// Extract primitive value for valueToDomain
+		let primitiveValue: string | number | boolean;
+		if(typeof val === 'object' && 'str' in val) {
+			primitiveValue = (val as RStringValue).str;
+		} else if(typeof val === 'object' && 'num' in val) {
+			primitiveValue = (val as RNumberValue).num;
+		} else {
+			primitiveValue = val as boolean;
+		}
+
+		const domainValues = valueToDomain(primitiveValue);
 		domainValueSets.push(domainValues);
+		elementTypes.push(elementType);
 	}
 
-	return buildVectorFromDomainValues(domainValueSets, factory);
+	// Compute vector type by joining all element types
+	const vectorType = elementTypes.length > 0
+		? elementTypes.reduce((acc, t) => acc.join(RVectorTypeDomain.of(t)), RVectorTypeDomain.of(elementTypes[0]))
+		: undefined;
+
+	return buildVectorFromDomainValues(domainValueSets, factory, vectorType);
 }
 
 /**
@@ -125,11 +219,13 @@ export function resolveIdToVectorLength(
  * @template Domain - The abstract domain type for vector elements
  * @param domainValueSets - Array of sets of concrete domain values (or undefined for NA)
  * @param factory - The domain factory for creating element domain values
+ * @param vectorType - Optional R vector type (defaults to Bottom if not provided)
  * @returns A VectorDomain with the specified values
  */
 export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	domainValueSets: (ReadonlySet<ConcreteDomain<Domain>> | undefined)[],
-	factory: DomainFactory<Domain>
+	factory: DomainFactory<Domain>,
+	vectorType?: RVectorTypeDomain
 ): VectorDomain<Domain> {
 	if(domainValueSets.length === 0) {
 		// Empty vector: length [0,0], empty prefix ε, bottom summary/attributes
@@ -149,12 +245,14 @@ export function buildVectorFromDomainValues<Domain extends AnyAbstractDomain & A
 	);
 	const summaryBottom = NAAwareDomain.bottom(factory);
 
+	const typeDomain = vectorType ?? RVectorTypeDomain.bottom();
+
 	return new VectorDomain({
 		length:     new PosIntervalDomain([domainValueSets.length, domainValueSets.length]),
 		known:      knownPositions,
 		summary:    summaryBottom,
-		attributes: VectorAttrDomain.bottom(),
-		type:       RVectorTypeDomain.bottom()
+		attributes: VectorAttrDomain.empty(),
+		type:       typeDomain
 	}, factory);
 }
 
@@ -186,15 +284,17 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain & Arithm
 			length:     new PosIntervalDomain([1, 1]),
 			known:      knownPositions,
 			summary:    summaryBottom,
-			attributes: VectorAttrDomain.bottom(),
+			attributes: VectorAttrDomain.empty(),
 			type:       RVectorTypeDomain.of('logical')
 		}, factory);
 	}
 
 	let primitiveValue: string | number | boolean | undefined;
+	let isMarkedAsInt = false;
 
 	if(node.type === RType.Number) {
 		primitiveValue = node.content.num;
+		isMarkedAsInt = node.content.markedAsInt;
 	} else if(node.type === RType.String) {
 		primitiveValue = node.content.str;
 	} else if(node.type === RType.Logical) {
@@ -206,7 +306,8 @@ export function buildVectorFromLiteral<Domain extends AnyAbstractDomain & Arithm
 	}
 
 	const domainValues = valueToDomain(primitiveValue);
-	return buildVectorFromDomainValues([domainValues], factory);
+	const vectorType = RVectorTypeDomain.of(primitiveToRType(primitiveValue, isMarkedAsInt));
+	return buildVectorFromDomainValues([domainValues], factory, vectorType);
 }
 
 /**
