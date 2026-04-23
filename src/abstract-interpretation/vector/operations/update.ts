@@ -345,7 +345,9 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		}
 		uR = Math.max(uR, sourceUpper);
 		const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
-		const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as NAAwareDomain<Domain>[], sourceLower, sourceUpper, uR, naValue);
+		// Use the source vector's known positions as the base, not the selector positions
+		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
+		const baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
 		let valuesUpper = 0;
 		if(values.length.isValue()) {
 			valuesUpper = values.length.value[1];

@@ -21,7 +21,7 @@ import {
 	// validateVectorDomainBooleans,
 	type TestCase
 } from '../_helper/vector-assertion-helpers';
-import './log-config'
+import './log-config';
 
 describe.sequential('Vector Inference Evaluation', withShell(shell => {
 	test('Scalar number value', async() => {

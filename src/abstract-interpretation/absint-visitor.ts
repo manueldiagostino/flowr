@@ -100,7 +100,8 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		const origins = Array.isArray(call?.origin) ? call.origin : [];
 
 		if(node.type === RType.Symbol) {
-			const values = this.getVariableOrigins(node.info.id).map(origin => state?.get(origin));
+			// Get values from the state at each origin's location, not from current state's location
+			const values = this.getVariableOrigins(node.info.id).map(origin => this.getAbstractState(origin)?.get(origin));
 
 			if(values.length > 0 && values.every(isNotUndefined)) {
 				return AbstractDomain.joinAll(values);
@@ -289,6 +290,15 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		if(target !== undefined) {
 			this.unassigned.delete(target);
 		}
+	}
+
+	/**
+	 * Records the current state in the trace for the given node ID.
+	 * This allows subclasses to persist state changes after custom operations.
+	 * @param nodeId - The node ID to associate with the current state
+	 */
+	protected recordStateInTrace(nodeId: NodeId): void {
+		this.trace.set(nodeId, this._currentState);
 	}
 
 	/**

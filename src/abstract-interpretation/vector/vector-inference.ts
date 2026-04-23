@@ -455,6 +455,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 
 		const access = node;
 		const args = access.access;
+		const isDoubleBracket = access.operator === '[[';
 
 		// Single argument: x[i] - could be positive, negative, or logical
 		if(args.length === 1) {
@@ -466,18 +467,20 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 			const selector = selectorNode?.info.id;
 
 			const resolvedOperand = operand !== undefined ? this.getVectorDomainValue(operand) : undefined;
-			// Compute selector kind from the operand's type (logical vs numeric)
-			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
+			// Compute selector kind from the selector's type (logical vs numeric)
+			const resolvedSelector = selector !== undefined ? this.getVectorDomainValue(Number(selector)) : undefined;
+			const selectorKind = resolvedSelector?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
-			vectorLogger.debug(`Handler: handleAccess [operandId=${operand}, selectorId=${selector}, selectorKind=${selectorKind}]`);
+			vectorLogger.debug(`Handler: handleAccess [operandId=${operand}, selectorId=${selector}, selectorKind=${selectorKind}, isDoubleBracket=${isDoubleBracket}]`);
 			if(resolvedOperand) {
 				vectorLogger.debug(`Handler: handleAccess operand value [length=${resolvedOperand.length.toString()}, values=${resolvedOperand.known.toString()}, summary=${resolvedOperand.summary.toString()}]`);
 			}
 
 			return [{
-				operation: 'select',
-				operand:   resolvedOperand,
-				selector:  selector !== undefined ? String(selector) : undefined
+				operation:     'select',
+				operand:       resolvedOperand,
+				selector:      selector !== undefined ? String(selector) : undefined,
+				doubleBracket: isDoubleBracket
 			}];
 		}
 
@@ -501,8 +504,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 
 		const access = node;
 		const args = access.access;
+		const isDoubleBracket = access.operator === '[[';
 
-		vectorLogger.debug(`Handler: handleReplacement args.length=${args.length}`);
+		vectorLogger.debug(`Handler: handleReplacement args.length=${args.length}, isDoubleBracket=${isDoubleBracket}`);
 
 		if(args.length === 1) {
 			const accessedNode = access.accessed;
@@ -519,8 +523,9 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 			if(resolvedValues === undefined && source !== undefined) {
 				resolvedValues = buildVectorFromLiteral(source, this.plainFactory, this.valueConverter);
 			}
-			// Compute selector kind from the operand's type (logical vs numeric)
-			const selectorKind = resolvedOperand?.type.getType() === 'logical' ? 'logical' : 'numeric';
+			// Compute selector kind from the selector's type (logical vs numeric)
+			const resolvedSelector = selector !== undefined ? this.getVectorDomainValue(Number(selector)) : undefined;
+			const selectorKind = resolvedSelector?.type.getType() === 'logical' ? 'logical' : 'numeric';
 
 			vectorLogger.debug(`Handler: handleReplacement [operandId=${operand}, selectorId=${selector}, valuesId=${values}, selectorKind=${selectorKind}]`);
 			if(resolvedOperand) {
@@ -531,10 +536,11 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 			}
 
 			return [{
-				operation: 'update',
-				operand:   resolvedOperand,
-				selector:  selector !== undefined ? String(selector) : undefined,
-				values:    values !== undefined ? String(values) : undefined
+				operation:     'update',
+				operand:       resolvedOperand,
+				selector:      selector !== undefined ? String(selector) : undefined,
+				values:        values !== undefined ? String(values) : undefined,
+				doubleBracket: isDoubleBracket
 			}];
 		}
 
@@ -640,22 +646,30 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	 * @param source - The node ID of the value being assigned
 	 */
 	protected override onReplacementCall({ call, target, source }: { call: DataflowGraphVertexFunctionCall, target?: NodeId, source?: NodeId }): void {
-		super.onReplacementCall({ call, target, source });
-		vectorLogger.debug(`Handler: onReplacementCall [nodeId=${call.id}, target=${target}, source=${source}]`);
+		super.onReplacementCall({ call, source, target });
+		vectorLogger.debug(`Handler: onReplacementCall [call.id=${call.id}, target=${target}, source=${source}]`);
 
 		// Use call.id to get the access node (x[1]), not target (which is just x)
 		const node = this.getNormalizedAst(call.id);
 		const sourceNode = source ? this.getNormalizedAst(source) : undefined;
 
-		vectorLogger.debug(`Handler: onReplacementCall node type=${node?.type}, sourceNode type=${sourceNode?.type}`);
+		vectorLogger.debug(`Handler: onReplacementCall node type=${node?.type}, node.info.id=${node?.info.id}, sourceNode type=${sourceNode?.type}`);
 
 		if(node === undefined) {
 			vectorLogger.debug('Handler: onReplacementCall node is undefined, returning');
 			return;
 		}
 		const operations = this.handleReplacement(node, sourceNode);
-		// Store result at target (the variable x), not at the access node (x[1])
+		// Store result at the target node (the symbol being assigned to).
+		// The getVectorDomainValue method checks the direct state first, so it will
+		// find the value stored at the target node. Using getVariableOrigins to find
+		// the "origin" was returning incorrect node IDs (e.g., root node 0).
 		this.applyVectorExpression(node, operations, target);
+		// After applying the vector expression, record the current state in the trace
+		// so that getAbstractState can find the value when looking up this target node.
+		if(target !== undefined) {
+			this.recordStateInTrace(target);
+		}
 	}
 
 	/**
@@ -810,7 +824,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 
 		if('values' in args && typeof args.values === 'string') {
 			const valuesId = Number(args.values) as NodeId;
-			const valuesValue = this.getVectorDomainValue(valuesId);
+			let valuesValue = this.getVectorDomainValue(valuesId);
+			// If value not found in state, try to build from the literal node
+			// This handles cases where the value node hasn't been visited yet
+			if(valuesValue === undefined) {
+				const valuesNode = this.getNode(valuesId);
+				if(valuesNode !== undefined) {
+					valuesValue = buildVectorFromLiteral(valuesNode, this.plainFactory, this.valueConverter);
+				}
+			}
 			vectorLogger.debug(`resolveOperationArgs values [id=${valuesId}, found=${valuesValue !== undefined}, value=${valuesValue?.length.toString() ?? 'undefined'}]`);
 			resolved.values = valuesValue ?? VectorDomain.bottom(this.plainFactory);
 		}
@@ -863,13 +885,15 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 					value,
 					args.selector as VectorDomain<IntervalDomain>,
 					args.naValue as NAAwareDomain<Domain>,
+					args.doubleBracket as boolean | undefined
 				);
 			case 'update':
 				guard(args.values != undefined, 'args.known undefined');
 				return this.applyUpdate(value,
 					args.selector as VectorDomain<IntervalDomain>,
 					args.values as VectorDomain<Domain>,
-					args.naValue as NAAwareDomain<Domain>
+					args.naValue as NAAwareDomain<Domain>,
+					args.doubleBracket as boolean | undefined
 				);
 			case 'negate':
 				return this.applyNegate(value);
@@ -954,17 +978,28 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	 * For numeric selectors, applies `abstractFilter` to classify positions into
 	 * positive (≥ 0 or NA) and negative (≤ 0), then computes:
 	 * `select(ν₁, ν₂) = select_pos(ν₁, ν₂⁺) ⊔ select_neg(ν₁, ν₂⁻)`
+	 *
+	 * For double bracket access (`[[`), the selector is truncated to its first element
+	 * before selection, as double bracket always returns a single element.
 	 * @param value - The source VectorDomain to select from
 	 * @param selector - The selector VectorDomain (interval or value domain)
 	 * @param naValue - The NA value for out-of-bounds access
+	 * @param doubleBracket - Whether this is a double bracket access (`[[`)
 	 * @returns The resulting VectorDomain after selection
 	 */
 	private applySelect(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain>,
-		naValue: NAAwareDomain<Domain>
+		naValue: NAAwareDomain<Domain>,
+		doubleBracket?: boolean
 	): VectorDomain<Domain> {
-		return applySelect(value, selector, naValue);
+		// For double bracket access, truncate selector to first element only
+		let effectiveSelector = selector;
+		if(doubleBracket && selector.length.isValue() && selector.length.value[1] > 1) {
+			vectorLogger.debug(`Operation: applySelect double bracket truncating selector [originalLength=${selector.length.toString()}]`);
+			effectiveSelector = this.truncateSelectorToFirstElement(selector);
+		}
+		return applySelect(value, effectiveSelector, naValue);
 	}
 
 	/**
@@ -1040,6 +1075,27 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	}
 
 	/**
+	 * Truncates a selector VectorDomain to only its first element.
+	 * Used for double bracket access (`[[`) which always returns a single element.
+	 * @param selector - The original selector VectorDomain
+	 * @returns A new VectorDomain containing only the first element of the selector
+	 */
+	private truncateSelectorToFirstElement(selector: VectorDomain<IntervalDomain>): VectorDomain<IntervalDomain> {
+		const selectorValues = selector.known.value as readonly NAAwareDomain<IntervalDomain>[];
+		const firstElement = selectorValues[0];
+		const knownPositions = new KnownInitialPositionsDomain<NAAwareDomain<IntervalDomain>>([firstElement], selector.naAwareFactory);
+		const summaryBottom = selectorValues[0].bottom();
+
+		return new VectorDomain({
+			length:     new PosIntervalDomain([1, 1]),
+			known:      knownPositions,
+			summary:    summaryBottom,
+			attributes: selector.attributes,
+			type:       selector.type
+		}, selector.plainFactory);
+	}
+
+	/**
 	 * Applies the update operation to modify elements in a vector based on a selector.
 	 * Uses abstract filtering (paper Section 4.8) for numeric selectors and AST-based
 	 * detection for logical selectors.
@@ -1048,20 +1104,31 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	 * positive (≥ 0 or NA) and negative (≤ 0), then computes:
 	 * `update(ν₁, ν₂, ν₃) = update_pos(ν₁, ν₂⁺, ν₃) ⊔ update_neg(ν₁, ν₂⁻, ν₃)`
 	 *
+	 * For double bracket assignment (`[[<-`), the selector is truncated to its first element
+	 * before update, as double bracket always updates a single element.
+	 *
 	 * Paper Section 4.8: Vector Update
 	 * @param value - The target VectorDomain to update
 	 * @param selector - The selector for positions to update
 	 * @param values - The values to assign to selected positions
 	 * @param naValue - The NA value for out-of-bounds positions
+	 * @param doubleBracket - Whether this is a double bracket assignment (`[[<-`)
 	 * @returns The resulting VectorDomain after update
 	 */
 	private applyUpdate(
 		value: VectorDomain<Domain>,
 		selector: VectorDomain<IntervalDomain>,
 		values: VectorDomain<Domain>,
-		naValue: NAAwareDomain<Domain>
+		naValue: NAAwareDomain<Domain>,
+		doubleBracket?: boolean
 	): VectorDomain<Domain> {
-		return applyUpdate(value, selector, values, naValue);
+		// For double bracket assignment, truncate selector to first element only
+		let effectiveSelector = selector;
+		if(doubleBracket && selector.length.isValue() && selector.length.value[1] >= 1) {
+			vectorLogger.debug(`Operation: applyUpdate double bracket truncating selector [originalLength=${selector.length.toString()}]`);
+			effectiveSelector = this.truncateSelectorToFirstElement(selector);
+		}
+		return applyUpdate(value, effectiveSelector, values, naValue);
 	}
 
 	/**
