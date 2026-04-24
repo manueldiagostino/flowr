@@ -323,18 +323,46 @@ export function assertVectorValue<Domain extends AnyAbstractDomain & ArithmeticD
 	const attributes = new VectorAttrDomain(expected.attributes);
 	const type = new RVectorTypeDomain(expected.type);
 
+	console.log(`[VectorAssertion] Criterion "${criterion}":`);
+	console.log(`  Expected -> length: ${length.toString()}, known: ${known.toString()}, summary: ${summary.toString()}, attributes: ${attributes.toString()}, type: ${type.toString()}`);
+	console.log(`  Inferred -> length: ${inferred.length.toString()}, known: ${inferred.known.toString()}, summary: ${inferred.summary.toString()}, attributes: ${inferred.attributes.toString()}, type: ${inferred.type.toString()}`);
+
 	if(overapproximation) {
-		assert.ok(length.leq(inferred.length), `Expected vector for criterion "${criterion}" to have an over-approximation of length ${length.toString()}, but got ${inferred.length.toString()}`);
-		assert.ok(known.leq(inferred.known), `Expected vector for criterion "${criterion}" to have an over-approximation of known values ${known.toString()}, but got ${inferred.known.toString()}`);
-		assert.ok(summary.leq(inferred.summary), `Expected vector for criterion "${criterion}" to have an over-approximation of summary ${summary.toString()}, but got ${inferred.summary.toString()}`);
-		assert.ok(attributes.leq(inferred.attributes), `Expected vector for criterion "${criterion}" to have an over-approximation of attributes ${attributes.toString()}, but got ${inferred.attributes.toString()}`);
-		assert.ok(type.leq(inferred.type), `Expected vector for criterion "${criterion}" to have an over-approximation of type ${type.toString()}, but got ${inferred.type.toString()}`);
+		const lengthOk = length.leq(inferred.length);
+		const knownOk = known.leq(inferred.known);
+		const summaryOk = summary.leq(inferred.summary);
+		const attributesOk = attributes.leq(inferred.attributes);
+		const typeOk = type.leq(inferred.type);
+
+		if(!lengthOk || !knownOk || !summaryOk || !attributesOk || !typeOk) {
+			console.error(`[VectorAssertion FAILED] Criterion "${criterion}":`);
+			console.error(`  Expected -> length: ${length.toString()}, known: ${known.toString()}, summary: ${summary.toString()}, attributes: ${attributes.toString()}, type: ${type.toString()}`);
+			console.error(`  Inferred -> length: ${inferred.length.toString()}, known: ${inferred.known.toString()}, summary: ${inferred.summary.toString()}, attributes: ${inferred.attributes.toString()}, type: ${inferred.type.toString()}`);
+		}
+
+		assert.ok(lengthOk, `Expected vector for criterion "${criterion}" to have an over-approximation of length ${length.toString()}, but got ${inferred.length.toString()}`);
+		assert.ok(knownOk, `Expected vector for criterion "${criterion}" to have an over-approximation of known values ${known.toString()}, but got ${inferred.known.toString()}`);
+		assert.ok(summaryOk, `Expected vector for criterion "${criterion}" to have an over-approximation of summary ${summary.toString()}, but got ${inferred.summary.toString()}`);
+		assert.ok(attributesOk, `Expected vector for criterion "${criterion}" to have an over-approximation of attributes ${attributes.toString()}, but got ${inferred.attributes.toString()}`);
+		assert.ok(typeOk, `Expected vector for criterion "${criterion}" to have an over-approximation of type ${type.toString()}, but got ${inferred.type.toString()}`);
 	} else {
-		assert.ok(inferred.length.equals(length), `Expected vector for criterion "${criterion}" to have length ${length.toString()}, but got ${inferred.length.toString()}`);
-		assert.ok(inferred.known.equals(known), `Expected vector for criterion "${criterion}" to have known values ${known.toString()}, but got ${inferred.known.toString()}`);
-		assert.ok(inferred.summary.equals(summary), `Expected vector for criterion "${criterion}" to have summary ${summary.toString()}, but got ${inferred.summary.toString()}`);
-		assert.ok(inferred.attributes.equals(attributes), `Expected vector for criterion "${criterion}" to have attributes ${attributes.toString()}, but got ${inferred.attributes.toString()}`);
-		assert.ok(inferred.type.equals(type), `Expected vector for criterion "${criterion}" to have type ${type.toString()}, but got ${inferred.type.toString()}`);
+		const lengthOk = inferred.length.equals(length);
+		const knownOk = inferred.known.equals(known);
+		const summaryOk = inferred.summary.equals(summary);
+		const attributesOk = inferred.attributes.equals(attributes);
+		const typeOk = inferred.type.equals(type);
+
+		if(!lengthOk || !knownOk || !summaryOk || !attributesOk || !typeOk) {
+			console.error(`[VectorAssertion FAILED] Criterion "${criterion}":`);
+			console.error(`  Expected -> length: ${length.toString()}, known: ${known.toString()}, summary: ${summary.toString()}, attributes: ${attributes.toString()}, type: ${type.toString()}`);
+			console.error(`  Inferred -> length: ${inferred.length.toString()}, known: ${inferred.known.toString()}, summary: ${inferred.summary.toString()}, attributes: ${inferred.attributes.toString()}, type: ${inferred.type.toString()}`);
+		}
+
+		assert.ok(lengthOk, `Expected vector for criterion "${criterion}" to have length ${length.toString()}, but got ${inferred.length.toString()}`);
+		assert.ok(knownOk, `Expected vector for criterion "${criterion}" to have known values ${known.toString()}, but got ${inferred.known.toString()}`);
+		assert.ok(summaryOk, `Expected vector for criterion "${criterion}" to have summary ${summary.toString()}, but got ${inferred.summary.toString()}`);
+		assert.ok(attributesOk, `Expected vector for criterion "${criterion}" to have attributes ${attributes.toString()}, but got ${inferred.attributes.toString()}`);
+		assert.ok(typeOk, `Expected vector for criterion "${criterion}" to have type ${type.toString()}, but got ${inferred.type.toString()}`);
 	}
 }
 

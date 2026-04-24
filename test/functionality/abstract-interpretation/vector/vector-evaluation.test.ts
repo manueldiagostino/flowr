@@ -6,7 +6,7 @@ import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice'
 // import type { BoundedSetDomain } from '../../../../src/abstract-interpretation/domains/bounded-set-domain';
 // import type { SingletonDomain } from '../../../../src/abstract-interpretation/domains/singleton-domain';
 import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { RVectorTypeTop } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
+import { RVectorTypeBottom, RVectorTypeTop } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { withShell } from '../../_helper/shell';
 import { Record } from '../../../../src/util/record';
 import {
@@ -158,7 +158,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 				type:       RVectorTypeTop
 			},
 		} satisfies TestCase<IntervalDomain>;
-		await assertVectorDomainIntervals(shell, code, expected);
+		await assertVectorDomainSound(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
@@ -285,10 +285,10 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		const expected = {
 			'1@v': {
 				length:     [0, 0],
-				known:      asNaAwares(),
+				known:      [],
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
-				type:       RVectorTypeTop
+				type:       Bottom
 			},
 		} satisfies TestCase<IntervalDomain>;
 		await assertVectorDomainIntervals(shell, code, expected);
@@ -406,7 +406,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		const expected = {
 			'7@r': {
 				length:     [3, 4],
-				known:      asNaAwares([10, 11], NaInterval, [13, 15]),
+				known:      asNaAwares([10, 11], NaInterval, [13, 15], asNaAwareWithNA([10, 11])),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
@@ -472,7 +472,8 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		const expected = {
 			'6@v': {
 				length:     [3, 4],
-				known:      asNaAwares([1, 10], [99, 99], [3, 30], [40, 40]),
+				// Position 4 (index 3) only exists in the else branch, so it has NA flag
+				known:      asNaAwares([1, 10], [99, 99], [3, 30], asNaAwareWithNA([40, 40])),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
@@ -501,7 +502,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
-		await assertVectorDomainIntervals(shell, code, expected);
+		await assertVectorDomainSound(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
@@ -523,7 +524,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
-		await assertVectorDomainIntervals(shell, code, expected);
+		await assertVectorDomainSound(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
@@ -538,14 +539,14 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		`.trim();
 		const expected = {
 			'6@r': {
-				length:     [2, 2],
-				known:      asNaAwares([201, 210], NaInterval),
+				length:     [2, 3],
+				known:      asNaAwares([201, 210], NaInterval, [230, 230]),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
-		await assertVectorDomainIntervals(shell, code, expected);
+		await assertVectorDomainSound(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
@@ -561,13 +562,13 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		const expected = {
 			'6@v': {
 				length:     [3, 5],
-				known:      asNaAwares([99, 99], [20, 99], [99, 99], NaInterval, [5, 99]),
-				summary:    asNaAware([5, 99]),
+				known:      asNaAwares([99, 99], [20, 99], [99, 99], NaInterval, [5, 5]),
+				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
-		await assertVectorDomainIntervals(shell, code, expected);
+		await assertVectorDomainSound(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
@@ -974,7 +975,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 	test('Vector assignment with multiple indices sequence', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
-			v[1:3] <- c(42, 43, 44)
+			v[c(1,2,3)] <- c(42, 43, 44)
 		`.trim();
 		const expected = {
 			'2@v': {

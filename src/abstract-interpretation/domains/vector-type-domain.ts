@@ -37,7 +37,7 @@ export type RVectorTypeTop = typeof RVectorTypeTop;
 /**
  * The type of the Bottom element.
  */
-type RVectorTypeBottom = typeof Bottom;
+export type RVectorTypeBottom = typeof Bottom;
 
 /**
  * The lift type for R vector types: a concrete type, Top, or Bottom.
