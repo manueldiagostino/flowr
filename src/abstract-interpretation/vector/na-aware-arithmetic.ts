@@ -1,6 +1,6 @@
 import type { AnyAbstractDomain } from '../domains/abstract-domain';
 import type { ArithmeticDomain } from '../domains/arithmetic-domain';
-import type { NAAwareDomain } from './na-aware-domain';
+import { NAAwareDomain } from './na-aware-domain';
 
 /**
  * NA-aware addition: delegates to inner.add(), propagates NA flags.
@@ -17,8 +17,16 @@ export function naAwareAdd<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 	if(a.isTop() || b.isTop()) {
 		return a.top();
 	}
+	// If either operand is pure NA, the result is NA
+	if(a.isNA()) {
+		return NAAwareDomain.na(a.factory);
+	}
+	if(b.isNA()) {
+		return NAAwareDomain.na(b.factory);
+	}
 
 	let resultInner = a.inner.add(b.inner);
+	// Only join other operand's inner value if it contains NA (but is not pure NA)
 	if(a.containsNA() && !b.inner.isBottom()) {
 		resultInner = resultInner.join(b.inner);
 	}
@@ -45,8 +53,16 @@ export function naAwareSubtract<D extends AnyAbstractDomain & ArithmeticDomain<D
 	if(a.isTop() || b.isTop()) {
 		return a.top();
 	}
+	// If either operand is pure NA, the result is NA
+	if(a.isNA()) {
+		return NAAwareDomain.na(a.factory);
+	}
+	if(b.isNA()) {
+		return NAAwareDomain.na(b.factory);
+	}
 
 	let resultInner = a.inner.subtract(b.inner);
+	// Only join other operand's inner value if it contains NA (but is not pure NA)
 	if(a.containsNA()) {
 		resultInner = resultInner.join(b.inner);
 	}
@@ -73,8 +89,16 @@ export function naAwareMultiply<D extends AnyAbstractDomain & ArithmeticDomain<D
 	if(a.isTop() || b.isTop()) {
 		return a.top();
 	}
+	// If either operand is pure NA, the result is NA
+	if(a.isNA()) {
+		return NAAwareDomain.na(a.factory);
+	}
+	if(b.isNA()) {
+		return NAAwareDomain.na(b.factory);
+	}
 
 	let resultInner = a.inner.multiply(b.inner);
+	// Only join other operand's inner value if it contains NA (but is not pure NA)
 	if(a.containsNA()) {
 		resultInner = resultInner.join(b.inner);
 	}
@@ -101,8 +125,16 @@ export function naAwareDivide<D extends AnyAbstractDomain & ArithmeticDomain<D>>
 	if(a.isTop() || b.isTop()) {
 		return a.top();
 	}
+	// If either operand is pure NA, the result is NA
+	if(a.isNA()) {
+		return NAAwareDomain.na(a.factory);
+	}
+	if(b.isNA()) {
+		return NAAwareDomain.na(b.factory);
+	}
 
 	let resultInner = a.inner.divide(b.inner);
+	// Only join other operand's inner value if it contains NA (but is not pure NA)
 	if(a.containsNA()) {
 		resultInner = resultInner.join(b.inner);
 	}
