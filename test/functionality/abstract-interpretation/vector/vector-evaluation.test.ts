@@ -361,6 +361,30 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
+	test('Vector addition with uncertain branching', async() => {
+		const code = `
+			v <- 1
+			if (runif(1) > 0.5) {
+				v <- c(1, 2, 3)
+			} else {
+				v <- c(0,1)
+			}
+			r <- v + c(9,10,11)
+		`.trim();
+		const expected = {
+			'7@r': {
+				length:     [3, 3],
+				known:      asNaAwares([9, 10], [11, 12], [11, 14]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector negation', async() => {
 		const code = 'v <- !c(TRUE, FALSE, TRUE)';

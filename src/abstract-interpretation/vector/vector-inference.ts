@@ -129,16 +129,28 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 			const directValue = this.currentState.get(id);
 			return directValue;
 		}
-		// For symbols, follow variable origins to find the actual value
+		// For symbols, follow variable origins and join all values
+		// This is important for uncertain branching where a variable may have
+		// different values from different branches (e.g., if-then-else with runif)
 		const origins = this.getVariableOrigins(id);
+		const values: VectorDomain<Domain>[] = [];
 		for(const origin of origins) {
 			const hasOrigin = this.currentState.has(origin);
 			if(hasOrigin) {
 				const originValue = this.currentState.get(origin);
-				return originValue;
+				if(originValue !== undefined) {
+					values.push(originValue);
+				}
 			}
 		}
-		return undefined;
+		// Join all origin values to get the abstract value considering all branches
+		if(values.length === 0) {
+			return undefined;
+		} else if(values.length === 1) {
+			return values[0];
+		} else {
+			return values.reduce((acc, val) => acc.join(val));
+		}
 	}
 
 	// ==================== Function Type Detection ====================
@@ -694,6 +706,31 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 		if(target !== undefined) {
 			this.recordStateInTrace(target);
 		}
+	}
+
+	/**
+	 * Handles if-then-else calls in the dataflow graph.
+	 * For uncertain conditions, both branches are executed and their states are joined
+	 * at merge points by the abstract interpretation visitor.
+	 * @param call - The if-then-else call vertex
+	 * @param condition - The condition node ID
+	 * @param yes - The then branch node ID
+	 * @param no - The else branch node ID (may be undefined)
+	 */
+	protected override onIfThenElseCall({ call, condition, yes, no }: {
+		call: DataflowGraphVertexFunctionCall,
+		condition: NodeId | undefined,
+		yes: NodeId | undefined,
+		no: NodeId | undefined
+	}): void {
+		super.onIfThenElseCall({ call, condition, yes, no });
+
+		vectorLogger.debug(`Handler: onIfThenElseCall [call.id=${call.id}, condition=${condition}, yes=${yes}, no=${no}]`);
+
+		// Note: The actual joining of branch states for variables assigned in both branches
+		// is handled by getVectorDomainValue() which now correctly joins all origin values.
+		// This method is called before branches are fully visited, so we don't attempt
+		// to join values here - we just let the CFG visitor handle the control flow.
 	}
 
 	/**
