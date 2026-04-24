@@ -47,6 +47,7 @@ import {
 } from './operations';
 import { buildNegativeSets } from './operations/select';
 import { detectVectorFunctionType, type VectorFunctionType } from './helpers/function-detection';
+import { join } from 'path';
 
 type VectorOperationName = 'setAttr' | 'binary_op' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
@@ -149,7 +150,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 		} else if(values.length === 1) {
 			return values[0];
 		} else {
-			return values.reduce((acc, val) => acc.join(val));
+			const joined = values.reduce((acc, val) => acc.join(val));
+			const originIds = origins.slice(0, values.length).join(',');
+			vectorLogger.trace(`Join: getVectorDomainValue [id=${id}, origins=[${originIds}], result.length=${joined.length.toString()}, value=${joined}, result.type=${joined.type.getType()}]`);
+			return joined;
 		}
 	}
 

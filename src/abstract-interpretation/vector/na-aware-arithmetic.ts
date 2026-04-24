@@ -4,6 +4,8 @@ import type { NAAwareDomain } from './na-aware-domain';
 
 /**
  * NA-aware addition: delegates to inner.add(), propagates NA flags.
+ * When one operand contains NA, joins the arithmetic result with the other
+ * operand's inner value to preserve concrete possibilities.
  */
 export function naAwareAdd<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 	a: NAAwareDomain<D>,
@@ -16,7 +18,13 @@ export function naAwareAdd<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 		return a.top();
 	}
 
-	const resultInner = a.inner.add(b.inner);
+	let resultInner = a.inner.add(b.inner);
+	if(a.containsNA() && !b.inner.isBottom()) {
+		resultInner = resultInner.join(b.inner);
+	}
+	if(b.containsNA() && !a.inner.isBottom()) {
+		resultInner = resultInner.join(a.inner);
+	}
 	const resultHasNA = a.containsNA() || b.containsNA();
 
 	return a.create({ inner: resultInner, hasNA: resultHasNA });
@@ -24,6 +32,8 @@ export function naAwareAdd<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 
 /**
  * NA-aware subtraction: delegates to inner.subtract(), propagates NA flags.
+ * When one operand contains NA, joins the arithmetic result with the other
+ * operand's inner value to preserve concrete possibilities.
  */
 export function naAwareSubtract<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 	a: NAAwareDomain<D>,
@@ -36,7 +46,13 @@ export function naAwareSubtract<D extends AnyAbstractDomain & ArithmeticDomain<D
 		return a.top();
 	}
 
-	const resultInner = a.inner.subtract(b.inner);
+	let resultInner = a.inner.subtract(b.inner);
+	if(a.containsNA()) {
+		resultInner = resultInner.join(b.inner);
+	}
+	if(b.containsNA()) {
+		resultInner = resultInner.join(a.inner);
+	}
 	const resultHasNA = a.containsNA() || b.containsNA();
 
 	return a.create({ inner: resultInner, hasNA: resultHasNA });
@@ -44,6 +60,8 @@ export function naAwareSubtract<D extends AnyAbstractDomain & ArithmeticDomain<D
 
 /**
  * NA-aware multiplication: delegates to inner.multiply(), propagates NA flags.
+ * When one operand contains NA, joins the arithmetic result with the other
+ * operand's inner value to preserve concrete possibilities.
  */
 export function naAwareMultiply<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 	a: NAAwareDomain<D>,
@@ -56,7 +74,13 @@ export function naAwareMultiply<D extends AnyAbstractDomain & ArithmeticDomain<D
 		return a.top();
 	}
 
-	const resultInner = a.inner.multiply(b.inner);
+	let resultInner = a.inner.multiply(b.inner);
+	if(a.containsNA()) {
+		resultInner = resultInner.join(b.inner);
+	}
+	if(b.containsNA()) {
+		resultInner = resultInner.join(a.inner);
+	}
 	const resultHasNA = a.containsNA() || b.containsNA();
 
 	return a.create({ inner: resultInner, hasNA: resultHasNA });
@@ -64,6 +88,8 @@ export function naAwareMultiply<D extends AnyAbstractDomain & ArithmeticDomain<D
 
 /**
  * NA-aware division: delegates to inner.divide(), propagates NA flags.
+ * When one operand contains NA, joins the arithmetic result with the other
+ * operand's inner value to preserve concrete possibilities.
  */
 export function naAwareDivide<D extends AnyAbstractDomain & ArithmeticDomain<D>>(
 	a: NAAwareDomain<D>,
@@ -76,7 +102,13 @@ export function naAwareDivide<D extends AnyAbstractDomain & ArithmeticDomain<D>>
 		return a.top();
 	}
 
-	const resultInner = a.inner.divide(b.inner);
+	let resultInner = a.inner.divide(b.inner);
+	if(a.containsNA()) {
+		resultInner = resultInner.join(b.inner);
+	}
+	if(b.containsNA()) {
+		resultInner = resultInner.join(a.inner);
+	}
 	const resultHasNA = a.containsNA() || b.containsNA();
 
 	return a.create({ inner: resultInner, hasNA: resultHasNA });

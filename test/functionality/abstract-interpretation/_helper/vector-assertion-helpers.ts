@@ -122,6 +122,25 @@ export async function assertVectorDomainIntervals(shell: RShell, code: string, e
 }
 
 /**
+ * Asserts that the inferred interval vectors are a sound over-approximation of the expected vector.
+ * This verifies that for each position, the expected interval is contained within (leq) the actual interval,
+ * ensuring the abstract interpretation is sound without requiring exact precision.
+ */
+export async function assertVectorDomainSound(shell: RShell, code: string, expected: TestCase<IntervalDomain>) {
+	for(const [criterion, expectedVector] of Record.entries(expected)) {
+		const inferred = await getVectorForCriterion(shell, code, criterion, domainFactory(IntervalDomain.top()), value => {
+			if(typeof value === 'number') {
+				return new Set([value]);
+			} else if(typeof value === 'boolean') {
+				return new Set([value ? 1 : 0]);
+			}
+			return undefined;
+		});
+		assertVectorValueSound(criterion, inferred, expectedVector, IntervalDomain.top());
+	}
+}
+
+/**
  * Asserts that the inferred string set vectors for a given criterion in the code match the expected vector.
  * NOTE: Currently disabled because VectorDomain requires ArithmeticDomain and BoundedSetDomain doesn't implement it.
  */
@@ -318,4 +337,13 @@ export function assertVectorValue<Domain extends AnyAbstractDomain & ArithmeticD
 		assert.ok(inferred.attributes.equals(attributes), `Expected vector for criterion "${criterion}" to have attributes ${attributes.toString()}, but got ${inferred.attributes.toString()}`);
 		assert.ok(inferred.type.equals(type), `Expected vector for criterion "${criterion}" to have type ${type.toString()}, but got ${inferred.type.toString()}`);
 	}
+}
+
+/**
+ * Asserts that the inferred vector for a given criterion is a sound over-approximation of the expected vector.
+ * This verifies that expected <= inferred in the lattice order, meaning the actual result
+ * is a sound over-approximation that includes all possible concrete values.
+ */
+export function assertVectorValueSound<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(criterion: string, inferred: VectorDomain<Domain> | undefined, expected: ExpectedVector<Domain> | undefined, domain: Domain) {
+	assertVectorValue(criterion, inferred, expected, domain, true);
 }

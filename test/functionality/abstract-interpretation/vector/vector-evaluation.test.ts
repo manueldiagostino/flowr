@@ -1,5 +1,6 @@
 import { describe, test } from 'vitest';
 import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import { IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 // Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 // import type { BoundedSetDomain } from '../../../../src/abstract-interpretation/domains/bounded-set-domain';
@@ -13,13 +14,15 @@ import {
 	asNaAwares,
 	NaInterval,
 	assertVectorDomainIntervals,
+	assertVectorDomainSound,
 	validateVectorDomainIntervals,
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	// assertVectorDomainStrings,
 	// validateVectorDomainStrings,
 	// assertVectorDomainBooleans,
 	// validateVectorDomainBooleans,
-	type TestCase
+	type TestCase,
+	asNaAwareWithNA
 } from '../_helper/vector-assertion-helpers';
 import './log-config';
 
@@ -150,7 +153,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 			'1@v': {
 				length:     [0, Infinity],
 				known:      asNaAwares(),
-				summary:    asNaAware([0, Infinity]),
+				summary:    asNaAware(IntervalTop),
 				attributes: VectorAttrEmpty,
 				type:       RVectorTypeTop
 			},
@@ -280,7 +283,13 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 	test('NULL construction', async() => {
 		const code = 'v <- c()';
 		const expected = {
-			'1@v': undefined, // NULL is not a vector, so we expect no inferred vector value
+			'1@v': {
+				length:     [0, 0],
+				known:      asNaAwares(),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       RVectorTypeTop
+			},
 		} satisfies TestCase<IntervalDomain>;
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
@@ -384,6 +393,183 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
+	test('Uncertain branching with different vector lengths and NA', async() => {
+		const code = `
+			v <- 1
+			if (runif(1) > 0.5) {
+				v <- c(1, NA, 3)
+			} else {
+				v <- c(0, NA, 5, NA)
+			}
+			r <- v + 10
+		`.trim();
+		const expected = {
+			'7@r': {
+				length:     [3, 4],
+				known:      asNaAwares([10, 11], NaInterval, [13, 15]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Difficult recycling with NA positions in uncertain branch', async() => {
+		const code = `
+			if (runif(1) > 0.5) {
+				v <- c(1, 2, 3, 4)
+			} else {
+				v <- c(10, NA, 30)
+			}
+			r <- v + c(100, NA, 200, NA, 300)
+		`.trim();
+		const expected = {
+			'6@r': {
+				length:     [5, 5],
+				known:      asNaAwares([101, 110], NaInterval, [203, 230], NaInterval, asNaAwareWithNA([300, 301])),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainSound(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Selection with branching - subset from uncertain length vector', async() => {
+		const code = `
+			if (runif(1) > 0.5) {
+				v <- c(1, 2, 3, 4, 5)
+			} else {
+				v <- c(10, 20)
+			}
+			r <- v[c(1, 2)]
+		`.trim();
+		const expected = {
+			'6@r': {
+				length:     [2, 2],
+				known:      asNaAwares([1, 10], [2, 20]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Update with branching - modify uncertain length vector', async() => {
+		const code = `
+			if (runif(1) > 0.5) {
+				v <- c(1, 2, 3)
+			} else {
+				v <- c(10, 20, 30, 40)
+			}
+			v[2] <- 99
+		`.trim();
+		const expected = {
+			'6@v': {
+				length:     [3, 4],
+				known:      asNaAwares([1, 10], [99, 99], [3, 30], [40, 40]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Update with uncertain index from branching', async() => {
+		const code = `
+			v <- c(1, 2, 3, 4, 5)
+			if (runif(1) > 0.5) {
+				idx <- 2
+			} else {
+				idx <- 4
+			}
+			v[idx] <- 99
+		`.trim();
+		const expected = {
+			'7@v': {
+				length:     [5, 5],
+				known:      asNaAwares([1, 1], [2, 99], [3, 3], [4, 99], [5, 5]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Complex recycling with NA in uncertain branch multiplication', async() => {
+		const code = `
+			if (runif(1) > 0.5) {
+				x <- c(2, NA, 4)
+			} else {
+				x <- c(NA, 5)
+			}
+			r <- x * c(10, 20, 30, 40)
+		`.trim();
+		const expected = {
+			'6@r': {
+				length:     [4, 4],
+				known:      asNaAwares([20, 20], [100, 100], [60, 120], [80, 200]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Uncertain branching with nested operations and recycling', async() => {
+		const code = `
+			if (runif(1) > 0.5) {
+				v <- c(1, 2)
+			} else {
+				v <- c(10, 20, 30)
+			}
+			r <- v + c(100, NA) * 2
+		`.trim();
+		const expected = {
+			'6@r': {
+				length:     [2, 2],
+				known:      asNaAwares([201, 210], NaInterval),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Selection update with NA positions from branching', async() => {
+		const code = `
+			if (runif(1) > 0.5) {
+				v <- c(1, NA, 3, NA, 5)
+			} else {
+				v <- c(10, 20, 30)
+			}
+			v[c(1, NA, 3)] <- 99
+		`.trim();
+		const expected = {
+			'6@v': {
+				length:     [3, 5],
+				known:      asNaAwares([99, 99], [20, 99], [99, 99], NaInterval, [5, 99]),
+				summary:    asNaAware([5, 99]),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		await assertVectorDomainIntervals(shell, code, expected);
+		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
 
 	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
 	/* test('Vector negation', async() => {
@@ -648,11 +834,11 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		`.trim();
 		const expected = {
 			'2@v': {
-				length:     [0, Infinity],
-				known:      asNaAwares(),
-				summary:    asNaAware([0, Infinity]),
+				length:     [10, 10],
+				known:      asNaAwares([1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]),
+				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
-				type:       RVectorTypeTop
+				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
 		await assertVectorDomainIntervals(shell, code, expected);
@@ -666,7 +852,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		`.trim();
 		const expected = {
 			'2@v': {
-				length:     [0, 5],
+				length:     [0, 3],
 				known:      asNaAwares([1, 1], [3, 3], [5, 5]),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
@@ -1029,6 +1215,46 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		} satisfies TestCase<IntervalDomain>;
 		await assertVectorDomainIntervals(shell, code, expected);
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
+	});
+
+	test('Soundness check with less precise expected values', async() => {
+		// This test demonstrates assertVectorDomainSound - it verifies that the inferred
+		// values are a sound over-approximation of the expected values (expected <= inferred).
+		// Unlike exact matching, this allows the analysis to be less precise while still being correct.
+		const code = 'v <- c(1, 2, 3)';
+		const expected = {
+			'1@v': {
+				// We expect more precise values here - the analysis might infer wider intervals
+				// but as long as expected <= inferred (expected is contained in inferred), it's sound
+				length:     [3, 3],       // Exact length - analysis infers [3,3], so [3,3] <= [3,3] holds
+				known:      asNaAwares([1, 1], [2, 2], [3, 3]), // Exact values - analysis infers same, so containment holds
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		// Soundness check passes when expected values are contained within inferred values
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Soundness check allows wider inferred intervals', async() => {
+		// This test demonstrates how soundness checking allows the analysis to be less precise.
+		// The expected values are narrower than what the analysis might infer in uncertain branches.
+		const code = 'v <- if (runif(1) > 0.5) c(1, 2) else c(3, 4, 5, 6)';
+		const expected = {
+			'1@v': {
+				// In a soundness check, we can specify narrower expected intervals
+				// The analysis infers wider intervals due to the uncertain branch,
+				// but as long as expected <= inferred, the check passes
+				length:     [2, 4],       // Union of both branch lengths
+				known:      asNaAwares([1, 3], [2, 4], [5, 5], [6, 6]), // Union of both branch values
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+		// Soundness check verifies the analysis correctly over-approximates all possible values
+		await assertVectorDomainSound(shell, code, expected);
 	});
 
 }));

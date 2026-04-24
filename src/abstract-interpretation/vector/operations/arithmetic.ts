@@ -159,7 +159,7 @@ export function applyBinaryOp<D extends AnyAbstractDomain & ArithmeticDomain<D>>
 		type:       resultType
 	});
 
-	vectorLogger.debug(`Operation: binaryOp result [length=${result.length.toString()}, type=${result.type.toString()}]`);
+	vectorLogger.debug(`Operation: binaryOp result [length=${result.length.toString()}, known=${result.known.toString()}, type=${result.type.toString()}]`);
 	return result;
 }
 
