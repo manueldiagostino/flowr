@@ -371,7 +371,17 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 				return this.unknownOperation();
 			}
 			// For unary minus, we need to negate the value
-			const operandValue = this.getVectorDomainValue(lhsId);
+			// Handle RExpressionList wrapper (e.g., -(-2) where -2 is wrapped in parentheses)
+			// Parenthesized expressions like (-2) are RExpressionList nodes with grouping=['(', ')']
+			// They don't trigger onExpressionList (since '(' isn't a built-in), so we follow them here
+			let operandId = lhsId;
+			const lhsNode = this.getNode(lhsId);
+			if(lhsNode?.type === RType.ExpressionList && lhsNode.children.length > 0) {
+				// For expression lists, use the last child's value (R returns the last expression's value)
+				operandId = lhsNode.children[lhsNode.children.length - 1].info.id;
+				vectorLogger.debug(`Handler: handleArithmetic unary - following expression list to last child [childId=${operandId}]`);
+			}
+			const operandValue = this.getVectorDomainValue(operandId);
 			if(operandValue?.isValue() && node.operator === '-') {
 				vectorLogger.debug(`Handler: handleArithmetic unary minus with value [length=${operandValue.length.toString()}]`);
 				// The operand has a concrete value, negate it
