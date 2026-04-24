@@ -4,7 +4,6 @@ import type { ArithmeticDomain } from '../../../../src/abstract-interpretation/d
 import { IntervalDomain, IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 import type { SingletonDomain } from '../../../../src/abstract-interpretation/domains/singleton-domain';
-import type { VectorAttr } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { VectorAttrDomain } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import type { RVectorType } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
@@ -290,7 +289,7 @@ export function getRealDomainFromOutput<Domain extends AnyAbstractDomain>(
 				length:     [length, length],
 				known:      values.map(value => value === RNa ? { inner: domainBottom, hasNA: true } : asNaAware(valueDeserializer(value))),
 				summary:    asNaAware(domainBottom),
-				attributes: { may: new Set(attributes as VectorAttr[]), must: new Set(attributes as VectorAttr[]) },
+				attributes: { may: new Set(attributes.map(a => VectorAttrDomain.fromAttributeName(a))), must: new Set(attributes.map(a => VectorAttrDomain.fromAttributeName(a))) },
 				type:       type as RVectorType
 			};
 		}

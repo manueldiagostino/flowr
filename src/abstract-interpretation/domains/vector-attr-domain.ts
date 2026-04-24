@@ -149,6 +149,20 @@ export class VectorAttrDomain<Value extends VectorAttrLift = VectorAttrLift>
 		return new VectorAttrDomain({ must: mustSet, may: maySet });
 	}
 
+	/**
+	 * Maps an attribute name string to the appropriate VectorAttr.
+	 * Known attributes ('names', 'dim', 'class') map to themselves.
+	 * Unknown attributes map to 'other'.
+	 * @param attrName - The attribute name string (e.g., 'names', 'description', 'custom')
+	 * @returns The corresponding VectorAttr
+	 */
+	public static fromAttributeName(attrName: string): VectorAttr {
+		if(attrName === 'names' || attrName === 'dim' || attrName === 'class') {
+			return attrName;
+		}
+		return 'other';
+	}
+
 	public static abstract(concrete: ReadonlySet<VectorAttrSet> | typeof Top): VectorAttrDomain {
 		if(concrete === Top) {
 			return VectorAttrDomain.top();

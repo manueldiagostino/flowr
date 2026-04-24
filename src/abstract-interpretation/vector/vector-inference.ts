@@ -21,11 +21,12 @@ import type { RString } from '../../r-bridge/lang-4.x/ast/model/nodes/r-string';
 import type { RLogical } from '../../r-bridge/lang-4.x/ast/model/nodes/r-logical';
 import type { RSymbol } from '../../r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 import { FunctionArgument as FunctionArgumentUtil } from '../../dataflow/graph/graph';
-import { EmptyArgument } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
+import { EmptyArgument, RFunctionCall } from '../../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
 import { VertexType } from '../../dataflow/graph/vertex';
 import { RType } from '../../r-bridge/lang-4.x/ast/model/type';
 import { RAccess } from '../../r-bridge/lang-4.x/ast/model/nodes/r-access';
 import { RArgument } from '../../r-bridge/lang-4.x/ast/model/nodes/r-argument';
+import { Identifier } from '../../dataflow/environments/identifier';
 import type { RBinaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-binary-op';
 import type { RUnaryOp } from '../../r-bridge/lang-4.x/ast/model/nodes/r-unary-op';
 import { guard } from '../../util/assert';
@@ -46,8 +47,7 @@ import {
 	applySetAttr
 } from './operations';
 import { buildNegativeSets } from './operations/select';
-import { detectVectorFunctionType, type VectorFunctionType } from './helpers/function-detection';
-import { join } from 'path';
+import { detectVectorFunctionType, type VectorFunctionType, isAttributeSetter, attrSetterToAttr, type VectorAttrSetter } from './helpers/function-detection';
 
 type VectorOperationName = 'setAttr' | 'binary_op' | 'concatenate' | 'select' | 'update' | 'negate' | 'unknown';
 
@@ -516,13 +516,45 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	}
 
 	/**
-	 * Handles vector replacement operations (x[i] \&lt;- v).
-	 * @param node - The R access node representing the target vector
+	 * Handles vector replacement operations (x[i] \&lt;- v) and attribute-setting functions (names(x) \&lt;- v).
+	 * @param node - The R access node representing the target vector, or a FunctionCall for attribute-setting
 	 * @param source - The R node representing the value being assigned
-	 * @returns The mapped vector operations sequence for update
+	 * @returns The mapped vector operations sequence for update or setAttr
 	 */
 	private handleReplacement(node: RNode<ParentInformation>, source: RNode<ParentInformation> | undefined): VectorOperations<Domain> {
 		vectorLogger.debug(`Handler: handleReplacement [node.type=${node.type}, source.type=${source?.type}]`);
+
+		// Handle attribute-setting replacement functions like names(x) <- value
+		if(RFunctionCall.is(node) && node.named) {
+			const funcName = Identifier.getName(node.functionName.content);
+			vectorLogger.debug(`Handler: handleReplacement FunctionCall named=${funcName}`);
+
+			// Check for supported attribute-setting functions
+			if(funcName === 'names' && node.arguments.length === 1 && node.arguments[0] !== EmptyArgument) {
+				const targetArg = node.arguments[0];
+				const targetNode = RArgument.is(targetArg) ? targetArg.value : targetArg;
+				const operandId = targetNode?.info.id;
+				const resolvedOperand = operandId !== undefined ? this.getVectorDomainValue(operandId) : undefined;
+
+				vectorLogger.debug(`Handler: handleReplacement names [operandId=${operandId}]`);
+				if(resolvedOperand) {
+					vectorLogger.debug(`Handler: handleReplacement names operand [length=${resolvedOperand.length.toString()}, values=${resolvedOperand.known.toString()}]`);
+				}
+
+				// Set the names attribute on the target vector
+				const namesAttr = VectorAttrDomain.from(new Set(['names']), new Set(['names']));
+				return [{
+					operation: 'setAttr',
+					operand:   resolvedOperand,
+					attrs:     namesAttr
+				}];
+			}
+
+			// Other named replacement functions not yet supported
+			vectorLogger.debug(`Handler: handleReplacement unsupported named function: ${funcName}`);
+			return this.unknownOperation();
+		}
+
 		if(!RAccess.is(node)) {
 			vectorLogger.debug('Handler: handleReplacement node is not RAccess, returning unknown');
 			return this.unknownOperation();
@@ -572,6 +604,99 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 
 		vectorLogger.debug(`Handler: handleReplacement matrix access (not supported) [argCount=${args.length}]`);
 		return this.unknownOperation();
+	}
+
+	/**
+	 * Handles attribute setter replacement operations (names(x) &lt;- v, dim(x) &lt;- v, etc.)
+	 * @param node - The function call node (names&lt;-, dim&lt;-, etc.)
+	 * @param sourceNode - The source node representing the attribute values
+	 * @param funcName - The function name (e.g., 'names&lt;-')
+	 * @returns The vector operations sequence
+	 */
+	private handleAttributeSetter(
+		node: RFunctionCall<ParentInformation>,
+		sourceNode: RNode<ParentInformation> | undefined,
+		funcName: string
+	): VectorOperations<Domain> {
+		vectorLogger.debug(`Handler: handleAttributeSetter [funcName=${funcName}]`);
+
+		// Get the target vector (first argument)
+		const args = node.arguments;
+		if(args.length < 1) {
+			return this.unknownOperation();
+		}
+
+		const targetArg = args[0];
+		const targetNode = targetArg !== EmptyArgument ?
+			(RArgument.is(targetArg) ? targetArg.value : targetArg) : undefined;
+		const targetId = targetNode?.info.id;
+		const targetVector = targetId !== undefined ? this.getVectorDomainValue(targetId) : undefined;
+
+		// Map the setter function to the attribute
+		const attr = attrSetterToAttr(funcName as VectorAttrSetter);
+
+		// Create attribute domain with the specific attribute set
+		// (must={attr}, may={attr}) means the vector definitely has this attribute
+		const attrDomain = VectorAttrDomain.from([attr], [attr]);
+
+		vectorLogger.debug(`Handler: handleAttributeSetter [targetId=${targetId}, attr=${attr}]`);
+
+		return [{
+			operation: 'setAttr',
+			operand:   targetVector,
+			attrs:     attrDomain
+		}];
+	}
+
+	/**
+	 * Handles the attr<- replacement function (attr(v, "name") <- value).
+	 * Extracts the attribute name from the second argument and maps it to the appropriate VectorAttr.
+	 * Known attributes ('names', 'dim', 'class') map to themselves, unknown attributes map to 'other'.
+	 * @param node - The attr<- function call node
+	 * @param _sourceNode - The source node representing the attribute value (unused)
+	 * @returns The vector operations sequence
+	 */
+	private handleAttrSetter(
+		node: RFunctionCall<ParentInformation>,
+		_sourceNode: RNode<ParentInformation> | undefined
+	): VectorOperations<Domain> {
+		vectorLogger.debug('Handler: handleAttrSetter');
+
+		const args = node.arguments;
+		if(args.length < 2) {
+			return this.unknownOperation();
+		}
+
+		// Get the target vector (first argument)
+		const targetArg = args[0];
+		const targetNode = targetArg !== EmptyArgument ?
+			(RArgument.is(targetArg) ? targetArg.value : targetArg) : undefined;
+		const targetId = targetNode?.info.id;
+		const targetVector = targetId !== undefined ? this.getVectorDomainValue(targetId) : undefined;
+
+		// Get the attribute name (second argument) - should be a string literal
+		const attrNameArg = args[1];
+		let attrName: string | undefined;
+		if(attrNameArg !== EmptyArgument) {
+			const attrNameNode = RArgument.is(attrNameArg) ? attrNameArg.value : attrNameArg;
+			if(attrNameNode?.type === RType.String) {
+				attrName = attrNameNode.content.str;
+			}
+		}
+
+		// Map the attribute name to VectorAttr using VectorAttrDomain
+		const attr = VectorAttrDomain.fromAttributeName(attrName ?? '');
+
+		vectorLogger.debug(`Handler: handleAttrSetter [targetId=${targetId}, attrName=${attrName}, mappedTo=${attr}]`);
+
+		// Create attribute domain with the specific attribute set
+		const attrDomain = VectorAttrDomain.from([attr], [attr]);
+
+		return [{
+			operation: 'setAttr',
+			operand:   targetVector,
+			attrs:     attrDomain
+		}];
 	}
 
 	// ==================== Event Handlers ====================
@@ -686,7 +811,39 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 			return;
 		}
 
-		const operations = this.handleReplacement(node, sourceNode);
+		// Check if this is an attribute setter replacement (names<-, dim<-, etc.)
+		let operations: VectorOperations<Domain>;
+		if(node.type === RType.FunctionCall) {
+			const funcCall = node as RFunctionCall<ParentInformation>;
+			if(funcCall.named) {
+				const funcName = Identifier.getName(funcCall.functionName.content);
+				// Use call.name from dataflow vertex which has the full name (attr<-)
+				const fullFuncName = call.name ?? funcName;
+				// Handle attr<- specially (extracts attribute name from second argument)
+				if(fullFuncName === 'attr<-' || funcName === 'attr<-') {
+					vectorLogger.debug('Handler: onReplacementCall detected attr<- setter');
+					operations = this.handleAttrSetter(funcCall, sourceNode);
+					this.applyVectorExpression(node, operations, target);
+					if(target !== undefined) {
+						this.recordStateInTrace(target);
+					}
+					return;
+				}
+				// Handle other *<- attribute setters (names<-, dim<-, etc.)
+				if(isAttributeSetter(funcName)) {
+					vectorLogger.debug(`Handler: onReplacementCall detected attribute setter [funcName=${funcName}]`);
+					operations = this.handleAttributeSetter(funcCall, sourceNode, funcName);
+					this.applyVectorExpression(node, operations, target);
+					if(target !== undefined) {
+						this.recordStateInTrace(target);
+					}
+					return;
+				}
+			}
+		}
+
+		// Existing RAccess handling (x[i] <- v)
+		operations = this.handleReplacement(node, sourceNode);
 
 		// Check if we have a valid operation result - if the operation couldn't be resolved
 		// due to missing dependencies, don't store a Bottom result so the fixpoint iteration
