@@ -109,7 +109,14 @@ export function toNAAwareDomains(values: readonly AbstractNaValue<IntervalDomain
  */
 export async function assertVectorDomainIntervals(shell: RShell, code: string, expected: TestCase<IntervalDomain>) {
 	for(const [criterion, expectedVector] of Record.entries(expected)) {
-		const inferred = await getVectorForCriterion(shell, code, criterion, domainFactory(IntervalDomain.top()), value => typeof value === 'number' ? new Set([value]) : undefined);
+		const inferred = await getVectorForCriterion(shell, code, criterion, domainFactory(IntervalDomain.top()), value => {
+			if(typeof value === 'number') {
+				return new Set([value]);
+			} else if(typeof value === 'boolean') {
+				return new Set([value ? 1 : 0]);
+			}
+			return undefined;
+		});
 		assertVectorValue(criterion, inferred, expectedVector, IntervalDomain.top());
 	}
 }
@@ -145,7 +152,14 @@ export async function assertVectorDomainBooleans(shell: RShell, code: string, ex
  * by instrumenting the code to output the actual properties of the vector at these criteria and comparing them to the inferred properties.
  */
 export async function validateVectorDomainIntervals(shell: RShell, code: string, criteria: readonly `${number}@${string}`[]) {
-	return validateVectorDomain(shell, code, criteria, IntervalDomain.top(), value => typeof value === 'number' ? new Set([value]) : undefined, str => {
+	return validateVectorDomain(shell, code, criteria, IntervalDomain.top(), value => {
+		if(typeof value === 'number') {
+			return new Set([value]);
+		} else if(typeof value === 'boolean') {
+			return new Set([value ? 1 : 0]);
+		}
+		return undefined;
+	}, str => {
 		const value = Number.parseFloat(str);
 		return [value, value] as const;
 	});

@@ -515,7 +515,7 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 	}
 
 	const plainSelector = adjustedSelector.toArray();
-	for(let i = 0; i < selector.known.value.length; i++) {
+	for(let i = 0; i < plainSelector.length; i++) {
 		const iVal = plainSelector[i];
 		let sourceVal = NAAwareDomain.bottom(value.plainFactory);
 

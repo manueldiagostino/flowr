@@ -539,7 +539,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 				operation:     'update',
 				operand:       resolvedOperand,
 				selector:      selector !== undefined ? String(selector) : undefined,
-				values:        values !== undefined ? String(values) : undefined,
+				values:        resolvedValues !== undefined && values !== undefined ? String(values) : undefined,
 				doubleBracket: isDoubleBracket
 			}];
 		}
@@ -659,7 +659,21 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 			vectorLogger.debug('Handler: onReplacementCall node is undefined, returning');
 			return;
 		}
+
 		const operations = this.handleReplacement(node, sourceNode);
+
+		// Check if we have a valid operation result - if the operation couldn't be resolved
+		// due to missing dependencies, don't store a Bottom result so the fixpoint iteration
+		// can re-evaluate when dependencies become available.
+		const hasUnresolvedDependencies = operations.length === 1 &&
+			operations[0].operation === 'update' &&
+			(operations[0].operand === undefined || operations[0].values === undefined);
+
+		if(hasUnresolvedDependencies) {
+			vectorLogger.debug('Handler: onReplacementCall skipping storage due to unresolved dependencies');
+			return;
+		}
+
 		// Store result at the target node (the symbol being assigned to).
 		// The getVectorDomainValue method checks the direct state first, so it will
 		// find the value stored at the target node. Using getVariableOrigins to find
