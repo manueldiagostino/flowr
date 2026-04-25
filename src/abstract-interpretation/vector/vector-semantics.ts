@@ -390,8 +390,9 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 
 	for(const posInterval of selectorPositions) {
 		vectorLogger.trace(`Semantic: updateKnownPositions processing selector interval ${posInterval.toString()}`);
-		if(posInterval.isBottom()) {
-			vectorLogger.trace('Semantic: updateKnownPositions skipping bottom interval');
+		if(posInterval.isBottom() || posInterval.isNA()) {
+			vectorLogger.trace('Semantic: updateKnownPositions skipping bottom/NA interval');
+			valueIdx++;
 			continue;
 		}
 
@@ -401,9 +402,10 @@ export function updateKnownPositions<Domain extends AnyAbstractDomain>(
 		if(posInterval.isValue() && posInterval.inner.isValue()) {
 			const [l, u] = posInterval.inner.value;
 
-			// Skip zero index
+			// Skip zero index (but still consume the value)
 			if(l === 0 && u === 0) {
 				vectorLogger.trace('Semantic: updateKnownPositions skipping zero index');
+				valueIdx++;
 				continue;
 			}
 			guard(l>=0, `Negative index detected for position ${valueIdx}.`);

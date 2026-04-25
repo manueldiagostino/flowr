@@ -306,7 +306,9 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : 0;
 		const uR = Math.max(selectorUpper === +Infinity ? 0 : selectorUpper, summaryLower);
 		const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
-		const baseKnownPositions = initKnownPositions(selectorKnownPositions as unknown as NAAwareDomain<Domain>[], sourceLower, sourceUpper, uR, naValue);
+		// Per paper line 826: InitPrefix(prefix_1, l_1, u_1, u_r) - use source vector prefix
+		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
+		const baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
 		let valuesUpper = 0;
 		if(values.length.isValue()) {
 			valuesUpper = values.length.value[1];
@@ -334,30 +336,59 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		return result;
 	} else {
 		vectorLogger.trace('Subcase: updatePositive - finite selector');
+		// Per paper Section 4.8.3: compute l_r, u_r from selector positions join
 		let uR = 0;
+		let lR = +Infinity;
 		if(adjustedSelector.known.isValue()) {
 			const selectorKnownPositions = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorKnownPositions) {
 				if(idx.inner.isValue()) {
 					uR = Math.max(uR, idx.inner.value[1]);
+					lR = Math.min(lR, idx.inner.value[0]);
 				}
 			}
 		}
 		uR = Math.max(uR, sourceUpper);
+		// If no valid selector positions, default to sourceLower
+		if(lR === +Infinity) {
+			lR = sourceLower;
+		}
+
+		// Per paper lines 951-959: InitPrefix has 3 cases based on (l_r, u_r) vs (l_1, u_1)
+		// prefix_r' = InitPrefix(prefix_1, l_r, u_1, u_r)  -- using source vector prefix_1
+		//   - if u_r <= u_1: use source positions as-is
+		//   - if l_r <= u_1 < u_r: fill positions (u_1+1) to u_r with NA
+		//   - otherwise (l_r > u_1): grow from source vector
 		const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
-		// Use the source vector's known positions as the base, not the selector positions
+
+		// Build base prefix based on the three cases from paper
 		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
-		const baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
+		let baseKnownPositions: NAAwareDomain<Domain>[];
+		if(uR <= sourceUpper) {
+			// Case 1: u_r <= u_1 - selector fits within source, use source positions directly
+			baseKnownPositions = sourceKnownPositions.slice(0, uR);
+		} else if(lR <= sourceUpper) {
+			// Case 2: l_r <= u_1 < u_r - need to fill gap with NA
+			baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, sourceUpper, uR, naValue);
+		} else {
+			// Case 3: l_r > u_1 - need to grow from source based on l_1
+			baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
+		}
+
 		let valuesUpper = 0;
 		if(values.length.isValue()) {
 			valuesUpper = values.length.value[1];
 		}
 		const vLower = values.length.isValue() ? values.length.value[0] : 1;
-		const rhoFResult = rhoF(values.known, vLower, Math.max(selectorUpper, valuesUpper), values.factory);
+		const rhoFResult = rhoF(values.known, vLower, Math.max(uR, valuesUpper), values.factory);
 		const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 		const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
+
+		// Per paper line 924: resulting length is [max(l_1, l_r), max(u_1, u_r)]
+		// Per paper line 969: summary is ⊥ for finite selector with enumerable positions
+		const resultLower = Math.max(sourceLower, lR);
 		const result = value.create({
-			length:     value.length.create([sourceLower, uR]),
+			length:     value.length.create([resultLower, uR]),
 			known:      value.known.create(resultKnownPositions),
 			summary:    value.summary.bottom(),
 			attributes: value.attributes,
@@ -745,8 +776,6 @@ export function applyUpdateLogical<Domain extends AnyAbstractDomain & Arithmetic
 		selectorUpper = 1;
 	}
 
-	selector = adjustForZeros(selector);
-
 	const isInfinite = selectorUpper === +Infinity;
 	if(isInfinite) {
 		vectorLogger.trace('Subcase: updateLogical - infinite selector');
@@ -755,8 +784,12 @@ export function applyUpdateLogical<Domain extends AnyAbstractDomain & Arithmetic
 	}
 
 	const sourceKnownPositions = value.known.toArray();
+	// Use ORIGINAL selector (not adjusted) - per theory line 1087-1088
 	const selectorKnownPositions = selector.known.toArray();
+	// Per theory line 1085, 1092: use max(|prefix_1|, |prefix_2|)
 	const maxLen = Math.max(sourceKnownPositions.length, selectorKnownPositions.length);
+
+	// Initialize result prefix - per theory line 1087-1088
 	const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 	for(let i = 0; i < maxLen; i++) {
 		if(i < sourceKnownPositions.length) {
@@ -767,25 +800,51 @@ export function applyUpdateLogical<Domain extends AnyAbstractDomain & Arithmetic
 			resultKnownPositions.push(naValue);
 		}
 	}
+
+	// Generate cyclic values up to max(|prefix_1|, |prefix_2|) - per theory line 1092
 	const vLower = values.length.isValue() ? values.length.value[0] : 1;
-	const rhoFResult = rhoF(values.known, vLower, selectorUpper, values.factory);
+	const rhoFResult = rhoF(values.known, vLower, maxLen, values.factory);
 	const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
+
+	// Sliding operation - per theory lines 1097-1108
+	// Use ORIGINAL selector values with recycling to determine TRUE/FALSE
 	for(let i = 0; i < maxLen && i < cyclicValues.length; i++) {
+		// Recycled selector index
+		const selectorIdx = i % Math.max(1, selectorKnownPositions.length);
 		let selectorVal: NAAwareDomain<IntervalDomain>;
-		if(i < selectorKnownPositions.length) {
-			selectorVal = selectorKnownPositions[i];
-		} else if(i < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {
+		if(selectorIdx < selectorKnownPositions.length) {
+			selectorVal = selectorKnownPositions[selectorIdx];
+		} else if(selectorIdx < selectorKnownPositions.length + (selector.summary.isValue() ? 1 : 0)) {
 			selectorVal = selector.summary;
 		} else {
 			selectorVal = selector.summary.top();
 		}
-		if(selectorVal.isValue()) {
-			resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];
+
+		// Per theory lines 1099-1108: check if selector is TRUE, FALSE, or may be either
+		if(selectorVal.isValue() && selectorVal.inner.isValue()) {
+			const [selL, selU] = selectorVal.inner.value;
+			if(selL === 0 && selU === 0) {
+				// Definitely FALSE: keep original, do not update (line 1105-1106)
+				vectorLogger.trace(`Logical update: position ${i + 1} is FALSE, keeping original`);
+				continue;
+			} else if(selL >= 1 && selU >= 1) {
+				// Definitely TRUE: strong update (replace) (line 1100)
+				vectorLogger.trace(`Logical update: position ${i + 1} is TRUE, strong update`);
+				resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];
+			} else {
+				// May be TRUE or FALSE (contains 0 or 1, but not definite): weak update (join) (line 1103-1104)
+				vectorLogger.trace(`Logical update: position ${i + 1} may be TRUE/FALSE, weak update`);
+				resultKnownPositions[i] = resultKnownPositions[i].join(cyclicValues[i % cyclicValues.length]);
+			}
 		} else {
+			// Unknown selector value: weak update (line 1103-1104)
 			resultKnownPositions[i] = resultKnownPositions[i].join(cyclicValues[i % cyclicValues.length]);
 		}
 	}
+
+	// Result length: [l_1, u_r] where u_r = max(u_1, u_2) - per theory lines 1114-1115
 	const resultUpper = isInfinite ? +Infinity : Math.max(sourceUpper, selectorUpper);
+	// Summary: Squash(values) when infinite, bottom otherwise - per theory lines 1116-1117
 	const resultSummary = isInfinite ? squash(values) : value.summary.bottom();
 	const result = value.create({
 		length:     value.length.create([sourceLower, resultUpper]),
