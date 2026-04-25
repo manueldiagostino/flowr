@@ -152,7 +152,7 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 		} else {
 			const joined = values.reduce((acc, val) => acc.join(val));
 			const originIds = origins.slice(0, values.length).join(',');
-			vectorLogger.trace(`Join: getVectorDomainValue [id=${id}, origins=[${originIds}], result.length=${joined.length.toString()}, value=${joined}, result.type=${joined.type.getType()}]`);
+			vectorLogger.trace(`Join: getVectorDomainValue [id=${id}, origins=[${originIds}], result.length=${joined.length.toString()}, value=${joined.toString()}, result.type=${joined.type.getType()}]`);
 			return joined;
 		}
 	}
@@ -879,10 +879,10 @@ export class VectorInferenceVisitor<Domain extends AnyAbstractDomain & Arithmeti
 	 * @param no - The else branch node ID (may be undefined)
 	 */
 	protected override onIfThenElseCall({ call, condition, yes, no }: {
-		call: DataflowGraphVertexFunctionCall,
+		call:      DataflowGraphVertexFunctionCall,
 		condition: NodeId | undefined,
-		yes: NodeId | undefined,
-		no: NodeId | undefined
+		yes:       NodeId | undefined,
+		no:        NodeId | undefined
 	}): void {
 		super.onIfThenElseCall({ call, condition, yes, no });
 

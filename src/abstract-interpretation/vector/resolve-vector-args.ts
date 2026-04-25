@@ -45,7 +45,7 @@ function primitiveToRType(value: string | number | boolean, isMarkedAsInt = fals
  * Starts with the first element's type and LUBs (joins) with subsequent types.
  * Returns Top if the array is empty.
  */
-function computeVectorTypeFromValues(values: (string | number | boolean | undefined)[]): RVectorTypeDomain {
+function _computeVectorTypeFromValues(values: (string | number | boolean | undefined)[]): RVectorTypeDomain {
 	if(values.length === 0) {
 		return RVectorTypeDomain.top();
 	}

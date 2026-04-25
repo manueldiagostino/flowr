@@ -6,7 +6,7 @@ import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice'
 // import type { BoundedSetDomain } from '../../../../src/abstract-interpretation/domains/bounded-set-domain';
 // import type { SingletonDomain } from '../../../../src/abstract-interpretation/domains/singleton-domain';
 import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { RVectorTypeBottom, RVectorTypeTop } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
+import { RVectorTypeTop } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { withShell } from '../../_helper/shell';
 import { Record } from '../../../../src/util/record';
 import {
