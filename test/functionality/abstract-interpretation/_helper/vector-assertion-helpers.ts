@@ -126,6 +126,7 @@ export async function assertVectorDomainIntervals(shell: RShell, code: string, e
  * ensuring the abstract interpretation is sound without requiring exact precision.
  */
 export async function assertVectorDomainSound(shell: RShell, code: string, expected: TestCase<IntervalDomain>) {
+	console.log(`[assertVectorDomainSound] (${Object.keys(expected).length} criteria)`);
 	for(const [criterion, expectedVector] of Record.entries(expected)) {
 		const inferred = await getVectorForCriterion(shell, code, criterion, domainFactory(IntervalDomain.top()), value => {
 			if(typeof value === 'number') {
@@ -236,6 +237,7 @@ export async function validateVectorDomain<Domain extends AnyAbstractDomain & Ar
 		const outputCode = createCodeForOutput(criterion, Identifier.toString(node.content));
 		lines.splice(line, 0, outputCode);
 	}
+console.log(`[validateVectorDomain] (${testEntries.length} criteria)`);
 	shell.clearEnvironment();
 	const instrumentedCode = lines.join('\n');
 	const output = await shell.sendCommandWithOutput(instrumentedCode);
