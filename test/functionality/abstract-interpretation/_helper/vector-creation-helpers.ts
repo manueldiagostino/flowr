@@ -3,7 +3,7 @@ import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/
 import { PosIntervalDomain } from '../../../../src/abstract-interpretation/domains/positive-interval-domain';
 import { VectorAttrDomain, type VectorAttr } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
-import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
+import { RVectorTypeDomain, RVectorTypes } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { intervalFactory } from './vector-interval-factory';
 import { asNaAware, asNaAwares, toNAAwareDomains } from './vector-assertion-helpers';
@@ -35,8 +35,8 @@ export const mkVector = (
 	const sum = new NAAwareDomain({ inner: sumInner, hasNA: false }, intervalFactory);
 	const attrs = attributes
 		? VectorAttrDomain.from(attributes.must, attributes.may)
-		: VectorAttrDomain.bottom();
-	const vecType = type ?? RVectorTypeDomain.top();
+		: VectorAttrDomain.empty();
+	const vecType = type ?? new RVectorTypeDomain(RVectorTypes[2]);
 
 	return VectorDomain.fromValues(intervalFactory, len, vals, sum, attrs, vecType);
 };

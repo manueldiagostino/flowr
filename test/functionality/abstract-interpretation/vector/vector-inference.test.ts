@@ -11,6 +11,14 @@ import {
 	assertSelection,
 	runVectorInference
 } from '../_helper/vector-inference-helpers';
+import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
+import {
+	asNaAwares,
+	asNaAwareWithNA,
+	assertVectorDomainSound,
+	type TestCase,
+} from '../_helper/vector-assertion-helpers';
 
 const valueToDomain = (value: string | number | boolean): ReadonlySet<number> | undefined => {
 	if(typeof value === 'number') {
@@ -516,14 +524,20 @@ x[-(-2)] <- 99`;
 	});
 
 	describe('Positive Update (Paper §4.8.1)', () => {
-		describe('Paragraph 1: Non-enumerable selector', () => {
+		describe('Paragraph 1: high position in the selector', () => {
 			test('should use squash for non-enumerable positions', async() => {
-				// Create source vector: x = [1, 2, 3, 4, 5]
-				// Create selector with non-enumerable interval (card > θ=50)
-				// Result should have infinite upper length and squashed summary
-				const code = 'x <- c(1, 2, 3, 4, 5)\nx[c(1, 100)] <- 99';
-				const vector = await getVectorForCriterion(shell, code, '1@x', intervalFactory, valueToDomain);
-				assert.ok(vector, 'Should return a vector');
+				const code = `x <- c(1, 2, 3, 4, 5)
+x[c(1, 100)] <- 99`;
+				const expected = {
+					'2@x': {
+						length:     [5, Infinity],
+						known:      asNaAwares([99, 99], [2, 2], [3, 3], [4, 4], [5, 5]),
+						summary:    asNaAwareWithNA([99, 99]),
+						attributes: VectorAttrEmpty,
+						type:       'double'
+					},
+				} satisfies TestCase<IntervalDomain>;
+				await assertVectorDomainSound(shell, code, expected);
 			});
 
 			test('should handle non-enumerable selector with multiple values', async() => {

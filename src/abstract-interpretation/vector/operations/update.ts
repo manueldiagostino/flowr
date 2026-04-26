@@ -263,6 +263,24 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 	naValue: NAAwareDomain<Domain>
 ): VectorDomain<Domain> {
 	vectorLogger.debug('Operation: updatePositive');
+
+	const hasNonEnumerable = selector.known.isValue() && (selector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
+	if(hasNonEnumerable) {
+		vectorLogger.trace('Subcase: updatePositive - non-enumerable position in the selector, using squash');
+		const vAll = squash(value).join(squash(values));
+
+		const result = value.create({
+			length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
+			known:      value.known.create([]),
+			summary:    vAll,
+			attributes: value.attributes,
+			type:       value.type
+		});
+		vectorLogger.trace(`Subcase: updatePositive - returning ${result.toString()}`);
+
+		return result;
+	}
+
 	const adjustedSelector = adjustForZeros(selector);
 	if(adjustedSelector.isBottom() || adjustedSelector.length.isBottom()) {
 		expensiveTrace(vectorLogger, () => 'adjustedSelector is Bottom, returning Bottom');
@@ -276,19 +294,6 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		return value;
 	}
 
-	const hasNonEnumerable = adjustedSelector.known.isValue() && (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
-	if(hasNonEnumerable) {
-		vectorLogger.trace('Subcase: updatePositive - non-enumerable selector, using squash');
-		const vAll = squash(value).join(squash(values));
-		const result = value.create({
-			length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
-			known:      value.known.create([]),
-			summary:    vAll,
-			attributes: value.attributes,
-			type:       value.type
-		});
-		return result;
-	}
 	let sourceLower = 0, sourceUpper = 0;
 	if(value.length.isValue()) {
 		sourceLower = value.length.value[0];
@@ -304,27 +309,73 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		const summaryInner = adjustedSelector.summary.inner;
 		const selectorSummaryEnumerable = summaryInner !== undefined ? isEnumerable(summaryInner) : false;
 		const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : 0;
-		const uR = Math.max(selectorUpper === +Infinity ? 0 : selectorUpper, summaryLower);
+
+		// Get lub only of internal known positions (not including summary)
+		// This is different from squash() which joins known + summary
+		let selectorKnownLub: NAAwareDomain<IntervalDomain>;
+		if(adjustedSelector.known.isValue()) {
+			const known = adjustedSelector.known.value as readonly NAAwareDomain<IntervalDomain>[];
+			selectorKnownLub = known[0];
+			for(let i = 1; i < known.length; i++) {
+				selectorKnownLub = selectorKnownLub.join(known[i]);
+			}
+		} else {
+			selectorKnownLub = adjustedSelector.naAwareFactory(Bottom);
+		}
+		const selectorKnownLubInner = selectorKnownLub.inner;
+		guard(selectorKnownLubInner.isValue());
+
+		let uR = Math.max(selectorKnownLubInner.value[1], summaryLower);
 		const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
 		// Per paper line 826: InitPrefix(prefix_1, l_1, u_1, u_r) - use source vector prefix
 		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
 		const baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
-		let valuesUpper = 0;
-		if(values.length.isValue()) {
-			valuesUpper = values.length.value[1];
-		}
-		const vLower = values.length.isValue() ? values.length.value[0] : 1;
-		const rhoFResult = rhoF(values.known, vLower, valuesUpper, values.factory);
+
+		guard(values.length.isValue(), '');
+		const vUpper = uR;
+		const vLower = values.length.value[0];
+
+		const rhoFResult = rhoF(values.known, vLower, vUpper, values.naAwareFactory);
 		const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 		const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
-		if(!selectorSummaryEnumerable && summaryInner != undefined && summaryInner.isValue()) {
-			const squashValues = squash(values);
-			const squashValuesInner = squashValues.inner;
-			const lS2 = summaryInner.value[0];
-			for(let i = Math.max(0, lS2 - 1); i < resultKnownPositions.length; i++) {
-				resultKnownPositions[i] = resultKnownPositions[i].join(squashValuesInner !== undefined ? squashValues : naValue.top());
+		const squashValues = squash(values);
+
+
+		// Per paper L907-929: Enumerable summary subcase - result is finite
+		if(selectorSummaryEnumerable) {
+			vectorLogger.trace('Subsubcase: updatePositive - infinite selector with enumerable summary');
+			// Per paper L910: l_r, u_r from Squash(ν_2) = known lub join summary
+			const selectorFullLub = selectorKnownLub.join(adjustedSelector.summary);
+			const selectorFullLubInner = selectorFullLub.inner;
+			const lR = selectorFullLubInner.isValue() ? selectorFullLubInner.value[0] : sourceLower;
+			uR = selectorFullLubInner.isValue() ? selectorFullLubInner.value[1] : 0;
+			guard(summaryInner.isValue(), '');
+			for(let i = summaryInner.value[0]-1; i < summaryInner.value[1]; i++) {
+				vectorLogger.trace(`Updating position ${i} with ${squashValues.toString()}`);
+				resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
+			}
+
+			// Result is finite: length [max(l_3, l_r), u_r], summary = ⊥
+			const resultLengthLower = Math.max(vLower, lR);
+			const result = value.create({
+				length:     value.length.create([resultLengthLower, uR]),
+				known:      value.known.create(resultKnownPositions),
+				summary:    value.summary.bottom(),
+				attributes: value.attributes,
+				type:       value.type
+			});
+			return result;
+		}
+
+		// Per paper L897-905: Non-enumerable summary subcase - result is infinite
+		const lS2 = summaryLower;
+		if(lS2 <= uR) {
+			for(let i = lS2 - 1; i < uR; i++) {
+				vectorLogger.trace(`Updating position ${i} with ${squashValues.toString()}`);
+				resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
 			}
 		}
+
 		const resultSummary = value.summary.join(squash(values));
 		const result = value.create({
 			length:     value.length.create([sourceLower, +Infinity]),

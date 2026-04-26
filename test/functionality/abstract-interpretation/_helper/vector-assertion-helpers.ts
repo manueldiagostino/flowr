@@ -237,7 +237,8 @@ export async function validateVectorDomain<Domain extends AnyAbstractDomain & Ar
 		const outputCode = createCodeForOutput(criterion, Identifier.toString(node.content));
 		lines.splice(line, 0, outputCode);
 	}
-console.log(`[validateVectorDomain] (${testEntries.length} criteria)`);
+
+	console.log(`[validateVectorDomain] (${testEntries.length} criteria)`);
 	shell.clearEnvironment();
 	const instrumentedCode = lines.join('\n');
 	const output = await shell.sendCommandWithOutput(instrumentedCode);
