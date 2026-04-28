@@ -436,12 +436,17 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 
 		// Per paper line 924: resulting length is [max(l_1, l_r), max(u_1, u_r)]
-		// Per paper line 969: summary is ⊥ for finite selector with enumerable positions
+		// Per paper lines 986-1040: summary depends on whether source is infinite
+		//   - If u_1 ≠ +∞ (source is finite): s_r = ⊥
+		//   - If u_1 = +∞ (source is infinite): s_r = s_1 ⊔ Squash(ν₃)
 		const resultLower = Math.max(sourceLower, lR);
+		const resultSummary = sourceUpper === +Infinity
+			? value.summary.join(squash(values))
+			: value.summary.bottom();
 		const result = value.create({
 			length:     value.length.create([resultLower, uR]),
 			known:      value.known.create(resultKnownPositions),
-			summary:    value.summary.bottom(),
+			summary:    resultSummary,
 			attributes: value.attributes,
 			type:       value.type
 		});
@@ -470,7 +475,7 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
  * **Postconditions:**
  * - Paragraph 1 (non-enumerable): weak update with squash(values), summary updated if infinite
  * - Paragraph 2 (infinite selector): converts to positive selector, delegates to applyUpdatePositive
- * - Paragraph 3 (finite selector): strong update with cyclic recycling, summary = ⊥
+ * - Paragraph 3 (finite selector): strong update with cyclic recycling, summary = ⊥ if result finite
  * - Result length: [sourceLower, max(sourceUpper, selectorUpper)] for finite selectors
  * @param value - The target VectorDomain to update
  * @param selector - The negative selector VectorDomain (contains only c ≤ 0)
@@ -493,11 +498,6 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 	if(value.length.isValue()) {
 		sourceLower = value.length.value[0];
 		sourceUpper = value.length.value[1];
-		// 3. Guard: infinite source
-		if(sourceUpper === +Infinity) {
-			vectorLogger.trace('Subcase: updateNegative - infinite source, returning top');
-			return value.top();
-		}
 	} else {
 		vectorLogger.trace('Subcase: updateNegative - non-value source length, returning bottom');
 		return value.bottom();
@@ -509,10 +509,15 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 
 	// 6. Compute MustNotUpdated set (Paper §4.8.2, lines 934-936)
 	// Positions definitely NOT updated: card(p) = 1 and valid positive index in [1, u₁]
+	// When u₁ = +∞, we only iterate over the known prefix; positions beyond are handled by the summary.
 	const mustNotUpdated = new Set<number>();
 	// 7. Compute MayNotUpdated set (Paper §4.8.2, lines 938-944)
 	// Positions possibly NOT updated (non-singleton intervals or from summary)
 	const mayNotUpdated = new Set<number>();
+	// Bound for set computation: use known prefix length when source is infinite
+	const sourceBound = sourceUpper === +Infinity
+		? (value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]).length : 0)
+		: sourceUpper;
 
 	if(adjustedSelector.known.isValue()) {
 		const selectorKnownPositions = adjustedSelector.known.value;
@@ -531,27 +536,27 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 					if(card(innerInterval) === 1) {
 						// Singleton: definitely this position
 						const pos = posLower;
-						if(pos >= 1 && pos <= sourceUpper) {
+						if(pos >= 1 && pos <= sourceBound) {
 							mustNotUpdated.add(pos);
 							mayNotUpdated.add(pos);
 						}
 					} else {
 						// Non-singleton interval: range of possible positions
-						for(let pos = posLower; pos <= posUpper && pos <= sourceUpper; pos++) {
+						for(let pos = posLower; pos <= posUpper && pos <= sourceBound; pos++) {
 							mayNotUpdated.add(pos);
 						}
 					}
 				}
 			} else {
 				// Top interval: all positions may be not updated
-				for(let pos = 1; pos <= sourceUpper; pos++) {
+				for(let pos = 1; pos <= sourceBound; pos++) {
 					mayNotUpdated.add(pos);
 				}
 			}
 		}
 	} else {
 		// adjustedSelector.known is Bot: all positions may be not updated
-		for(let pos = 1; pos <= sourceUpper; pos++) {
+		for(let pos = 1; pos <= sourceBound; pos++) {
 			mayNotUpdated.add(pos);
 			mustNotUpdated.add(pos);
 		}
@@ -561,7 +566,7 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 	// Positions definitely updated: [1, |prefix₁|] \ (MustNotUpdated ∪ MayNotUpdated)
 	const mustUpdated = new Set<number>();
 	const prefixLength = value.known.isValue() ? value.known.value.length : 0;
-	for(let i = 1; i <= Math.min(prefixLength, sourceUpper); i++) {
+	for(let i = 1; i <= Math.min(prefixLength, sourceBound); i++) {
 		if(!mustNotUpdated.has(i) && !mayNotUpdated.has(i)) {
 			mustUpdated.add(i);
 		}
@@ -574,6 +579,9 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 		&& (adjustedSelector.known.value).some(idx => !idx.isNA() && !idx.isBottom() && !isEnumerable(idx.inner));
 
 	// 10. Paragraph 1: At least one non-enumerable position (Paper §4.8.2, lines 953-975)
+	// Result: ([l₁, u₁], known_r, s_r, a₁) where:
+	//   known_r = known₁[i ← p_{1,i} ⊔ v]_{i ∈ [1, |known₁|] \ MustNotUpdated}
+	//   s_r = s₁ ⊔ v if u₁ = +∞, ⊥ otherwise
 	if(hasNonEnumerable) {
 		vectorLogger.debug('Paragraph 1: Non-enumerable position in selector, using weak update');
 		const v = squash(values);
@@ -583,14 +591,10 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 
 		// Initialize to prefix₁, then weakly update positions not in MustNotUpdated
-		for(let i = 1; i <= sourceUpper; i++) {
+		// Per paper: iterate over [1, |known₁|], not [1, u₁]
+		for(let i = 1; i <= sourceKnownPositions.length; i++) {
 			const idx = i - 1;
-			let val: NAAwareDomain<Domain>;
-			if(idx < sourceKnownPositions.length) {
-				val = sourceKnownPositions[idx];
-			} else {
-				val = value.summary;
-			}
+			let val: NAAwareDomain<Domain> = sourceKnownPositions[idx];
 			// Weakly update: join with v if not definitely not updated
 			if(!mustNotUpdated.has(i)) {
 				val = val.join(v);
@@ -598,8 +602,8 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 			resultKnownPositions.push(val);
 		}
 
-		// Summary: if u₁ = +∞, update as s_r = s₁ ⊔ v
-		const resultSummary = sourceUpper === +Infinity ? value.summary.join(v) : value.summary;
+		// Summary: s_r = s₁ ⊔ v if u₁ = +∞, ⊥ otherwise (domain invariant: u ≠ +∞ ⇒ s = ⊥)
+		const resultSummary = sourceUpper === +Infinity ? value.summary.join(v) : value.summary.bottom();
 
 		const result = value.create({
 			length:     value.length,
@@ -707,6 +711,7 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 
 		// uᵣ = max(u₁, u₂')
 		const uR = Math.max(sourceUpper, selectorUpper);
+		const sourceIsInfinite = sourceUpper === +Infinity;
 
 		// Generate cyclic values: prefix₃' = ρ_f^♯(ν₃, l₃, uᵣ)
 		let valuesUpper = 0;
@@ -723,7 +728,11 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 			: [];
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 
-		for(let i = 0; i < uR; i++) {
+		// When source is infinite, we can only iterate over known positions;
+		// positions beyond the known prefix are handled by the summary.
+		const knownBound = sourceIsInfinite ? sourceKnownPositions.length : uR;
+
+		for(let i = 0; i < knownBound; i++) {
 			if(i < sourceKnownPositions.length) {
 				resultKnownPositions.push(sourceKnownPositions[i]);
 			} else if(i < sourceUpper) {
@@ -736,7 +745,7 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 		// Update positions that are not in MustNotUpdated or MayNotUpdated
 		// (i.e., positions that are definitely being updated)
 		const notUpdatedPositions = new Set([...mustNotUpdated, ...mayNotUpdated]);
-		for(let i = 1; i <= uR; i++) {
+		for(let i = 1; i <= knownBound; i++) {
 			if(!notUpdatedPositions.has(i)) {
 				const idx = i - 1;
 				const valueIdx = (i - 1) % cyclicValues.length;
@@ -744,11 +753,13 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 			}
 		}
 
-		// Result length: [l₁, uᵣ], summary: ⊥
+		// Result length: [l₁, uᵣ], summary: ⊥ if finite, s₁ ⊔ Squash(ν₃) if infinite
+		// Paper: s_r = ⊥ if u₁ ≠ +∞, s₁ ⊔ Squash(ν₃) otherwise
+		const resultSummary = sourceIsInfinite ? value.summary.join(squash(values)) : value.summary.bottom();
 		const result = value.create({
 			length:     value.length.create([sourceLower, uR]),
 			known:      value.known.create(resultKnownPositions),
-			summary:    value.summary.bottom(),
+			summary:    resultSummary,
 			attributes: value.attributes,
 			type:       value.type
 		});

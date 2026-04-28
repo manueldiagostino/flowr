@@ -321,10 +321,6 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 	guard(value.length.isValue(), 'Source length is not value');
 	const sourceLower = value.length.value[0];
 	const sourceUpper = value.length.value[1];
-	if(sourceUpper === +Infinity) {
-		vectorLogger.trace('Subcase: selectNegative - infinite source, returning top');
-		return value.top();
-	}
 
 	// Compute adjusted selector: removes zero indices and adjusts length bounds
 	const adjustedSelector = adjustForZeros(selector);
@@ -370,20 +366,25 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 	// Paragraph 1: At least one non-enumerable position (Paper §4.7, L591-605)
 	if(hasNonEnumerable) {
 		vectorLogger.debug('Paragraph 1: Non-enumerable position in selector, using SquashExcept');
-		const newUpper = Math.max(0, sourceUpper - mustDeleted.size);
+		const newUpper = sourceUpper === +Infinity ? +Infinity : Math.max(0, sourceUpper - mustDeleted.size);
 		const resultLength = value.length.create([0, newUpper]);
 		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 
-		// prefix_r = [SquashExcept(ν₁, MustDeleted)]_1^(u₁ - |MustDeleted|)
+		// prefix_r = [SquashExcept(ν₁, MustDeleted)]_1^(min(k₁, u_r))
+		// When u₁ = +∞, u_r = +∞, so min(k₁, u_r) = k₁ (source's known prefix length)
 		const squashResult = squashedExcept(value, mustDeleted);
-		for(let i = 0; i < newUpper; i++) {
+		const sourceKnownCount = value.known.isValue() && Array.isArray(value.known.value)
+			? value.known.value.length
+			: 0;
+		const prefixBound = newUpper === +Infinity ? sourceKnownCount : newUpper;
+		for(let i = 0; i < prefixBound; i++) {
 			resultKnownPositions.push(squashResult);
 		}
 
 		const result = value.create({
 			length:     resultLength,
 			known:      value.known.create(resultKnownPositions),
-			summary:    value.summary.bottom(),
+			summary:    sourceUpper === +Infinity ? value.summary : value.summary.bottom(),
 			attributes: value.attributes,
 			type:       value.type
 		});
@@ -443,8 +444,8 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 		resultKnownPositions[targetIdx - 1] = resultKnownPositions[targetIdx - 1].join(accessed);
 	}
 
-	// Summary: s₁ for infinite, ⊥ for finite (Paper §4.7, L607-639 vs L641-646)
-	const resultSummary = isInfinite ? value.summary : value.summary.bottom();
+	// Summary: sᵣ for infinite result, ⊥ for finite result (Paper §4.7, domain constraint: (u ≠ +∞) ⇒ (s = ⊥))
+	const resultSummary = newUpper === +Infinity ? value.summary : value.summary.bottom();
 
 	const result = value.create({
 		length:     value.length.create([newLower, newUpper]),

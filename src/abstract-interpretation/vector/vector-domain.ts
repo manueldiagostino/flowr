@@ -228,6 +228,85 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 	}
 
 	/**
+	 * Checks whether this vector domain is less than or equal to another.
+	 *
+	 * Paper reference (03-abstract.tex:114-130):
+	 * Given ν₁ = (L₁, known₁, s₁, a₁) and ν₂ = (L₂, known₂, s₂, a₂) with
+	 * prefix lengths k₁ = |known₁| and k₂ = |known₂|, and m = min(k₁, k₂):
+	 *
+	 *   ν₁ ⊑ ν₂ iff L₁ ⊑ L₂ ∧ s₁ ⊑ s₂ ∧ a₁ ⊑ a₂
+	 *   and one of:
+	 *     1. k₁ ≤ k₂ ∧ ∀i ∈ [1, k₁] : p_{1,i} ⊑ p_{2,i}
+	 *     2. u₂ = +∞ ∧ ∀i ∈ [1, m] : p_{1,i} ⊑ p_{2,i} ∧ ⨆_{j=m+1}^{k₁} p_{1,j} ⊑ s₂
+	 *
+	 * This overrides ProductDomain.leq which does a naive component-wise comparison
+	 * and does not handle the infinite-length case (condition 2).
+	 * @param other - The other VectorDomain to compare against
+	 * @returns true if this ⊑ other in the vector domain lattice
+	 */
+	public leq(other: this): boolean {
+		// Check length, summary, attributes, and type components
+		if(!this.length.leq(other.length)) {
+			return false;
+		}
+		if(!this.summary.leq(other.summary)) {
+			return false;
+		}
+		if(!this.attributes.leq(other.attributes)) {
+			return false;
+		}
+		if(!this.type.leq(other.type)) {
+			return false;
+		}
+
+		// Handle Bottom/Top cases for known positions
+		if(this.known.isBottom()) {
+			return true;
+		}
+		if(other.known.isTop()) {
+			return true;
+		}
+		if(this.known.isTop()) {
+			return false;
+		}
+		if(other.known.isBottom()) {
+			return false;
+		}
+
+		const thisArr = this.known.value as readonly NAAwareDomain<Domain>[];
+		const otherArr = other.known.value as readonly NAAwareDomain<Domain>[];
+		const k1 = thisArr.length;
+		const k2 = otherArr.length;
+		const m = Math.min(k1, k2);
+
+		// Check common prefix: ∀i ∈ [1, m] : p_{1,i} ⊑ p_{2,i}
+		for(let i = 0; i < m; i++) {
+			if(!thisArr[i].leq(otherArr[i])) {
+				return false;
+			}
+		}
+
+		if(k1 <= k2) {
+			// Condition 1: k₁ ≤ k₂ — all positions of ν₁ are in the common prefix
+			return true;
+		}
+
+		// k1 > k2: need Condition 2: u₂ = +∞ ∧ ⨆_{j=m+1}^{k₁} p_{1,j} ⊑ s₂
+		// Check if other's length upper bound is +∞
+		const otherUpper = other.length.isValue() ? other.length.value[1] : +Infinity;
+		if(otherUpper !== +Infinity) {
+			return false;
+		}
+
+		// Join excess positions of ν₁ beyond the common prefix and check against s₂
+		let excessJoin = thisArr[m];
+		for(let j = m + 1; j < k1; j++) {
+			excessJoin = excessJoin.join(thisArr[j]);
+		}
+		return excessJoin.leq(other.summary);
+	}
+
+	/**
 	 * The current abstract value of the length domain.
 	 */
 	public get length(): VectorProduct<Domain>['length'] {
@@ -484,20 +563,20 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 	/**
 	 * Reduction function maintaining consistency between vector domain components.
 	 *
-	 * Following the paper's array segmentation analysis, this enforces:
+	 * Following the paper's array segmentation analysis (03-abstract.tex:88-94), this enforces:
 	 *
-	 * 1. **Length-Content Consistency**: If length has a finite upper bound,
+	 * 1. **Domain Invariant**: (u ≠ +∞) ⇒ (s = ⊥) — summary is only valorized when
+	 *    the length upper bound is +Infinity. For finite vectors, summary must be Bottom.
+	 *
+	 * 2. **Length-Content Consistency**: If length has a finite upper bound,
 	 *    the values array cannot exceed that bound. Excess elements are
 	 *    joined into the summary.
 	 *
-	 * 2. **Known-Summary Gap**: If length.lower \> known.length, the positions
+	 * 3. **Known-Summary Gap**: If length.lower \> known.length, the positions
 	 *    [known.length, length.lower-1] conceptually contain Bottom (no values possible).
 	 *
-	 * 3. **Size Limit**: The values array is limited to `SafetyMaxKnownLength` elements
+	 * 4. **Size Limit**: The values array is limited to `SafetyMaxKnownLength` elements
 	 *    to ensure termination. Excess elements are joined into the summary.
-	 *
-	 * 4. **Summary Propagation**: When the length upper bound is finite and equals
-	 *    the values length, the summary should be Bottom (no elements beyond known positions).
 	 * @param value - The product value to reduce
 	 * @returns The reduced value with maintained invariants
 	 */
@@ -513,6 +592,13 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 		if(length.isValue()) {
 			const upperBound = length.value[1];
 
+			// Domain invariant: (u ≠ +∞) ⇒ (s = ⊥)
+			// Summary must be Bottom for finite vectors
+			if(Number.isFinite(upperBound) && !summary.isBottom()) {
+				summary = summary.bottom();
+				modified = true;
+			}
+
 			if(Number.isFinite(upperBound) && known.isValue()) {
 				const valuesArray = known.value as readonly NAAwareDomain<Domain>[];
 
@@ -521,12 +607,6 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 						summary = summary.join(valuesArray[i]);
 					}
 					known = known.create(valuesArray.slice(0, upperBound));
-					modified = true;
-				}
-
-				const lowerBound = length.value[0];
-				if(lowerBound === upperBound && valuesArray.length === upperBound) {
-					summary = summary.bottom();
 					modified = true;
 				}
 			}
@@ -566,9 +646,15 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 		}
 
 		const newLength = this.length.widen(other.length);
-		let newSummary = this.summary.join(other.summary);
 		const newAttributes = this.attributes.join(other.attributes);
 		const newType = this.type.join(other.type);
+
+		// Summary invariant (paper): (u ≠ +∞) ⇒ (s = ⊥)
+		// Summary is only valorized when the length's upper bound is +Infinity.
+		const lengthIsInfinite = newLength.isValue() && newLength.value[1] === Infinity;
+		let newSummary = lengthIsInfinite
+			? this.summary.join(other.summary)
+			: this.summary.bottom();
 		let newValues: KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
 
 		if(this.known.isTop() || other.known.isTop()) {
@@ -585,18 +671,42 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 			const otherArr = other.known.value as readonly NAAwareDomain<Domain>[];
 
 			const commonLen = Math.min(thisArr.length, otherArr.length);
+			const maxLen = Math.max(thisArr.length, otherArr.length);
+
+			// Check if both input lengths are finite (u1 ≠ +∞ AND u2 ≠ +∞)
+			const thisFinite = this.length.isValue() && this.length.value[1] !== Infinity;
+			const otherFinite = other.length.isValue() && other.length.value[1] !== Infinity;
+			const bothInputsFinite = thisFinite && otherFinite;
 
 			const commonKnown: NAAwareDomain<Domain>[] = [];
 			for(let i = 0; i < commonLen; i++) {
 				commonKnown.push(thisArr[i].widen(otherArr[i]));
 			}
 
-			for(let i = commonLen; i < thisArr.length; i++) {
-				newSummary = newSummary.join(thisArr[i]);
-			}
+			// Paper definition (03-abstract.tex:163-199):
+			// known' = <p'_1, ..., p'_{max(k1,k2)}>  if u' ≠ +∞ OR (u1 ≠ +∞ AND u2 ≠ +∞)
+			// known' = <p_{1,1} ▽ p_{2,1}, ..., p_{1,m} ▽ p_{2,m}>  otherwise
+			//
+			// Case 1: result is finite (u' ≠ +∞) → extend to max(k1, k2)
+			// Case 2: result is infinite but both inputs were finite (first reaching infinity) → extend to max(k1, k2)
+			// Case 3: result is infinite and at least one input was already infinite → truncate to common prefix
+			const shouldExtend = !lengthIsInfinite || bothInputsFinite;
 
-			for(let i = commonLen; i < otherArr.length; i++) {
-				newSummary = newSummary.join(otherArr[i]);
+			if(shouldExtend) {
+				// Extend to max(k1, k2): keep excess positions from the longer vector as-is
+				const longerArr = thisArr.length > otherArr.length ? thisArr : otherArr;
+				for(let i = commonLen; i < maxLen; i++) {
+					commonKnown.push(longerArr[i]);
+				}
+				// Summary is already correct: ⊥ when finite, joined when infinite (first reaching)
+			} else {
+				// Truncate to common prefix: fold excess positions into summary
+				for(let i = commonLen; i < thisArr.length; i++) {
+					newSummary = newSummary.join(thisArr[i]);
+				}
+				for(let i = commonLen; i < otherArr.length; i++) {
+					newSummary = newSummary.join(otherArr[i]);
+				}
 			}
 
 			newValues = this.known.create(commonKnown);

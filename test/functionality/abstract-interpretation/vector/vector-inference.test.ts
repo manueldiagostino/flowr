@@ -14,11 +14,13 @@ import {
 import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import {
+	asNaAware,
 	asNaAwares,
 	asNaAwareWithNA,
 	assertVectorDomainSound,
 	type TestCase,
 } from '../_helper/vector-assertion-helpers';
+import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 
 const valueToDomain = (value: string | number | boolean): ReadonlySet<number> | undefined => {
 	if(typeof value === 'number') {
@@ -525,14 +527,17 @@ x[-(-2)] <- 99`;
 
 	describe('Positive Update (Paper §4.8.1)', () => {
 		describe('Paragraph 1: high position in the selector', () => {
-			test('should use squash for non-enumerable positions', async() => {
+			test('should handle finite selector extending vector length', async() => {
+				// x = c(1, 2, 3, 4, 5), selector = c(1, 100) (both enumerable, singleton)
+				// Position 1 is updated to 99, position 100 extends the vector
+				// Result is finite: length [5, 100], summary ⊥ (domain invariant: u ≠ +∞ ⇒ s = ⊥)
 				const code = `x <- c(1, 2, 3, 4, 5)
 x[c(1, 100)] <- 99`;
 				const expected = {
 					'2@x': {
-						length:     [5, Infinity],
+						length:     [5, 100],
 						known:      asNaAwares([99, 99], [2, 2], [3, 3], [4, 4], [5, 5]),
-						summary:    asNaAwareWithNA([99, 99]),
+						summary:    asNaAware(Bottom),
 						attributes: VectorAttrEmpty,
 						type:       'double'
 					},
