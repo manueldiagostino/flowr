@@ -475,8 +475,9 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 			resultSummary = resultSummary.join(naValue);
 		}
 		const result = value.create({
-			// Per paper: result upper bound is max(u_1, u_r) = contentLength
-			length:     value.length.create([resultLower, contentLength]),
+			// Per paper: result upper bound is max(u_1, u_r).
+			// When source is infinite (u_1 = +∞), result is also infinite.
+			length:     value.length.create([resultLower, sourceUpper === +Infinity ? +Infinity : contentLength]),
 			known:      value.known.create(resultKnownPositions),
 			summary:    resultSummary,
 			attributes: value.attributes,
