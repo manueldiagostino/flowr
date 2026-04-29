@@ -1294,7 +1294,7 @@ v[c(4,7)] <- 0
 		const expected1 = {
 			'8@r': {
 				length:     [5, 5],
-				known:      asNaAwares([10, 11], NaInterval, [33, 35], asNaAwareWithNA([40,41]), asNaAwareWithNA([50, 51])),
+				known:      asNaAwares([10, 11], NaInterval, [33, 35], asNaAwareWithNA([40, 41]), asNaAwareWithNA([50, 51])),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
@@ -1316,9 +1316,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
-	test('Top selector', async () => {
-		// This test demonstrates how soundness checking allows the analysis to be less precise.
-		// The expected values are narrower than what the analysis might infer in uncertain branches.
+	test('Top source positive finite selector', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3)
@@ -1329,21 +1327,21 @@ v[c(4,7)] <- 0
 
 		const expected1 = {
 			'5@result1': {
-				length: [0, +Infinity],
-				known: [],
-				summary: asNaAware([1, 3]),
+				length:     [0, +Infinity],
+				known:      [],
+				summary:    asNaAware([1, 3]),
 				attributes: VectorAttrEmpty,
-				type: 'double'
+				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
 
 		const expected2 = {
 			'6@result2': {
-				length: [2,2],
-				known: asNaAwares([1, 3], [1, 3]),
-				summary: asNaAware(Bottom),
+				length:     [2, 2],
+				known:      asNaAwares([1, 3], [1, 3]),
+				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
-				type: 'double'
+				type:       'double'
 			},
 		} satisfies TestCase<IntervalDomain>;
 
@@ -1351,7 +1349,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
-	test('Top selector update', async () => {
+	test('Top selector scalar value update', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3)
@@ -1371,7 +1369,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top selector negative indexing', async () => {
+	test('Top selector negative indexing', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3,4,5)
@@ -1391,7 +1389,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source vector selection', async () => {
+	test('Top source finite range selector', async() => {
 		const code = `
 		v <- runif(1)
 		result <- v[1:2]
@@ -1410,7 +1408,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source update', async () => {
+	test('Top source finite range update', async() => {
 		const code = `
 		v <- runif(1)
 		v[1:3] <- c(10, 20, 30)
@@ -1429,7 +1427,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top selector and Top source', async () => {
+	test('Top source with Top selector', async() => {
 		const code = `
 		v1 <- runif(1)
 		v2 <- runif(1)
@@ -1449,7 +1447,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top selector update with vector value', async () => {
+	test('Top selector update with vector value', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3)
@@ -1469,7 +1467,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source with Top selector update', async () => {
+	test('Top source with Top selector update', async() => {
 		const code = `
 		v <- runif(1)
 		idx <- runif(1)
