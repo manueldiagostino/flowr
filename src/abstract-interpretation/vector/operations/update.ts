@@ -438,16 +438,17 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 
 		// Build base prefix based on the three cases from paper
 		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
+		const knownPrefixLength = sourceKnownPositions.length;
 		let baseKnownPositions: NAAwareDomain<Domain>[];
-		if(contentLength <= sourceUpper) {
-			// Case 1: u_r <= u_1 - selector fits within source, use source positions directly
+		if(contentLength <= knownPrefixLength) {
+			// Case 1: u_r <= |p_1| - selector fits within source prefix, use source positions directly
 			baseKnownPositions = sourceKnownPositions.slice(0, contentLength);
-		} else if(sourceLower < lR && lR <= sourceUpper) {
-			// Case 2: l_r <= u_1 < u_r - need to fill gap with NA
-			baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, sourceUpper, contentLength, naValue);
+		} else if(sourceLower < lR && lR <= knownPrefixLength) {
+			// Case 2: l_r <= |p_1| < u_r - need to fill gap with NA
+			baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, knownPrefixLength, contentLength, naValue);
 		} else {
-			// Case 3: l_r > u_1 - need to grow from source based on l_1
-			baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, contentLength, naValue);
+			// Case 3: l_r > |p_1| - need to grow from source based on l_1
+			baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, knownPrefixLength, contentLength, naValue);
 		}
 
 		let valuesUpper = 0;
