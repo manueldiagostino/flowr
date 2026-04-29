@@ -94,7 +94,7 @@ export function applySelect<Domain extends AnyAbstractDomain & ArithmeticDomain<
 		const [l, u] = pos.inner.value;
 		return l === 0 && u === 0;
 	});
-	if(allZeros) {
+	if(allZeros && selector.summary.isBottom()) {
 		vectorLogger.debug('Operation: select with all-zero selector, returning empty vector');
 		return value.create({
 			length:     value.length.create([0, 0]),
@@ -135,7 +135,16 @@ export function applySelect<Domain extends AnyAbstractDomain & ArithmeticDomain<
 		result = result.join(resultNeg);
 	}
 
-	vectorLogger.debug(`Operation: select final result [length=${result.length.toString()}, values=${result.known.toString()}]`);
+	// If no positions were classified but selector has valorized summary,
+	// use conservative positive selection
+	if(filterResult.positive.length === 0 && filterResult.negative.length === 0 && !numericSelector.summary.isBottom()) {
+		vectorLogger.debug('Operation: select no classified positions but selector has summary, using conservative positive');
+		const conservativeSelector = buildPosIntervalSelectorFromSource(numericSelector);
+		const resultConservative = applySelectPositive(value, conservativeSelector, naValue);
+		result = result.join(resultConservative);
+	}
+
+	vectorLogger.debug(`Operation: select final result [length=${result.length.toString()}, values=${result.known.toString()}], summary=${result.summary.toString()}`);
 	return result;
 }
 
@@ -185,6 +194,12 @@ export function applySelectPositive<Domain extends AnyAbstractDomain & Arithmeti
 	}
 
 	const resultKnownPositions: NAAwareDomain<Domain>[] = [];
+
+	// Check if source has enumerable known positions (paper: can we enumerate positions in ν₁?)
+	const sourceKnownEnumerable = value.known.isValue() && Array.isArray(value.known.value);
+	// Get source length upper bound for out-of-bounds checking
+	const sourceLenUpper = value.length.isValue() ? value.length.value[1] : +Infinity;
+
 	if(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value)) {
 		const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
 
@@ -199,16 +214,29 @@ export function applySelectPositive<Domain extends AnyAbstractDomain & Arithmeti
 					const [l, u] = innerInterval.value;
 					vectorLogger.trace(`Subcase: selectPositive - enumerable interval [${l}, ${u}]`);
 					let joinedAccessed: NAAwareDomain<Domain> | undefined;
-					// After adjustForZeros, all positions are guaranteed to be > 0
-					// No zero-to-one conversion needed
-					for(let pos = l; pos <= u; pos++) {
-						if(pos > 0) {
-							const accessed = accessPosition(value, pos - 1, naValue);
-							joinedAccessed = joinedAccessed === undefined ? accessed : joinedAccessed.join(accessed);
-						}
-					}
-					guard(joinedAccessed !== undefined, `applySelectPositive: joinedAccessed undefined for position ${idxNumber}`);
 
+					if(sourceKnownEnumerable) {
+						// Source has enumerable positions - access each position
+						// After adjustForZeros, all positions are guaranteed to be > 0
+						// No zero-to-one conversion needed
+						for(let pos = l; pos <= u; pos++) {
+							if(pos > 0) {
+								const accessed = accessPosition(value, pos - 1, naValue);
+								joinedAccessed = joinedAccessed === undefined ? accessed : joinedAccessed.join(accessed);
+							}
+						}
+					} else {
+						// Source known not enumerable (e.g., Top vector with empty content but valorized summary)
+						// Use squash(value) per paper Section 4.3.1
+						joinedAccessed = squash(value);
+					}
+
+					// Check if selector position may exceed source bounds - join with NA if so
+					if(sourceLenUpper !== +Infinity && u > sourceLenUpper) {
+						joinedAccessed = (joinedAccessed ?? squash(value)).join(naValue);
+					}
+
+					guard(joinedAccessed !== undefined, `applySelectPositive: joinedAccessed undefined for position ${idxNumber}`);
 					resultKnownPositions.push(joinedAccessed);
 				} else {
 					vectorLogger.trace('Subcase: selectPositive - enumerable selector with non-value interval, using squash');
@@ -225,13 +253,25 @@ export function applySelectPositive<Domain extends AnyAbstractDomain & Arithmeti
 
 	// Determine if selector is infinite
 	const selectorLen = adjustedSelector.length;
-	const isInfinite = selectorLen.isValue() && selectorLen.value[1] === +Infinity;
+	const isInfinite = !selectorLen.isValue() || selectorLen.value[1] === +Infinity;
 	if(isInfinite) {
 		vectorLogger.trace('Subcase: selectPositive - infinite selector, valorizing summary');
 	}
 
+	// Check if selection may exceed source bounds (paper L611-613)
+	// u_r > l_1 where [_, u_r] = Squash(selector)
+	const squashedSelector = squash(adjustedSelector);
+	const selectorUpper = squashedSelector.inner.isValue() ? squashedSelector.inner.value[1] : +Infinity;
+	const sourceLower = value.length.isValue() ? value.length.value[0] : 0;
+	const mayExceedBounds = selectorUpper > sourceLower;
+
 	// Summary: ⊥ for finite selectors, Squash(value) for infinite
-	const resultSummary = isInfinite ? squash(value) : value.summary.bottom();
+	// If may exceed bounds: Squash(value) ⊔ NA (paper L611-613)
+	let resultSummary = isInfinite ? squash(value) : value.summary.bottom();
+	if(mayExceedBounds) {
+		resultSummary = resultSummary.join(naValue);
+		vectorLogger.trace('Subcase: selectPositive - selector may exceed bounds, adding NA to summary');
+	}
 	const resultValues = value.known.create(resultKnownPositions);
 	const result = value.create({
 		length:     adjustedSelector.length,
@@ -346,10 +386,39 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 	// Sets construction
 	[mustDeleted, mayDeleted] = buildNegativeSets(sourceUpper, selectorValues);
 
+	// Check if source known positions are enumerable (array of values)
+	const sourceKnownEnumerable = value.known.isValue() && Array.isArray(value.known.value);
+
+	// If source is not enumerable (e.g., Top vector with empty content but valorized summary),
+	// use squash(value) for all positions instead of trying to access individual positions
+	if(!sourceKnownEnumerable) {
+		vectorLogger.debug('Operation: selectNegative - source not enumerable, using squash');
+		const mayDeletedU1 = [...mayDeleted].filter(d => d <= sourceUpper).length;
+		const mustDeletedU1 = [...mustDeleted].filter(d => d <= sourceUpper).length;
+		const newLower = Math.max(0, sourceLower - mayDeletedU1);
+		const newUpper = Math.max(0, sourceUpper - mustDeletedU1);
+
+		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
+		const squashedValue = squash(value);
+		const prefixBound = newUpper === +Infinity ? 0 : Math.min(newUpper, 0);
+		for(let i = 0; i < prefixBound; i++) {
+			resultKnownPositions.push(squashedValue);
+		}
+
+		const resultSummary = newUpper === +Infinity ? value.summary : value.summary.bottom();
+		const result = value.create({
+			length:     value.length.create([newLower, newUpper]),
+			known:      value.known.create(resultKnownPositions),
+			summary:    resultSummary,
+			attributes: value.attributes,
+			type:       value.type
+		});
+		vectorLogger.trace(`Result [length=${result.length.toString()}, values=${result.known.toString()}]`);
+		return result;
+	}
 
 	// Compute MustNotDeleted (positions definitely kept = not in MayDeleted)
 	const mustNotDeleted = new Set<number>();
-	guard(value.known.isValue() && Array.isArray(value.known.value), 'Source known positions not enumerable');
 	for(let i = 1; i <= value.known.value.length; i++) {
 		if(!mayDeleted.has(i)) {
 			mustNotDeleted.add(i);
