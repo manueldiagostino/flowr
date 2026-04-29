@@ -406,25 +406,25 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 	} else {
 		vectorLogger.trace('Subcase: updatePositive - finite selector');
 		// Per paper Section 4.8.3: compute l_r, u_r from selector positions join
-		let uR = 0;
+		// selectorMax = u_r from paper (max index that may appear in selector)
+		let selectorMax = 0;
 		let lR = +Infinity;
 		if(adjustedSelector.known.isValue()) {
 			const selectorKnownPositions = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
 			for(const idx of selectorKnownPositions) {
 				if(idx.inner.isValue()) {
-					uR = Math.max(uR, idx.inner.value[1]);
+					selectorMax = Math.max(selectorMax, idx.inner.value[1]);
 					lR = Math.min(lR, idx.inner.value[0]);
 				}
 			}
 		}
-		// Save pure u_r (selector max) before clamping for lower bound formula
-		const uRPure = uR;
 
-		// When source is infinite (+Infinity), don't extend uR to infinity.
-		// Use the selector's uR value which represents the actual positions being updated.
-		if(sourceUpper !== +Infinity) {
-			uR = Math.max(uR, sourceUpper);
-		}
+		// contentLength = u_r for InitKnown (must be >= sourceUpper per paper line 915)
+		// When source is infinite (+Infinity), don't extend to infinity.
+		const contentLength = sourceUpper === +Infinity
+			? selectorMax
+			: Math.max(selectorMax, sourceUpper);
+
 		if(lR === +Infinity) {
 			lR = sourceLower;
 		}
@@ -439,15 +439,15 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		// Build base prefix based on the three cases from paper
 		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
 		let baseKnownPositions: NAAwareDomain<Domain>[];
-		if(uR <= sourceUpper) {
+		if(contentLength <= sourceUpper) {
 			// Case 1: u_r <= u_1 - selector fits within source, use source positions directly
-			baseKnownPositions = sourceKnownPositions.slice(0, uR);
+			baseKnownPositions = sourceKnownPositions.slice(0, contentLength);
 		} else if(sourceLower < lR && lR <= sourceUpper) {
 			// Case 2: l_r <= u_1 < u_r - need to fill gap with NA
-			baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, sourceUpper, uR, naValue);
+			baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, sourceUpper, contentLength, naValue);
 		} else {
 			// Case 3: l_r > u_1 - need to grow from source based on l_1
-			baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
+			baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, contentLength, naValue);
 		}
 
 		let valuesUpper = 0;
@@ -455,7 +455,7 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 			valuesUpper = values.length.value[1];
 		}
 		const vLower = values.length.isValue() ? values.length.value[0] : 1;
-		const rhoFResult = rhoF(values.known, vLower, Math.max(uR, valuesUpper), values.naAwareFactory);
+		const rhoFResult = rhoF(values.known, vLower, Math.max(contentLength, valuesUpper), values.naAwareFactory);
 		const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 		const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 
@@ -463,7 +463,8 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		// Per paper lines 986-1040: summary depends on whether source is infinite
 		//   - If u_1 ≠ +∞ (source is finite): s_r = ⊥
 		//   - If u_1 = +∞ (source is infinite): s_r = s_1 ⊔ Squash(ν₃)
-		const resultLower = Math.max(sourceLower, uRPure);
+		// Note: resultLower uses selectorMax (pure u_r), not contentLength
+		const resultLower = Math.max(sourceLower, selectorMax);
 		let resultSummary = sourceUpper === +Infinity
 			? value.summary.join(squash(values))
 			: value.summary.bottom();
@@ -474,7 +475,8 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 			resultSummary = resultSummary.join(naValue);
 		}
 		const result = value.create({
-			length:     value.length.create([resultLower, Math.max(sourceUpper, uR)]),
+			// Per paper: result upper bound is max(u_1, u_r) = contentLength
+			length:     value.length.create([resultLower, contentLength]),
 			known:      value.known.create(resultKnownPositions),
 			summary:    resultSummary,
 			attributes: value.attributes,
