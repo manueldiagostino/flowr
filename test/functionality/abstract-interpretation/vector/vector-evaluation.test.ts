@@ -1329,7 +1329,7 @@ v[c(4,7)] <- 0
 			'5@result1': {
 				length:     [0, +Infinity],
 				known:      [],
-				summary:    asNaAware([1, 3]),
+				summary:    asNaAwareWithNA([1, 3]),
 				attributes: VectorAttrEmpty,
 				type:       'double'
 			},
