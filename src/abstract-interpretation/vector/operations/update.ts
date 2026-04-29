@@ -420,7 +420,11 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		// Save pure u_r (selector max) before clamping for lower bound formula
 		const uRPure = uR;
 
-		uR = Math.max(uR, sourceUpper);
+		// When source is infinite (+Infinity), don't extend uR to infinity.
+		// Use the selector's uR value which represents the actual positions being updated.
+		if(sourceUpper !== +Infinity) {
+			uR = Math.max(uR, sourceUpper);
+		}
 		if(lR === +Infinity) {
 			lR = sourceLower;
 		}

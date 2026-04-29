@@ -1351,6 +1351,144 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
+	test('Top selector update', async () => {
+		const code = `
+		v <- runif(1)
+		s <- c(1,2,3)
+		s[v] <- 10
+		`;
+
+		const expected = {
+			'4@s': {
+				length:     [3, +Infinity],
+				known:      [],
+				summary:    asNaAware([1, 10]),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Top selector negative indexing', async () => {
+		const code = `
+		v <- runif(1)
+		s <- c(1,2,3,4,5)
+		result <- s[-v]
+		`;
+
+		const expected = {
+			'4@result': {
+				length:     [0, +Infinity],
+				known:      [],
+				summary:    asNaAware([1, 5]),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Top source vector selection', async () => {
+		const code = `
+		v <- runif(1)
+		result <- v[1:2]
+		`;
+
+		const expected = {
+			'3@result': {
+				length:     [2, 2],
+				known:      asNaAwares(IntervalTop, IntervalTop),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       RVectorTypeTop
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Top source update', async () => {
+		const code = `
+		v <- runif(1)
+		v[1:3] <- c(10, 20, 30)
+		`;
+
+		const expected = {
+			'3@v': {
+				length:     [3, +Infinity],
+				known:      [],
+				summary:    asNaAwareWithNA(IntervalTop),
+				attributes: VectorAttrEmpty,
+				type:       RVectorTypeTop
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Top selector and Top source', async () => {
+		const code = `
+		v1 <- runif(1)
+		v2 <- runif(1)
+		result <- v1[v2]
+		`;
+
+		const expected = {
+			'4@result': {
+				length:     [0, +Infinity],
+				known:      [],
+				summary:    asNaAwareWithNA(IntervalTop),
+				attributes: VectorAttrEmpty,
+				type:       RVectorTypeTop
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Top selector update with vector value', async () => {
+		const code = `
+		v <- runif(1)
+		s <- c(1,2,3)
+		s[v] <- c(10, 20)
+		`;
+
+		const expected = {
+			'4@s': {
+				length:     [3, +Infinity],
+				known:      [],
+				summary:    asNaAware([1, 20]),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
+	test('Top source with Top selector update', async () => {
+		const code = `
+		v <- runif(1)
+		idx <- runif(1)
+		v[idx] <- 42
+		`;
+
+		const expected = {
+			'4@v': {
+				length:     [0, +Infinity],
+				known:      [],
+				summary:    asNaAware([42, 42]),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected);
+	});
+
 }));
 
 
