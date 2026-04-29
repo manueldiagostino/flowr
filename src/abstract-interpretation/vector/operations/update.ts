@@ -267,7 +267,16 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 	const hasNonEnumerable = selector.known.isValue() && (selector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]).some(idx => !isEnumerable(idx.inner));
 	if(hasNonEnumerable) {
 		vectorLogger.trace('Subcase: updatePositive - non-enumerable position in the selector, using squash');
-		const vAll = squash(value).join(squash(values));
+		let vAll = squash(value).join(squash(values));
+
+		// Check if update may exceed source bounds - per paper Section 4.9.1
+		const squashedSelector = squash(selector);
+		const selectorUpperBound = squashedSelector.inner.isValue() ? squashedSelector.inner.value[1] : +Infinity;
+		const sourceLowerBound = value.length.isValue() ? value.length.value[0] : 0;
+		const mayExceedBounds = selectorUpperBound > sourceLowerBound;
+		if(mayExceedBounds) {
+			vAll = vAll.join(naValue);
+		}
 
 		const result = value.create({
 			length:     value.length.create([value.length.isValue() ? value.length.value[0] : 0, +Infinity]),
@@ -299,11 +308,7 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		sourceLower = value.length.value[0];
 		sourceUpper = value.length.value[1];
 	}
-	let selectorUpper = 0;
-	if(adjustedSelector.length.isValue()) {
-		selectorUpper = adjustedSelector.length.value[1];
-	}
-	const isInfinite = selectorUpper === +Infinity;
+	const isInfinite = !adjustedSelector.length.isValue() || adjustedSelector.length.value[1] === +Infinity;
 	if(isInfinite) {
 		vectorLogger.trace('Subcase: updatePositive - infinite selector');
 		const summaryInner = adjustedSelector.summary.inner;
@@ -355,12 +360,19 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 				resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
 			}
 
-			// Result is finite: length [max(l_3, l_r), u_r], summary = ⊥
+			// Check if update may exceed source bounds - per paper Section 4.9.1
+			const selectorUpperBound = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
+			const mayExceedBounds = selectorUpperBound > sourceLower;
+			const resultSummary = mayExceedBounds
+				? value.summary.bottom().join(naValue)
+				: value.summary.bottom();
+
+			// Result is finite: length [max(l_3, l_r), u_r]
 			const resultLengthLower = Math.max(vLower, lR);
 			const result = value.create({
 				length:     value.length.create([resultLengthLower, uR]),
 				known:      value.known.create(resultKnownPositions),
-				summary:    value.summary.bottom(),
+				summary:    resultSummary,
 				attributes: value.attributes,
 				type:       value.type
 			});
@@ -376,7 +388,13 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 			}
 		}
 
-		const resultSummary = value.summary.join(squash(values));
+		// Check if update may exceed source bounds - per paper Section 4.9.1
+		const selectorUpperBoundInf = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
+		const mayExceedBoundsInf = selectorUpperBoundInf > sourceLower;
+		let resultSummary = value.summary.join(squash(values));
+		if(mayExceedBoundsInf) {
+			resultSummary = resultSummary.join(naValue);
+		}
 		const result = value.create({
 			length:     value.length.create([sourceLower, +Infinity]),
 			known:      value.known.create(resultKnownPositions),
@@ -442,9 +460,15 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		//   - If u_1 ≠ +∞ (source is finite): s_r = ⊥
 		//   - If u_1 = +∞ (source is infinite): s_r = s_1 ⊔ Squash(ν₃)
 		const resultLower = Math.max(sourceLower, uRPure);
-		const resultSummary = sourceUpper === +Infinity
+		let resultSummary = sourceUpper === +Infinity
 			? value.summary.join(squash(values))
 			: value.summary.bottom();
+		// Check if update may exceed source bounds - per paper Section 4.9.1
+		const selectorUpperBoundFin = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
+		const mayExceedBoundsFin = selectorUpperBoundFin > sourceLower;
+		if(mayExceedBoundsFin) {
+			resultSummary = resultSummary.join(naValue);
+		}
 		const result = value.create({
 			length:     value.length.create([resultLower, Math.max(sourceUpper, uR)]),
 			known:      value.known.create(resultKnownPositions),
@@ -620,8 +644,8 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 
 	// 11. Paragraphs 2 & 3: All enumerable positions
 	// Determine if selector is finite or infinite
+	const isInfinite = !adjustedSelector.length.isValue() || adjustedSelector.length.value[1] === +Infinity;
 	const selectorUpper = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
-	const isInfinite = selectorUpper === +Infinity;
 
 	if(isInfinite) {
 		// 12. Paragraph 2: Infinite selector, all enumerable (Paper §4.8.2, lines 977-1015)
@@ -840,11 +864,30 @@ export function applyUpdateLogical<Domain extends AnyAbstractDomain & Arithmetic
 		selectorUpper = 1;
 	}
 
-	const isInfinite = selectorUpper === +Infinity;
+	const isInfinite = !selector.length.isValue() || selector.length.value[1] === +Infinity;
 	if(isInfinite) {
 		vectorLogger.trace('Subcase: updateLogical - infinite selector');
 	} else {
 		vectorLogger.trace('Subcase: updateLogical - finite selector');
+	}
+
+	// Handle non-enumerable known positions: if value.known or selector.known is Top,
+	// we cannot enumerate positions, so apply conservative fallback
+	if(value.known.isTop() || selector.known.isTop()) {
+		vectorLogger.debug('Subcase: updateLogical - known positions not enumerable (Top), applying conservative fallback');
+		const resultSummary = squash(value).join(squash(values));
+		const resultLength = value.length.isValue()
+			? value.length.create([value.length.value[0], +Infinity])
+			: value.length.top();
+		const result = value.create({
+			length:     resultLength,
+			known:      value.known.create([]),
+			summary:    resultSummary,
+			attributes: value.attributes,
+			type:       value.type
+		});
+		vectorLogger.debug(`Operation: updateLogical conservative fallback result [length=${result.length.toString()}]`);
+		return result;
 	}
 
 	const sourceKnownPositions = value.known.toArray();

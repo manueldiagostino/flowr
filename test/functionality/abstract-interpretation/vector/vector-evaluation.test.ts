@@ -1316,6 +1316,41 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
+	test('Top selector', async () => {
+		// This test demonstrates how soundness checking allows the analysis to be less precise.
+		// The expected values are narrower than what the analysis might infer in uncertain branches.
+		const code = `
+		v <- runif(1)
+		s <- c(1,2,3)
+
+		result1 <- s[v]
+		result2 <- result1[c(1,2)]
+		`;
+
+		const expected1 = {
+			'5@result1': {
+				length: [0, +Infinity],
+				known: [],
+				summary: asNaAware([1, 3]),
+				attributes: VectorAttrEmpty,
+				type: 'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		const expected2 = {
+			'6@result2': {
+				length: [2,2],
+				known: asNaAwares([1, 3], [1, 3]),
+				summary: asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type: 'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		await assertVectorDomainSound(shell, code, expected1);
+		await assertVectorDomainSound(shell, code, expected2);
+	});
+
 }));
 
 
