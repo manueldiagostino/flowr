@@ -4,7 +4,7 @@ import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import { VectorDomain } from '../vector-domain';
 import { NAAwareDomain } from '../na-aware-domain';
 import type { IntervalDomain } from '../../domains/interval-domain';
-import type { PosIntervalDomain } from '../../domains/positive-interval-domain';
+import { PosIntervalDomain } from '../../domains/positive-interval-domain';
 import { vectorLogger } from '../logger';
 import { guard } from '../../../util/assert';
 import {
@@ -117,9 +117,18 @@ export function applySelect<Domain extends AnyAbstractDomain & ArithmeticDomain<
 
 	let result = value.bottom();
 
+	// Check if any selector positions are non-enumerable (paper Section 4.7, L655)
+	// When at least one position is not enumerable, we use conservative handling
+	const hasNonEnumerablePositive = filterResult.positive.length > 0 && filterResult.positive.some(
+		pos => pos.isValue() && pos.inner.isValue() && !isEnumerable(new PosIntervalDomain(pos.inner.value))
+	);
+	const hasNonEnumerableNegative = filterResult.negative.length > 0 && filterResult.negative.some(
+		pos => pos.isValue() && pos.inner.isValue() && !isEnumerable(new PosIntervalDomain(pos.inner.value))
+	);
+
 	// INVARIANT 5: Positive Selector Filtering
 	// Ensure selector contains only non-negative positions or NA before calling applySelectPositive
-	if(filterResult.positive.length > 0 && !filterResult.positiveHasBottom) {
+	if(filterResult.positive.length > 0 && !filterResult.positiveHasBottom && !hasNonEnumerablePositive) {
 		const positiveSelector = buildPosIntervalSelector(numericSelector, filterResult.positive);
 		const resultPos = applySelectPositive(value, positiveSelector, naValue);
 		vectorLogger.debug(`Operation: select positive result [length=${resultPos.length.toString()}]`);
@@ -128,20 +137,30 @@ export function applySelect<Domain extends AnyAbstractDomain & ArithmeticDomain<
 
 	// INVARIANT 6: Negative Selector Filtering
 	// Ensure selector contains only non-positive positions (no NA) before calling applySelectNegative
-	if(filterResult.negative.length > 0 && !filterResult.negativeHasBottom) {
+	if(filterResult.negative.length > 0 && !filterResult.negativeHasBottom && !hasNonEnumerableNegative) {
 		const negativeSelector = buildPosIntervalSelector(numericSelector, filterResult.negative);
 		const resultNeg = applySelectNegative(value, negativeSelector, naValue);
 		vectorLogger.debug(`Operation: select negative result [length=${resultNeg.length.toString()}]`);
 		result = result.join(resultNeg);
 	}
 
-	// If no positions were classified but selector has valorized summary,
-	// use conservative positive selection
-	if(filterResult.positive.length === 0 && filterResult.negative.length === 0 && !numericSelector.summary.isBottom()) {
-		vectorLogger.debug('Operation: select no classified positions but selector has summary, using conservative positive');
+	// Paper Section 4.7, paragraph 1 (L655-676): When at least one position is not enumerable,
+	// we cannot precisely track which positions are excluded. Use conservative fallback.
+	// This also handles the case where no positions were classified but selector has summary.
+	const noPreciseHandling = (filterResult.positive.length === 0 || filterResult.positiveHasBottom || hasNonEnumerablePositive) &&
+		(filterResult.negative.length === 0 || filterResult.negativeHasBottom || hasNonEnumerableNegative);
+	if(noPreciseHandling && !numericSelector.summary.isBottom()) {
+		vectorLogger.debug('Operation: select using conservative fallback for non-enumerable positions');
 		const conservativeSelector = buildPosIntervalSelectorFromSource(numericSelector);
-		const resultConservative = applySelectPositive(value, conservativeSelector, naValue);
-		result = result.join(resultConservative);
+
+		// Try positive selection
+		const resultPos = applySelectPositive(value, conservativeSelector, naValue);
+		result = result.join(resultPos);
+
+		// Also try negative selection for cases like s[-v] where v is top or non-enumerable
+		// When selector has non-enumerable positions, MustDeleted only contains definitely excluded positions
+		const resultNeg = applySelectNegative(value, conservativeSelector, naValue);
+		result = result.join(resultNeg);
 	}
 
 	vectorLogger.debug(`Operation: select final result [length=${result.length.toString()}, values=${result.known.toString()}], summary=${result.summary.toString()}`);
