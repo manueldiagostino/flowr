@@ -399,8 +399,10 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 				}
 			}
 		}
+		// Save pure u_r (selector max) before clamping for lower bound formula
+		const uRPure = uR;
+
 		uR = Math.max(uR, sourceUpper);
-		// If no valid selector positions, default to sourceLower
 		if(lR === +Infinity) {
 			lR = sourceLower;
 		}
@@ -418,7 +420,7 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		if(uR <= sourceUpper) {
 			// Case 1: u_r <= u_1 - selector fits within source, use source positions directly
 			baseKnownPositions = sourceKnownPositions.slice(0, uR);
-		} else if(lR <= sourceUpper) {
+		} else if(sourceLower < lR && lR <= sourceUpper) {
 			// Case 2: l_r <= u_1 < u_r - need to fill gap with NA
 			baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, sourceUpper, uR, naValue);
 		} else {
@@ -431,20 +433,20 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 			valuesUpper = values.length.value[1];
 		}
 		const vLower = values.length.isValue() ? values.length.value[0] : 1;
-		const rhoFResult = rhoF(values.known, vLower, Math.max(uR, valuesUpper), values.factory);
+		const rhoFResult = rhoF(values.known, vLower, Math.max(uR, valuesUpper), values.naAwareFactory);
 		const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 		const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 
-		// Per paper line 924: resulting length is [max(l_1, l_r), max(u_1, u_r)]
+		// Per paper line 1032: resulting length is [max(l_1, u_r), max(u_1, u_r)]
 		// Per paper lines 986-1040: summary depends on whether source is infinite
 		//   - If u_1 ≠ +∞ (source is finite): s_r = ⊥
 		//   - If u_1 = +∞ (source is infinite): s_r = s_1 ⊔ Squash(ν₃)
-		const resultLower = Math.max(sourceLower, lR);
+		const resultLower = Math.max(sourceLower, uRPure);
 		const resultSummary = sourceUpper === +Infinity
 			? value.summary.join(squash(values))
 			: value.summary.bottom();
 		const result = value.create({
-			length:     value.length.create([resultLower, uR]),
+			length:     value.length.create([resultLower, Math.max(sourceUpper, uR)]),
 			known:      value.known.create(resultKnownPositions),
 			summary:    resultSummary,
 			attributes: value.attributes,

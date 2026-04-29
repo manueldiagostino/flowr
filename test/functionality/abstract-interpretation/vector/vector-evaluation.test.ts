@@ -1271,6 +1271,51 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
+	test('Complete example', async() => {
+		// This test demonstrates how soundness checking allows the analysis to be less precise.
+		// The expected values are narrower than what the analysis might infer in uncertain branches.
+		const code = `
+v <- 1
+if (runif(1) > 0.5) {
+    v <- c(1, NA, 3)
+} else {
+    v <- c(0, NA, 5, NA)
+}
+r <- v + c(10, 20, 30, 40, 50)
+v[c(4,7)] <- 0
+`;
+		// Abstract States:
+		// 7@_: ([3,4], <[0,1], NA, [3,5], NA>)
+		// 8@r: ([3,4], <[0,1], NA, [3,5], NA>) + ([5,5], <[10,10], [20,20], [30,30], [40,40], [50,50]>)
+		//
+		// Possible concrete executions:
+		// 1. [1, NA, 3] + [10,20,30,40,50] = [11, NA, 33, 41, NA]
+		// 2. [0, NA, 5, NA] + [10,20,30,40,50] = [10, NA, 38, NA, 50]
+		const expected1 = {
+			'8@r': {
+				length:     [5, 5],
+				known:      asNaAwares([10, 11], NaInterval, [33, 35], asNaAwareWithNA([40,41]), asNaAwareWithNA([50, 51])),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+		const expected2 = {
+			'9@v': {
+				length:     [7, 7],
+				known:      asNaAwares([0, 1], NaInterval, [3, 5], [0, 0], NaInterval, NaInterval, [0, 0]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			},
+		} satisfies TestCase<IntervalDomain>;
+
+
+		await assertVectorDomainSound(shell, code, expected1);
+		await assertVectorDomainSound(shell, code, expected2);
+	});
+
 }));
 
 
