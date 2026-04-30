@@ -27,7 +27,7 @@ import {
 import './log-config';
 
 describe.sequential('Vector Inference Evaluation', withShell(shell => {
-	test('Scalar number value', async() => {
+	test('Creation - Scalar number value', async() => {
 		const code = 'x <- 42';
 		const expected = {
 			'1@x': {
@@ -42,7 +42,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Scalar integer value', async() => {
+	test('Creation - Scalar integer value', async() => {
 		const code = 'x <- 42L';
 		const expected = {
 			'1@x': {
@@ -74,7 +74,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 	});
 	*/
 
-	test('NULL value', async() => {
+	test('Creation - NULL value', async() => {
 		const code = 'x <- NULL';
 		const expected = {
 			'1@x': undefined,
@@ -83,7 +83,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector construction', async() => {
+	test('Creation - Vector construction', async() => {
 		const code = 'v <- c(1, 2, 3)';
 		const expected = {
 			'1@v': {
@@ -98,7 +98,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector construction with NA', async() => {
+	test('Creation - Vector construction with NA', async() => {
 		const code = 'v <- c(1, 2, NA, 4)';
 		const expected = {
 			'1@v': {
@@ -113,7 +113,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector construction with booleans', async() => {
+	test('Creation - Vector construction with booleans', async() => {
 		const code = 'v <- c(TRUE, FALSE, TRUE)';
 		const expected = {
 			'1@v': {
@@ -128,7 +128,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector construction with variables', async() => {
+	test('Creation - Vector construction with variables', async() => {
 		const code = `
 			a <- 42
 			b <- 2
@@ -147,7 +147,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Unknown vector construction', async() => {
+	test('Creation - Unknown vector construction', async() => {
 		const code = 'v <- c(runif(runif(1, 0, 10)))';
 		const expected = {
 			'1@v': {
@@ -177,7 +177,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector constuction with concatenation', async() => {
+	test('Creation - Vector construction with concatenation', async() => {
 		const code = 'v <- c(1, c(2, 3), c(4, c(5, 6)))';
 		const expected = {
 			'1@v': {
@@ -192,7 +192,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector constuction with combination', async() => {
+	test('Creation - Vector construction with combination', async() => {
 		const code = `
 			v1 <- c(1, 2)
 			v2 <- c(3, 4, 5, 6)
@@ -211,12 +211,12 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Conditional vector construction', async() => {
-		const code = 'v <- if (runif(1) > 0.5) c(1, 2) else c(3, 4, 5, 6)';
+	test('Creation - Conditional vector construction', async() => {
+		const code = 'v <- if (runif(1) > 0.5) c(1, NA, 3) else c(0, NA, 5, NA)';
 		const expected = {
 			'1@v': {
-				length:     [2, 4],
-				known:      asNaAwares([1, 3], [2, 4], [5, 5], [6, 6]),
+				length:     [3, 4],
+				known:      asNaAwares([0, 1], NaInterval, [3, 5], NaInterval),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
@@ -226,7 +226,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Conditional vector construction with scalar', async() => {
+	test('Creation - Conditional vector construction with scalar', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
 				v <- c(1, 2, 3)
@@ -265,7 +265,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 	});
 	*/
 
-	test('Vector sequence construction', async() => {
+	test('Creation - Vector sequence construction', async() => {
 		const code = 'v <- 1:3';
 		const expected = {
 			'1@v': {
@@ -280,7 +280,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('NULL construction', async() => {
+	test('Creation - NULL construction', async() => {
 		const code = 'v <- c()';
 		const expected = {
 			'1@v': {
@@ -310,7 +310,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector addition', async() => {
+	test('Recycling - Vector addition', async() => {
 		const code = 'v <- c(1, 2) + c(3, 4)';
 		const expected = {
 			'1@v': {
@@ -325,7 +325,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector addition with recycling', async() => {
+	test('Recycling - Vector addition with recycling', async() => {
 		const code = 'v <- c(1, 2) + 42';
 		const expected = {
 			'1@v': {
@@ -340,7 +340,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector addition with advanced recycling', async() => {
+	test('Recycling - Vector addition with advanced recycling', async() => {
 		const code = 'v <- c(1, 2) + c(1, 2, 3, 4, 5)';
 		const expected = {
 			'1@v': {
@@ -355,7 +355,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector addition with recycling and NA', async() => {
+	test('Recycling - Vector addition with recycling and NA', async() => {
 		const code = 'v <- c(1, 2) + c(1, NA, 3, 4, NA)';
 		const expected = {
 			'1@v': {
@@ -370,7 +370,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector addition with uncertain branching', async() => {
+	test('Recycling - Vector addition with uncertain branching', async() => {
 		const code = `
 			v <- 1
 			if (runif(1) > 0.5) {
@@ -393,7 +393,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Uncertain branching with different vector lengths and NA', async() => {
+	test('Recycling - Uncertain branching with different vector lengths and NA', async() => {
 		const code = `
 			v <- 1
 			if (runif(1) > 0.5) {
@@ -416,7 +416,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Difficult recycling with NA positions in uncertain branch', async() => {
+	test('Recycling - Difficult recycling with NA positions in uncertain branch', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
 				v <- c(1, 2, 3, 4)
@@ -438,7 +438,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Selection with branching - subset from uncertain length vector', async() => {
+	test('Select - Selection with branching - subset from uncertain length vector', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
 				v <- c(1, 2, 3, 4, 5)
@@ -460,7 +460,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Update with branching - modify uncertain length vector', async() => {
+	test('Update - Update with branching - modify uncertain length vector', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
 				v <- c(1, 2, 3)
@@ -483,7 +483,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Update with uncertain index from branching', async() => {
+	test('Update - Update with uncertain index from branching', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			if (runif(1) > 0.5) {
@@ -506,7 +506,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Complex recycling with NA in uncertain branch multiplication', async() => {
+	test('Recycling - Complex recycling with NA in uncertain branch multiplication', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
 				x <- c(2, NA, 4)
@@ -528,7 +528,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Uncertain branching with nested operations and recycling', async() => {
+	test('Recycling - Uncertain branching with nested operations and recycling', async() => {
 		const code = `
 			if (runif(1) > 0.5) {
 				v <- c(1, 2)
@@ -550,7 +550,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Selection update with NA positions from branching', async() => {
+	test('Update - Selection update with NA positions from branching', async() => {
 		/*
 			if (runif(1) > 0.5) {
 				v <- c(1, NA, 3, NA, 5)
@@ -632,7 +632,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
 	});
  */
-	test('Vector multiplication', async() => {
+	test('Other - Vector multiplication', async() => {
 		const code = 'v <- c(1, 2) * c(3, 4)';
 		const expected = {
 			'1@v': {
@@ -647,7 +647,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector division', async() => {
+	test('Other - Vector division', async() => {
 		const code = 'v <- c(4, 6) / c(2, 3)';
 		const expected = {
 			'1@v': {
@@ -678,7 +678,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainBooleans(shell, code, Record.keys(expected));
 	});
  */
-	test('Vector subset with single index', async() => {
+	test('Select - Vector subset with single index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[1]
@@ -696,7 +696,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with multiple indices', async() => {
+	test('Select - Vector subset with multiple indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[c(1, 3)]
@@ -714,7 +714,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with multiple indices sequence', async() => {
+	test('Select - Vector subset with multiple indices sequence', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[1:3]
@@ -768,7 +768,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with negative index', async() => {
+	test('Select - Vector subset with negative index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[-1]
@@ -786,7 +786,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with negative indices', async() => {
+	test('Select - Vector subset with negative indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[-c(1, 3)]
@@ -804,7 +804,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with double brackets', async() => {
+	test('Select - Vector subset with double brackets', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[[5]]
@@ -822,7 +822,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with recycling', async() => {
+	test('Select - Vector subset with recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[c(1, 4, 1)]
@@ -840,7 +840,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with unknown recycling', async() => {
+	test('Select - Vector subset with unknown recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[c(1,1,1,1,1,1,1,1,1,1)]
@@ -858,7 +858,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with boolean recycling', async() => {
+	test('Select - Vector subset with boolean recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[c(TRUE, FALSE)]
@@ -876,7 +876,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset out of bounds', async() => {
+	test('Select - Vector subset out of bounds', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[10]
@@ -930,7 +930,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with single index', async() => {
+	test('Update - Vector assignment with single index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[1] <- 42
@@ -948,7 +948,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with single NA', async() => {
+	test('Update - Vector assignment with single NA', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[1] <- NA
@@ -966,7 +966,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with multiple indices', async() => {
+	test('Update - Vector assignment with multiple indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[c(1, 3)] <- 42
@@ -984,7 +984,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with multiple indices sequence', async() => {
+	test('Update - Vector assignment with multiple indices sequence', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[c(1,2,3)] <- c(42, 43, 44)
@@ -1038,7 +1038,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with negative index', async() => {
+	test('Update - Vector assignment with negative index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[-1] <- 42
@@ -1056,7 +1056,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with negative indices', async() => {
+	test('Update - Vector assignment with negative indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[-c(1, 3)] <- 42
@@ -1074,7 +1074,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with double brackets', async() => {
+	test('Update - Vector assignment with double brackets', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[[5]] <- 42
@@ -1110,7 +1110,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment out of bounds', async() => {
+	test('Update - Vector assignment out of bounds', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[10] <- 42
@@ -1128,7 +1128,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector assignment with boolean recycling', async() => {
+	test('Update - Vector assignment with boolean recycling', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v[c(TRUE, FALSE)] <- 42
@@ -1146,7 +1146,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector with custom attribute', async() => {
+	test('Other - Vector with custom attribute', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			attr(v, "description") <- "This is a named numeric vector"
@@ -1165,7 +1165,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		// await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector with names attribute', async() => {
+	test('Other - Vector with names attribute', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			names(v) <- c("first", "second", "third", "fourth", "fifth")
@@ -1183,7 +1183,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Vector subset with 0 index', async() => {
+	test('Select - Vector subset with 0 index', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
 			v <- v[0]
@@ -1231,7 +1231,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('Soundness check with less precise expected values', async() => {
+	test('Other - Soundness check with less precise expected values', async() => {
 		// This test demonstrates assertVectorDomainSound - it verifies that the inferred
 		// values are a sound over-approximation of the expected values (expected <= inferred).
 		// Unlike exact matching, this allows the analysis to be less precise while still being correct.
@@ -1251,7 +1251,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Soundness check allows wider inferred intervals', async() => {
+	test('Other - Soundness check allows wider inferred intervals', async() => {
 		// This test demonstrates how soundness checking allows the analysis to be less precise.
 		// The expected values are narrower than what the analysis might infer in uncertain branches.
 		const code = 'v <- if (runif(1) > 0.5) c(1, 2) else c(3, 4, 5, 6)';
@@ -1271,7 +1271,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Recap on finite vectors cases', async() => {
+	test('Other - Recap on finite vectors cases', async() => {
 		// This test demonstrates how soundness checking allows the analysis to be less precise.
 		// The expected values are narrower than what the analysis might infer in uncertain branches.
 		const code = `
@@ -1316,17 +1316,17 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
-	test('Top source positive finite selector', async() => {
+	test('Infinite - Top source positive finite selector', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3)
 
-		result1 <- s[v]
-		result2 <- result1[c(1,2)]
+		x <- s[v]
+		y <- x[c(1,2)]
 		`;
 
 		const expected1 = {
-			'5@result1': {
+			'5@x': {
 				length:     [0, +Infinity],
 				known:      [],
 				summary:    asNaAwareWithNA([1, 3]),
@@ -1336,7 +1336,7 @@ v[c(4,7)] <- 0
 		} satisfies TestCase<IntervalDomain>;
 
 		const expected2 = {
-			'6@result2': {
+			'6@y': {
 				length:     [2, 2],
 				known:      asNaAwares([1, 3], [1, 3]),
 				summary:    asNaAware(Bottom),
@@ -1349,7 +1349,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
-	test('Top selector scalar value update', async() => {
+	test('Infinite - Top selector scalar value update', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3)
@@ -1369,7 +1369,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top selector negative indexing', async() => {
+	test('Infinite - Top selector negative indexing', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3,4,5)
@@ -1389,7 +1389,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source finite range selector', async() => {
+	test('Infinite - Top source finite range selector', async() => {
 		const code = `
 		v <- runif(1)
 		result <- v[1:2]
@@ -1408,7 +1408,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source finite range update', async() => {
+	test('Infinite - Top source finite range update', async() => {
 		const code = `
 		v <- runif(1)
 		v[1:3] <- c(10, 20, 30)
@@ -1427,7 +1427,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source with Top selector', async() => {
+	test('Infinite - Top source with Top selector', async() => {
 		const code = `
 		v1 <- runif(1)
 		v2 <- runif(1)
@@ -1447,7 +1447,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top selector update with vector value', async() => {
+	test('Infinite - Top selector update with vector value', async() => {
 		const code = `
 		v <- runif(1)
 		s <- c(1,2,3)
@@ -1467,7 +1467,7 @@ v[c(4,7)] <- 0
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('Top source with Top selector update', async() => {
+	test('Infinite - Top source with Top selector update', async() => {
 		const code = `
 		v <- runif(1)
 		idx <- runif(1)
