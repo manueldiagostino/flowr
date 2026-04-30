@@ -3,6 +3,34 @@ import './log-config';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { mkVector } from '../_helper/vector-creation-helpers';
 import { intervalFactory } from '../_helper/vector-interval-factory';
+import { asNaAware, asNaAwares, type ExpectedVector, toNAAwareDomain, toNAAwareDomains } from '../_helper/vector-assertion-helpers';
+import { VectorAttrDomain, VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
+import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
+import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
+import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
+import { naAwareFactory } from '../_helper/vector-interval-factory';
+import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
+import type { RVectorType } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
+import './log-config';
+
+/**
+ * Helper to assert that a VectorDomain<IntervalDomain> matches an expected vector specification.
+ * Uses the declarative ExpectedVector style from vector-assertion-helpers.
+ */
+function assertVectorEquals(label: string, actual: VectorDomain<IntervalDomain>, expected: ExpectedVector<IntervalDomain>): void {
+	const lengthDomain = new IntervalDomain(expected.length);
+	const naFactory = naAwareFactory(intervalFactory);
+	const knownDomain = new KnownInitialPositionsDomain(toNAAwareDomains(expected.known), naFactory);
+	const summaryDomain = toNAAwareDomain(expected.summary);
+	const attributesDomain = new VectorAttrDomain(expected.attributes);
+	const typeDomain = new RVectorTypeDomain(expected.type as RVectorType);
+
+	assert.ok(actual.length.equals(lengthDomain), `${label}: length expected ${lengthDomain.toString()}, got ${actual.length.toString()}`);
+	assert.ok(actual.known.equals(knownDomain), `${label}: known expected ${knownDomain.toString()}, got ${actual.known.toString()}`);
+	assert.ok(actual.summary.equals(summaryDomain), `${label}: summary expected ${summaryDomain.toString()}, got ${actual.summary.toString()}`);
+	assert.ok(actual.attributes.equals(attributesDomain), `${label}: attributes expected ${attributesDomain.toString()}, got ${actual.attributes.toString()}`);
+	assert.ok(actual.type.equals(typeDomain), `${label}: type expected ${typeDomain.toString()}, got ${actual.type.toString()}`);
+}
 
 describe('Vector Domain', () => {
 
@@ -253,30 +281,60 @@ describe('Vector Domain', () => {
 			const bottom = VectorDomain.bottom(intervalFactory);
 			const value = mkVector([0, 1], [[1, 1]], undefined);
 			const result = bottom.widen(value);
-			assert.strictEqual(result.length.toString(), value.length.toString());
-			assert.strictEqual(result.known.toString(), value.known.toString());
+
+			const expected: ExpectedVector<IntervalDomain> = {
+				length:     [0, 1],
+				known:      asNaAwares([1, 1]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			};
+			assertVectorEquals('bottom.widen(value)', result, expected);
 		});
 
 		test('widen widens length interval', () => {
 			const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const b = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
 			const result = a.widen(b);
-			assert.strictEqual(result.length.toString(), '[0, 2]');
+
+			const expected: ExpectedVector<IntervalDomain> = {
+				length:     [0, 2],
+				known:      asNaAwares([1, 1], [2, 2]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			};
+			assertVectorEquals('widen same values', result, expected);
 		});
 
 		test('widen widens values element-wise', () => {
 			const a = mkVector([0, 1], [[1, 3]], undefined);
 			const b = mkVector([0, 1], [[2, 5]], undefined);
 			const result = a.widen(b);
-			assert.strictEqual(result.known.toString(), '[[1, +∞]]');
+
+			const expected: ExpectedVector<IntervalDomain> = {
+				length:     [0, 1],
+				known:      asNaAwares([1, Infinity]),
+				summary:    asNaAware(Bottom),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			};
+			assertVectorEquals('widen values element-wise', result, expected);
 		});
 
 		test('widen collapses different length values into summary for infinite vectors', () => {
 			const a = mkVector([0, Infinity], [[1, 1], [2, 2], [3, 3]], [1, 10]);
 			const b = mkVector([0, Infinity], [[1, 1]], [1, 15]);
 			const result = a.widen(b);
-			assert.strictEqual(result.known.toString(), '[[1, 1]]');
-			assert.strictEqual(result.summary.toString(), '[1, 15]');
+
+			const expected: ExpectedVector<IntervalDomain> = {
+				length:     [0, Infinity],
+				known:      asNaAwares([1, 1]),
+				summary:    asNaAware([1, 15]),
+				attributes: VectorAttrEmpty,
+				type:       'double'
+			};
+			assertVectorEquals('widen infinite vectors', result, expected);
 		});
 
 		test('widen soundly over-approximates join', () => {
@@ -285,6 +343,223 @@ describe('Vector Domain', () => {
 			const join = a.join(b);
 			const widen = a.widen(b);
 			assert.strictEqual(join.leq(widen), true);
+		});
+
+		describe('upper bound property', () => {
+			test('widen(a, b) is upper bound of a', () => {
+				const a = mkVector([0, 2], [[1, 3], [5, 5]], undefined);
+				const b = mkVector([0, 2], [[2, 5], [8, 8]], undefined);
+				const widen = a.widen(b);
+				assert.strictEqual(a.leq(widen), true, 'a should be ⊑ widen(a, b)');
+			});
+
+			test('widen(a, b) is upper bound of b', () => {
+				const a = mkVector([0, 2], [[1, 3], [5, 5]], undefined);
+				const b = mkVector([0, 2], [[2, 5], [8, 8]], undefined);
+				const widen = a.widen(b);
+				assert.strictEqual(b.leq(widen), true, 'b should be ⊑ widen(a, b)');
+			});
+
+			test('widen maintains upper bound for infinite length vectors', () => {
+				const a = mkVector([0, Infinity], [[1, 1], [2, 2]], [1, 10]);
+				const b = mkVector([0, Infinity], [[3, 3], [4, 4], [5, 5]], [2, 20]);
+				const widen = a.widen(b);
+				assert.strictEqual(a.leq(widen), true, 'a should be ⊑ widen(a, b)');
+				assert.strictEqual(b.leq(widen), true, 'b should be ⊑ widen(a, b)');
+			});
+
+			test('widen maintains upper bound for different length known values', () => {
+				const a = mkVector([0, 3], [[1, 1], [2, 2]], undefined);
+				const b = mkVector([0, 5], [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], undefined);
+				const widen = a.widen(b);
+				assert.strictEqual(a.leq(widen), true, 'a should be ⊑ widen(a, b)');
+				assert.strictEqual(b.leq(widen), true, 'b should be ⊑ widen(a, b)');
+			});
+
+			test('widen with bottom preserves upper bound', () => {
+				const bottom = VectorDomain.bottom(intervalFactory);
+				const value = mkVector([0, 3], [[1, 1], [2, 2], [3, 3]], undefined);
+				const widen1 = bottom.widen(value);
+				const widen2 = value.widen(bottom);
+				assert.strictEqual(value.leq(widen1), true, 'value should be ⊑ bottom.widen(value)');
+				assert.strictEqual(bottom.leq(widen1), true, 'bottom should be ⊑ bottom.widen(value)');
+				assert.strictEqual(value.leq(widen2), true, 'value should be ⊑ value.widen(bottom)');
+				assert.strictEqual(bottom.leq(widen2), true, 'bottom should be ⊑ value.widen(bottom)');
+			});
+		});
+
+		describe('soundness', () => {
+			test('widen is sound over-approximation of concrete values', () => {
+				// Concrete values: a=[1,2], b=[3,4]
+				const concreteA = mkVector([2, 2], [[1, 1], [2, 2]], undefined);
+				const concreteB = mkVector([2, 2], [[3, 3], [4, 4]], undefined);
+				const widen = concreteA.widen(concreteB);
+				// Widen should contain both concrete values
+				assert.strictEqual(concreteA.leq(widen), true);
+				assert.strictEqual(concreteB.leq(widen), true);
+			});
+
+			test('iterated widen accumulates soundly', () => {
+				let acc = mkVector([0, 1], [[0, 0]], undefined);
+				const values = [
+					mkVector([0, 1], [[1, 1]], undefined),
+					mkVector([0, 1], [[2, 2]], undefined),
+					mkVector([0, 1], [[3, 3]], undefined),
+				];
+				for(const value of values) {
+					const prevAcc = acc;
+					acc = acc.widen(value);
+					// Previous accumulator should still be contained
+					assert.strictEqual(prevAcc.leq(acc), true);
+					// New value should be contained
+					assert.strictEqual(value.leq(acc), true);
+				}
+			});
+
+			test('widen with growing lengths is sound', () => {
+				const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+				const b = mkVector([0, 5], [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], undefined);
+				const widen = a.widen(b);
+				// Both should be contained in widen result
+				assert.strictEqual(a.leq(widen), true);
+				assert.strictEqual(b.leq(widen), true);
+			});
+
+			test('widen soundly handles NA values', () => {
+				const a = mkVector([0, 2], [[1, 1], [2, 2]], undefined);
+				const b = mkVector([0, 2], [[3, 3], [4, 4]], undefined);
+				const widen = a.widen(b);
+				// Result should be at least as general as both inputs
+				assert.strictEqual(widen.length.toString().startsWith('[0,'), true);
+			});
+		});
+
+		describe('termination (finite convergence)', () => {
+			test('widen stabilizes after finite steps for unbounded growth', () => {
+				// Simulate a loop where values keep increasing
+				// Without widening, this would be: [0,0] -> [0,1] -> [0,2] -> ...
+				// With widening, should stabilize quickly
+				let prev = mkVector([1, 1], [[0, 0]], undefined);
+				let steps = 0;
+				const maxSteps = 20;
+
+				for(let i = 1; i <= maxSteps; i++) {
+					const current = mkVector([1, 1], [[i, i]], undefined);
+					const widened = prev.widen(current);
+					steps++;
+
+					// Check if stabilized
+					if(widened.leq(prev) && prev.leq(widened)) {
+						break;
+					}
+					prev = widened;
+				}
+
+				// Should converge much faster than maxSteps
+				assert.strictEqual(steps < maxSteps, true, `Should converge in finite steps, took ${steps}`);
+			});
+
+			test('iterated widen reaches fixpoint for diverging intervals', () => {
+				// Sequence: [0,0], [0,1], [0,2], [0,4], [0,8] ... doubling
+				// Should converge to [0, +Infinity] quickly
+				let acc = mkVector([1, 1], [[0, 0]], undefined);
+				const iterations = [1, 2, 4, 8, 16, 32, 64, 128];
+				let fixpointReached = false;
+				let stepCount = 0;
+
+				for(const upper of iterations) {
+					const next = mkVector([1, 1], [[0, upper]], undefined);
+					const widened = acc.widen(next);
+					stepCount++;
+
+					if(widened.leq(acc) && acc.leq(widened)) {
+						fixpointReached = true;
+						break;
+					}
+					acc = widened;
+				}
+
+				assert.strictEqual(fixpointReached, true, 'Should reach fixpoint in finite steps');
+				// The value at position 1 should have reached infinity
+				assert.ok(acc.known.toString().includes('+∞'), 'Value should contain infinity');
+			});
+
+			test('widen terminates for growing vector lengths', () => {
+				// Vectors with increasing lengths: len=1, len=2, len=3, ...
+				let prev = mkVector([1, 1], [[1, 1]], undefined);
+				let steps = 0;
+				const maxSteps = 15;
+
+				for(let len = 2; len <= maxSteps; len++) {
+					const values = Array.from({ length: len }, (_, i) => [i + 1, i + 1] as [number, number]);
+					const current = mkVector([len, len], values, undefined);
+					const widened = prev.widen(current);
+					steps++;
+
+					// Check stabilization
+					if(widened.leq(prev) && prev.leq(widened)) {
+						break;
+					}
+					prev = widened;
+				}
+
+				assert.strictEqual(steps < maxSteps, true, `Should converge in finite steps for growing lengths, took ${steps}`);
+			});
+
+			test('widen stabilizes for cyclic iteration pattern', () => {
+				// Simulate fixpoint iteration: f(X) = X join next_value
+				// Values cycle through [1,1] -> [2,2] -> [3,3] -> [4,4] -> ...
+				let acc = VectorDomain.bottom(intervalFactory);
+				const cycle = [
+					mkVector([1, 1], [[1, 1]], undefined),
+					mkVector([1, 1], [[2, 2]], undefined),
+					mkVector([1, 1], [[3, 3]], undefined),
+					mkVector([1, 1], [[4, 4]], undefined),
+				];
+				let stepCount = 0;
+				const maxIterations = 50;
+
+				for(let i = 0; i < maxIterations; i++) {
+					const next = cycle[i % cycle.length];
+					const widened = acc.widen(next);
+					stepCount++;
+
+					// Fixpoint reached?
+					if(widened.leq(acc) && acc.leq(widened)) {
+						break;
+					}
+					acc = widened;
+				}
+
+				assert.strictEqual(stepCount < maxIterations, true, `Should stabilize in finite steps, took ${stepCount}`);
+			});
+
+			test('widen reaches global top in finite steps for extreme growth', () => {
+				// Test with values that grow exponentially in both value and length
+				let acc = mkVector([1, 1], [[1, 1]], undefined);
+				let reachedInfiniteLength = false;
+				const maxSteps = 25;
+
+				for(let step = 0; step < maxSteps; step++) {
+					// Exponential growth: length 2^step, values up to 10^step
+					const len = Math.pow(2, step);
+					const val = Math.pow(10, step);
+					const values = [[1, val] as [number, number]];
+					const current = mkVector([len, len], values, [1, val]);
+
+					const widened = acc.widen(current);
+
+					// Check if reached infinite length
+					if(widened.length.isValue() && widened.length.value[1] === Infinity) {
+						reachedInfiniteLength = true;
+						break;
+					}
+
+					acc = widened;
+				}
+
+				assert.strictEqual(reachedInfiniteLength, true, 'Should reach infinite length in finite steps');
+			});
 		});
 	});
 

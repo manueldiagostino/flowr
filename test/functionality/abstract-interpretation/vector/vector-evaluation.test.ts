@@ -699,10 +699,10 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 	test('Select - Vector subset with multiple indices', async() => {
 		const code = `
 			v <- c(1, 2, 3, 4, 5)
-			v <- v[c(1, 3)]
+			r <- v[c(1, 3)]
 		`.trim();
 		const expected = {
-			'2@v': {
+			'2@r': {
 				length:     [2, 2],
 				known:      asNaAwares([1, 1], [3, 3]),
 				summary:    asNaAware(Bottom),

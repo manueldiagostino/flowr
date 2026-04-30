@@ -11,6 +11,7 @@ import { NAAwareDomain } from './na-aware-domain';
 import { RVectorTypeDomain } from '../domains/vector-type-domain';
 import { IntervalDomain } from '../domains/interval-domain';
 import { applyBinaryOp, applyNegate } from './operations/arithmetic';
+import { vectorLogger } from './logger';
 
 export type { DomainFactory } from './known-initial-positions-domain';
 
@@ -638,10 +639,14 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 	public widen(other: VectorDomain<Domain>): this;
 	public widen(other: this): this;
 	public widen(other: this | VectorDomain<Domain>): this {
+		vectorLogger.debug(`VectorDomain.widen: entry [this=${this.toString()}, other=${other.toString()}]`);
+
 		if(this.isBottom()) {
+			vectorLogger.debug('VectorDomain.widen: this is bottom, returning other');
 			return this.create(other.value);
 		}
 		if(other.isBottom()) {
+			vectorLogger.debug('VectorDomain.widen: other is bottom, returning this');
 			return this.create(this.value);
 		}
 
@@ -649,22 +654,29 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 		const newAttributes = this.attributes.join(other.attributes);
 		const newType = this.type.join(other.type);
 
+		vectorLogger.debug(`VectorDomain.widen: length widened to [${newLength.toString()}]`);
+
 		// Summary invariant (paper): (u ≠ +∞) ⇒ (s = ⊥)
 		// Summary is only valorized when the length's upper bound is +Infinity.
 		const lengthIsInfinite = newLength.isValue() && newLength.value[1] === Infinity;
+		vectorLogger.trace(`VectorDomain.widen: lengthIsInfinite=${lengthIsInfinite}`);
+
 		let newSummary = lengthIsInfinite
 			? this.summary.join(other.summary)
 			: this.summary.bottom();
 		let newValues: KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
 
 		if(this.known.isTop() || other.known.isTop()) {
+			vectorLogger.debug('VectorDomain.widen: one known is top, setting known to top');
 			const smartFactory = NAAwareDomain.createSmartFactory(this._factory);
 			newValues = KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(
 				smartFactory
 			);
 		} else if(this.known.isBottom()) {
+			vectorLogger.debug('VectorDomain.widen: this known is bottom, using other known');
 			newValues = other.known;
 		} else if(other.known.isBottom()) {
+			vectorLogger.debug('VectorDomain.widen: other known is bottom, using this known');
 			newValues = this.known;
 		} else {
 			const thisArr = this.known.value as readonly NAAwareDomain<Domain>[];
@@ -678,9 +690,14 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 			const otherFinite = other.length.isValue() && other.length.value[1] !== Infinity;
 			const bothInputsFinite = thisFinite && otherFinite;
 
+			vectorLogger.trace(`VectorDomain.widen: known lengths [this=${thisArr.length}, other=${otherArr.length}, common=${commonLen}, max=${maxLen}]`);
+			vectorLogger.trace(`VectorDomain.widen: thisFinite=${thisFinite}, otherFinite=${otherFinite}, bothInputsFinite=${bothInputsFinite}`);
+
 			const commonKnown: NAAwareDomain<Domain>[] = [];
 			for(let i = 0; i < commonLen; i++) {
-				commonKnown.push(thisArr[i].widen(otherArr[i]));
+				const widened = thisArr[i].widen(otherArr[i]);
+				vectorLogger.trace(`VectorDomain.widen: widened position [${i}]: ${thisArr[i].toString()} ▽ ${otherArr[i].toString()} = ${widened.toString()}`);
+				commonKnown.push(widened);
 			}
 
 			// Paper definition (03-abstract.tex:163-199):
@@ -691,20 +708,26 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 			// Case 2: result is infinite but both inputs were finite (first reaching infinity) → extend to max(k1, k2)
 			// Case 3: result is infinite and at least one input was already infinite → truncate to common prefix
 			const shouldExtend = !lengthIsInfinite || bothInputsFinite;
+			vectorLogger.trace(`VectorDomain.widen: shouldExtend=${shouldExtend} (lengthIsInfinite=${lengthIsInfinite}, bothInputsFinite=${bothInputsFinite})`);
 
 			if(shouldExtend) {
 				// Extend to max(k1, k2): keep excess positions from the longer vector as-is
+				vectorLogger.debug('VectorDomain.widen: extending known positions to max length');
 				const longerArr = thisArr.length > otherArr.length ? thisArr : otherArr;
 				for(let i = commonLen; i < maxLen; i++) {
+					vectorLogger.trace(`VectorDomain.widen: extending position [${i}] from longer vector: ${longerArr[i].toString()}`);
 					commonKnown.push(longerArr[i]);
 				}
 				// Summary is already correct: ⊥ when finite, joined when infinite (first reaching)
 			} else {
 				// Truncate to common prefix: fold excess positions into summary
+				vectorLogger.debug('VectorDomain.widen: truncating to common prefix, folding excess into summary');
 				for(let i = commonLen; i < thisArr.length; i++) {
+					vectorLogger.trace(`VectorDomain.widen: folding this[${i}] into summary: ${thisArr[i].toString()}`);
 					newSummary = newSummary.join(thisArr[i]);
 				}
 				for(let i = commonLen; i < otherArr.length; i++) {
+					vectorLogger.trace(`VectorDomain.widen: folding other[${i}] into summary: ${otherArr[i].toString()}`);
 					newSummary = newSummary.join(otherArr[i]);
 				}
 			}
@@ -712,13 +735,16 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 			newValues = this.known.create(commonKnown);
 		}
 
-		return this.create({
+		const result = this.create({
 			length:     newLength,
 			known:      newValues,
 			summary:    newSummary,
 			attributes: newAttributes,
 			type:       newType
 		});
+
+		vectorLogger.debug(`VectorDomain.widen: complete [this=${this.toString()}, other=${other.toString()}, result=${result.toString()}]`);
+		return result;
 	}
 
 	/**
