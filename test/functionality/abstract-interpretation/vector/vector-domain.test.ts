@@ -153,10 +153,10 @@ describe('Vector Domain', () => {
 			assert.strictEqual(a.equals(b), true);
 		});
 
-		test('top does not equal top (implementation quirk)', () => {
+		test('top equals top', () => {
 			const a = VectorDomain.top(intervalFactory);
 			const b = VectorDomain.top(intervalFactory);
-			assert.strictEqual(a.equals(b), false);
+			assert.strictEqual(a.equals(b), true);
 		});
 	});
 
