@@ -428,18 +428,22 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			assert.ok(result.isValue());
 			if(result.known.isValue()) {
 				const vals = result.known.value as readonly NAAwareDomain<IntervalDomain>[];
-				// Position 0: skip 2 zeros, get [5,5]
+				// Position 0: d=0,p=0, definite zeros continue, then [5,5] with d=0,p=0 returns [5,5]
 				assert.strictEqual(vals[0].inner.isValue(), true);
 				if(vals[0].inner.isValue()) {
 					assert.deepStrictEqual(vals[0].inner.value, [5, 5]);
 				}
-				// Position 1: skip 2 zeros, get [6,6]
+				// Position 1: d=1 (one zero before), propagate([0,0,5,6], summary, {d:1,p:0})
+				//   definite zeros continue, then [5,5] consumes d→0, continues to [6,6]
+				//   [6,6] with d=0,p=0 returns [6,6]
 				assert.strictEqual(vals[1].inner.isValue(), true);
 				if(vals[1].inner.isValue()) {
 					assert.deepStrictEqual(vals[1].inner.value, [6, 6]);
 				}
 			}
 		});
+
+
 
 		test('handles NA in positions (not treated as zeros)', () => {
 			const vector = createNAAwareVector(
@@ -484,7 +488,7 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 				{ inner: new IntervalDomain([10, 10]), hasNA: false },
 				intervalFactory
 			);
-			const result = propagate([], summary, 0);
+			const result = propagate([], summary, { definite: 0, possible: 0 });
 
 			assert.strictEqual(result.inner.isValue(), true);
 			if(result.inner.isValue()) {
@@ -501,7 +505,7 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 				{ inner: IntervalDomain.bottom(), hasNA: false },
 				intervalFactory
 			);
-			const result = propagate(positions, summary, 0);
+			const result = propagate(positions, summary, { definite: 0, possible: 0 });
 
 			// Should skip the zero and return [5, 5]
 			assert.strictEqual(result.inner.isValue(), true);
@@ -510,7 +514,7 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			}
 		});
 
-		test('propagate function joins with may-contain-zero positions', () => {
+		test('propagate function continues with may-contain-zero positions', () => {
 			const positions = [
 				new NAAwareDomain({ inner: new IntervalDomain([-1, 1]), hasNA: false }, intervalFactory),
 				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
@@ -519,12 +523,13 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 				{ inner: IntervalDomain.bottom(), hasNA: false },
 				intervalFactory
 			);
-			const result = propagate(positions, summary, 0);
+			const result = propagate(positions, summary, { definite: 0, possible: 0 });
 
-			// [-1,1] may contain zero, so result should be join of [-1,1] and [5,5] = [-1, 5]
+			// [-1,1] may contain zero, so we continue without joining
+			// Then [5,5] with d=0,p=0 returns [5,5]
 			assert.strictEqual(result.inner.isValue(), true);
 			if(result.inner.isValue()) {
-				assert.strictEqual(result.inner.value[0], -1);
+				assert.strictEqual(result.inner.value[0], 5);
 				assert.strictEqual(result.inner.value[1], 5);
 			}
 		});

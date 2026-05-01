@@ -2,16 +2,14 @@ import { assert, test, describe } from 'vitest';
 import './log-config';
 import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { mkVector } from '../_helper/vector-creation-helpers';
-import { intervalFactory } from '../_helper/vector-interval-factory';
+import { intervalFactory, naAwareFactory } from '../_helper/vector-interval-factory';
 import { asNaAware, asNaAwares, type ExpectedVector, toNAAwareDomain, toNAAwareDomains } from '../_helper/vector-assertion-helpers';
 import { VectorAttrDomain, VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 import { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
-import { naAwareFactory } from '../_helper/vector-interval-factory';
 import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import type { RVectorType } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
-import './log-config';
 
 /**
  * Helper to assert that a VectorDomain<IntervalDomain> matches an expected vector specification.

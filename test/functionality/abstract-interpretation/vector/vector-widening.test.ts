@@ -3,7 +3,6 @@ import type { IntervalDomain } from '../../../../src/abstract-interpretation/dom
 import { IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
 import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
-import { RVectorTypeTop } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { withShell } from '../../_helper/shell';
 import { Record } from '../../../../src/util/record';
 import {

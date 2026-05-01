@@ -61,46 +61,42 @@ function createTestVector(
 describe('propagate', () => {
 	test('propagate with empty positions returns summary', () => {
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate([], summary, 0);
+		const result = propagate([], summary, { definite: 0, possible: 0 });
 		assertNAAwareEquals(result, asNaAware([10, 10]));
 	});
 
 	test('propagate with definite zero increments counter and skips', () => {
 		const positions = toNAAwareDomains(asNaAwares([0, 0], [5, 5]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
+		const result = propagate(positions, summary, { definite: 0, possible: 0 });
 		// First is zero (skipped), k becomes 1
 		// propagate([5,5], summary, 1): first [5,5] non-zero, k=1 ≤ 1 → return [5,5]
 		// Result: [5,5]
 		assertNAAwareEquals(result, asNaAware([5, 5]));
 	});
 
-	test('propagate with possible zero joins first with propagated rest', () => {
+	test('propagate with possible zero continues without joining', () => {
 		const positions = toNAAwareDomains(asNaAwares([-1, 1], [5, 5]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		// [-1,1] contains 0 but not exactly {0}
-		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
-		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
-		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
-		assertNAAwareEquals(result, asNaAware([-1, 5]));
+		const result = propagate(positions, summary, { definite: 0, possible: 0 });
+		// [-1,1] is possible zero (interval contains 0 but not exactly {0}) so we continue without joining
+		// Then [5,5] with d=0,p=0: non-zero, return [5,5]
+		assertNAAwareEquals(result, asNaAware([5, 5]));
 	});
 
-	test('propagate with possible zero joins first with propagated rest (NA version)', () => {
+	test('propagate with possible zero continues without joining (NA version)', () => {
 		const positions = toNAAwareDomains([...asNaAwares([-1, 1]), asNaAwareWithNA([5, 5])]);
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
-		// [-1,1] contains 0 but not exactly {0}
-		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
-		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
-		// Result: [-1,1] ⊔ [5,5] = [-1, 5]
-		assertNAAwareEquals(result, asNaAwareWithNA([-1, 5]));
+		const result = propagate(positions, summary, { definite: 0, possible: 0 });
+		// [-1,1] is possible zero so we continue without joining
+		// Then [5,5] with d=0,p=0: non-zero, return [5,5]
+		assertNAAwareEquals(result, asNaAwareWithNA([5, 5]));
 	});
 
 	test('pure NA considered as non-zero value', () => {
 		const positions = toNAAwareDomains(asNaAwares(NaInterval, [5, 7]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
+		const result = propagate(positions, summary, { definite: 0, possible: 0 });
 		// [-1,1] contains 0 but not exactly {0}
 		// Result: [-1,1] ⊔ propagate([5,5], [10,10], 0)
 		// propagate([5,5], [10,10], 0): k=0, first [5,5] non-zero → returns [5,5]
@@ -108,37 +104,37 @@ describe('propagate', () => {
 		assertNAAwareEquals(result, NaInterval);
 	});
 
-	test('propagate non-zero with k>1 joins first with propagated rest (paper L411)', () => {
+	test('propagate non-zero with k>1 consumes counters and returns summary (paper L411)', () => {
 		const positions = toNAAwareDomains(asNaAwares([3, 3], [5, 5]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		// k=2: first [3,3] non-zero, k=2>1 → [3,3] ⊔ propagate([5,5], summary, 1)
-		// propagate([5,5], summary, 1): first [5,5] non-zero, k=1 ≤ 1 → return [5,5]
-		// Result: [3,3] ⊔ [5,5] = [3, 5]
-		const result = propagate(positions, summary, 2);
-		assertNAAwareEquals(result, asNaAware([3, 5]));
+		// With d=2,p=2: first [3,3] non-zero, d>0 → consume d→1, continue
+		// Then [5,5] non-zero, d>0 → consume d→0, continue
+		// Base case: return summary [10,10]
+		const result = propagate(positions, summary, { definite: 2, possible: 2 });
+		assertNAAwareEquals(result, asNaAware([10, 10]));
 	});
 
 	test('propagate non-zero with k=0 returns first value unchanged (paper L414)', () => {
 		const positions = toNAAwareDomains(asNaAwares([3, 3], [5, 5]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
+		const result = propagate(positions, summary, { definite: 0, possible: 0 });
 		assertNAAwareEquals(result, asNaAware([3, 3]));
 	});
 
-	test('propagate possible zero with k>0 joins first with propagated rest', () => {
+	test('propagate with pending counters consumes counters on non-zero', () => {
 		const positions = toNAAwareDomains(asNaAwares([0, 2], [5, 5]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 1);
-		// [0,2] may contain zero, so: [0,2] ⊔ propagate([5,5], [10,10], 1)
-		// propagate([5,5], [10,10], 1): [5,5] non-zero, k=1 ≤ 1 → return [5,5]
-		// Final: [0,2] ⊔ [5,5] = [0, 5]
-		assertNAAwareEquals(result, asNaAware([0, 5]));
+		const result = propagate(positions, summary, { definite: 1, possible: 1 });
+		// [0,2] is possible zero (contains 0 but not exactly {0}) so we continue
+		// Then [5,5] with d=1,p=1: non-zero, consume d→0, propagate([], summary, {d:0,p:1})
+		// Base case returns summary [10,10]
+		assertNAAwareEquals(result, asNaAware([10, 10]));
 	});
 
 	test('propagate with bottom position returns bottom', () => {
 		const positions = [toNAAwareDomain(NaInterval)];
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
-		const result = propagate(positions, summary, 0);
+		const result = propagate(positions, summary, { definite: 0, possible: 0 });
 		assertNAAwareEquals(result, NaInterval);
 	});
 });
@@ -238,14 +234,15 @@ describe('adjustForZeros', () => {
 			const knownValues = result.known.value as readonly NAAwareDomain<IntervalDomain>[];
 			assert.strictEqual(knownValues.length, 2);
 
-			// Position 0: propagate([0,0,5,5,10,10], bottom, 0)
-			//   → [0,0] is definite zero, k becomes 1
-			//   → propagate([5,5,10,10], bottom, 1): [5,5] non-zero, k=1 ≤ 1 → return [5,5]
+			// Position 0: propagate([0,0,5,5,10,10], bottom, {d:0, p:0})
+			//   → [0,0] is definite zero, continue with {d:0, p:0}
+			//   → [5,5] non-zero with d=0,p=0 → return [5,5]
 			assertNAAwareEquals(knownValues[0], asNaAware([5, 5]));
 
-			// Position 1: zerosBefore=1 (position 0 is zero), propagate([5,5,10,10], bottom, 1)
-			//   → [5,5] non-zero, k=1 ≤ 1 → return [5,5]
-			assertNAAwareEquals(knownValues[1], asNaAware([5, 5]));
+			// Position 1: d=1 (one definite zero before), propagate([5,5,10,10], bottom, {d:1, p:0})
+			//   → [5,5] non-zero with d=1>0, consume d→0, propagate([10,10], bottom, {d:0, p:0})
+			//   → [10,10] non-zero with d=0,p=0 → return [10,10]
+			assertNAAwareEquals(knownValues[1], asNaAware([10, 10]));
 		}
 	});
 

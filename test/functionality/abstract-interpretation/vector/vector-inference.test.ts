@@ -16,7 +16,6 @@ import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains
 import {
 	asNaAware,
 	asNaAwares,
-	asNaAwareWithNA,
 	assertVectorDomainSound,
 	type TestCase,
 } from '../_helper/vector-assertion-helpers';

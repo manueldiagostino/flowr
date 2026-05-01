@@ -11,6 +11,17 @@ import { guard } from '../../util/assert';
 import { vectorLogger } from './logger';
 import { formatVectorDomain, formatExtremeResult } from './log-utils';
 
+/**
+ * Zero counters for V2 propagate with separate definite and possible zero tracking.
+ * Provides maximal precision by distinguishing between:
+ * - definiteZeros: positions that are definitely zero (γ(pᵢ) = {0})
+ * - possibleZeros: positions that may contain zero (0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0})
+ */
+export interface ZeroCounters {
+	definite: number;
+	possible: number;
+}
+
 export { ConstraintType };
 
 /**
@@ -127,193 +138,6 @@ export function squashedExcept<Domain extends AnyAbstractDomain & ArithmeticDoma
 	}
 
 	vectorLogger.trace(`Semantic: squashedExcept result = ${result.toString()}`);
-	return result;
-}
-
-/**
- * Propagates values forward through positions containing zero.
- * Per paper Section 4.8: Propagate : Itv^* × Itv × N → Itv
- * The counter k tracks pending zeros to absorb.
- *
- * Note: Uses IntervalDomain (not PosIntervalDomain) as the paper specifies
- * Itv for the general interval domain allowing negative values.
- * @param knownPositions - The remaining known positions to process
- * @param summary - The summary value for positions beyond the known positions
- * @param k - The count of pending zeros
- * @returns The propagated abstract value
- */
-export function propagate(
-	knownPositions: readonly NAAwareDomain<IntervalDomain>[],
-	summary: NAAwareDomain<IntervalDomain>,
-	k: number
-): NAAwareDomain<IntervalDomain> {
-	vectorLogger.debug(`Semantic: propagate [knownPositions.length=${knownPositions.length}, k=${k}]`);
-	if(knownPositions.length === 0) {
-		vectorLogger.trace(`Semantic: propagate base case result = ${summary.toString()}`);
-		return summary;
-	}
-
-	const first = knownPositions[0];
-	const rest = knownPositions.slice(1);
-
-	vectorLogger.trace(`Semantic: propagate first=${first.toString()}, rest.length=${rest.length}, k=${k}`);
-
-	if(first.inner.isValue()) {
-		const [l, u] = first.inner.value;
-
-		// Check if definitely zero: γ(c₁) = {0}
-		if(l === 0 && u === 0) {
-			// Skip and increment counter
-			vectorLogger.trace('Semantic: propagate zero detected, skipping and incrementing k');
-			const result = propagate(rest, summary, k + 1);
-			vectorLogger.trace(`Semantic: propagate zero-skip result = ${result.toString()}`);
-			return result;
-		}
-
-		// Check if may contain zero: 0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0}
-		if(l <= 0 && u >= 0) {
-			// Join with propagated value from rest (paper specifies ⊔)
-			vectorLogger.trace('Semantic: propagate may contain zero, joining with propagated rest');
-			const propagated = propagate(rest, summary, k);
-			const result = first.join(propagated);
-			vectorLogger.trace(`Semantic: propagate may-zero result = ${result.toString()}`);
-			return result;
-		}
-	} else if(first.isNA()) {
-		// position is a pure NA - treat as non-zero and continue
-		// NA values are not zeros, so they don't affect the zero counter
-		vectorLogger.trace('Semantic: propagate first is NA, treating as non-zero');
-	} else if(first.isBottom()) {
-		// position is bottom (no possible values) - propagate bottom
-		vectorLogger.trace('Semantic: propagate first is bottom');
-		const result = summary.bottom();
-		vectorLogger.trace(`Semantic: propagate bottom result = ${result.toString()}`);
-		return result;
-	}
-	// For Top or pure NA, continue to non-zero handling below
-
-	// Non-zero value
-	if(k > 1) {
-		// Decrement counter and continue, joining with first (per paper L411)
-		vectorLogger.trace(`Semantic: propagate non-zero with k=${k}, decrementing and continuing`);
-		return first.join(propagate(rest, summary, k - 1));
-	}
-
-	// k = 0, return this value
-	vectorLogger.trace(`Semantic: propagate non-zero k=1 result = ${first.toString()}`);
-	return first;
-}
-
-/**
- * Adjusts selector length bounds by accounting for zeros in the known positions.
- * Per paper Section 4.8: AdjustForZeros([l, u], p, s, a) = ([l', u'], p', s, a) where p = known positions
- *
- * Computes:
- * - l' = l - |\{i ≤ n : 0 ∈ γ(pᵢ)\}|
- * - u' = u - |\{i ≤ n : γ(pᵢ) = \{0\}\}|
- *
- * And builds modified known positions using Propagate.
- *
- * Note: Uses IntervalDomain for the selector values as per paper's V_Itv,
- * but returns the adjusted vector with the original domain type.
- * @param vector - The selector abstract vector with IntervalDomain elements
- * @returns The adjusted abstract vector
- */
-export function adjustForZeros(
-	vector: VectorDomain<IntervalDomain>
-): VectorDomain<IntervalDomain> {
-	vectorLogger.debug('Semantic: adjustForZeros');
-	if(vector.isBottom()) {
-		vectorLogger.trace(formatExtremeResult('bottom', 'vector is bottom'));
-		return vector;
-	}
-	if(vector.isTop()) {
-		vectorLogger.trace(formatExtremeResult('top', 'vector is top'));
-		return vector;
-	}
-
-	const { length, known, summary, attributes } = vector;
-
-	if(!length.isValue()) {
-		vectorLogger.trace(formatExtremeResult('top', 'length is not value'));
-		return vector.top();
-	}
-
-	const [l, u] = length.value;
-
-	// Count zeros in known positions
-	let definiteZeros = 0; // |{i : γ(pᵢ) = {0}}|
-	let possibleZeros = 0; // |{i : 0 ∈ γ(pᵢ)}|
-
-	if(known.isValue() && Array.isArray(known.value)) {
-		const knownPositionValues = known.value as readonly NAAwareDomain<IntervalDomain>[];
-		for(const naVal of knownPositionValues) {
-			const val = naVal.inner;
-			if(val.isValue()) {
-				const [vl, vu] = val.value;
-				if(vl === 0 && vu === 0) {
-					definiteZeros++;
-					possibleZeros++;
-					vectorLogger.trace(`Semantic: adjustForZeros position is definite zero, definiteZeros=${definiteZeros}, possibleZeros=${possibleZeros}`);
-				} else if(vl <= 0 && vu >= 0) {
-					possibleZeros++;
-					vectorLogger.trace(`Semantic: adjustForZeros position may be zero, possibleZeros=${possibleZeros}`);
-				} else {
-					vectorLogger.trace(`Semantic: adjustForZeros position is non-zero [${vl}, ${vu}]`);
-				}
-			} else if(!val.isBottom()) {
-				// Top or other non-specific - may contain zero
-				possibleZeros++;
-				vectorLogger.trace(`Semantic: adjustForZeros position is top/unknown, possibleZeros=${possibleZeros}`);
-			} else {
-				vectorLogger.trace('Semantic: adjustForZeros position is bottom');
-			}
-		}
-	}
-
-	// Compute new length bounds
-	const newL = Math.max(0, l - possibleZeros);
-	const newU = u === +Infinity ? +Infinity : Math.max(0, u - definiteZeros);
-	vectorLogger.trace(`Semantic: adjustForZeros newL=${newL}, newU=${newU} (l=${l}, u=${u}, definiteZeros=${definiteZeros}, possibleZeros=${possibleZeros})`);
-	const newLength = length.create([newL, newU]);
-
-	// Build modified known positions using Propagate
-	const newKnownPositionValues: NAAwareDomain<IntervalDomain>[] = [];
-
-	if(known.isValue() && Array.isArray(known.value)) {
-		const knownPositionValues = known.value as readonly NAAwareDomain<IntervalDomain>[];
-
-		for(let i = 0; i < knownPositionValues.length; i++) {
-			// Count zeros before position i
-			let zerosBefore = 0;
-			for(let j = 0; j < i; j++) {
-				const prevVal = knownPositionValues[j].inner;
-				if(prevVal.isValue()) {
-					const [pl, pu] = prevVal.value;
-					if(pl <= 0 && pu >= 0) {
-						zerosBefore++;
-					}
-				}
-			}
-			vectorLogger.trace(`Semantic: adjustForZeros position ${i + 1}, zerosBefore=${zerosBefore}`);
-
-			const remainingValues = knownPositionValues.slice(i);
-			const propagated = propagate(remainingValues, summary, zerosBefore);
-			vectorLogger.trace(`Semantic: adjustForZeros propagated for position ${i + 1} = ${propagated.toString()}`);
-			newKnownPositionValues.push(propagated);
-		}
-	}
-
-	const newValues = known.create(newKnownPositionValues);
-
-	const result = vector.create({
-		length:     newLength,
-		known:      newValues,
-		summary:    summary,
-		attributes: attributes,
-		type:       vector.type
-	});
-	vectorLogger.trace(`Semantic: adjustForZeros result = ${formatVectorDomain(result)}`);
 	return result;
 }
 
@@ -716,5 +540,203 @@ export function rhoF<Domain extends AnyAbstractDomain>(
 	}
 
 	vectorLogger.trace(`Semantic: rhoF result = ${result.toString()}`);
+	return result;
+}
+
+/**
+ * Propagates values forward through positions containing zero (V2 with maximal precision).
+ * Uses separate counters for definite and possible zeros to provide more precise results.
+ *
+ * The algorithm continues propagating until BOTH counters reach 0:
+ * - definite counter: positions that are definitely zero (γ(pᵢ) = {0})
+ * - possible counter: positions that may contain zero (0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0})
+ *
+ * When we encounter a zero (definite or possible) during propagation, we simply recurse
+ * without decrementing counters - the counters track how many positions to skip ahead.
+ *
+ * @param knownPositions - The remaining known positions to process
+ * @param summary - The summary value for positions beyond the known positions
+ * @param counters - Zero counters {definite, possible} tracking positions to skip
+ * @returns The propagated abstract value with maximal precision
+ */
+export function propagate(
+	knownPositions: readonly NAAwareDomain<IntervalDomain>[],
+	summary: NAAwareDomain<IntervalDomain>,
+	counters: ZeroCounters
+): NAAwareDomain<IntervalDomain> {
+	vectorLogger.debug(`Semantic: propagate [knownPositions.length=${knownPositions.length}, definite=${counters.definite}, possible=${counters.possible}]`);
+
+	if(knownPositions.length === 0) {
+		vectorLogger.trace(`Semantic: propagate base case result = ${summary.toString()}`);
+		return summary;
+	}
+
+	const first = knownPositions[0];
+	const rest = knownPositions.slice(1);
+
+	vectorLogger.trace(`Semantic: propagate first=${first.toString()}, rest.length=${rest.length}, definite=${counters.definite}, possible=${counters.possible}`);
+
+	// Check if first is a zero (definite or possible)
+	if(first.inner.isValue()) {
+		const [l, u] = first.inner.value;
+
+		// Check if definitely zero: γ(c₁) = {0}
+		if(l === 0 && u === 0) {
+			// Definite zero - skip and continue without changing counters
+			// (the counters already account for how many to skip)
+			vectorLogger.trace('Semantic: propagate definite zero detected, continuing');
+			return propagate(rest, summary, counters);
+		}
+
+		// Check if may contain zero: 0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0}
+		if(l <= 0 && u >= 0) {
+			// Possible zero - skip and continue without changing counters
+			vectorLogger.trace('Semantic: propagate possible zero detected, continuing');
+			return propagate(rest, summary, counters);
+		}
+	}
+
+	// First is not a zero, check if we've consumed all pending zeros
+	if(counters.definite === 0 && counters.possible === 0) {
+		// No pending zeros - return this value
+		vectorLogger.trace(`Semantic: propagate no pending zeros, returning first = ${first.toString()}`);
+		return first;
+	}
+
+	// We have pending zeros to consume
+	if(counters.definite > 0) {
+		// Consume a definite zero and continue
+		vectorLogger.trace(`Semantic: propagate consuming definite zero (${counters.definite} -> ${counters.definite - 1})`);
+		return propagate(rest, summary, {
+			definite: counters.definite - 1,
+			possible: counters.possible
+		});
+	} else {
+		// Consume a possible zero and continue
+		// For possible zeros, we need to join with the propagated result
+		// because we don't know if the position was actually a zero
+		vectorLogger.trace(`Semantic: propagate consuming possible zero (${counters.possible} -> ${counters.possible - 1})`);
+		const propagated = propagate(rest, summary, {
+			definite: 0,
+			possible: counters.possible - 1
+		});
+		const result = first.join(propagated);
+		vectorLogger.trace(`Semantic: propagate possible-zero join result = ${result.toString()}`);
+		return result;
+	}
+}
+
+/**
+ * Adjusts selector length bounds by accounting for zeros in the known positions (V2 with maximal precision).
+ * Uses separate definite/possible zero counters for more precise propagation.
+ *
+ * Computes:
+ * - l' = l - |{i ≤ n : 0 ∈ γ(pᵢ)}|  (subtract possible zeros from lower bound)
+ * - u' = u - |{i ≤ n : γ(pᵢ) = {0}}| (subtract definite zeros from upper bound)
+ *
+ * And builds modified known positions using propagate with separate counters.
+ *
+ * @param vector - The selector abstract vector with IntervalDomain elements
+ * @returns The adjusted abstract vector with maximal precision
+ */
+export function adjustForZeros(
+	vector: VectorDomain<IntervalDomain>
+): VectorDomain<IntervalDomain> {
+	vectorLogger.debug('Semantic: adjustForZeros');
+
+	if(vector.isBottom()) {
+		vectorLogger.trace(formatExtremeResult('bottom', 'vector is bottom'));
+		return vector;
+	}
+	if(vector.isTop()) {
+		vectorLogger.trace(formatExtremeResult('top', 'vector is top'));
+		return vector;
+	}
+
+	const { length, known, summary, attributes } = vector;
+
+	if(!length.isValue()) {
+		vectorLogger.trace(formatExtremeResult('top', 'length is not value'));
+		return vector.top();
+	}
+
+	const [l, u] = length.value;
+
+	// Count zeros in known positions
+	let definiteZeros = 0; // |{i : γ(pᵢ) = {0}}|
+	let possibleZeros = 0; // |{i : 0 ∈ γ(pᵢ) and γ(pᵢ) ≠ {0}}|
+
+	if(known.isValue() && Array.isArray(known.value)) {
+		const knownPositionValues = known.value as readonly NAAwareDomain<IntervalDomain>[];
+		for(const naVal of knownPositionValues) {
+			const val = naVal.inner;
+			if(val.isValue()) {
+				const [vl, vu] = val.value;
+				if(vl === 0 && vu === 0) {
+					definiteZeros++;
+					vectorLogger.trace(`Semantic: adjustForZeros position is definite zero, definiteZeros=${definiteZeros}`);
+				} else if(vl <= 0 && vu >= 0) {
+					possibleZeros++;
+					vectorLogger.trace(`Semantic: adjustForZeros position is possible zero, possibleZeros=${possibleZeros}`);
+				}
+			}
+		}
+	}
+
+	// Compute new length bounds
+	const newL = Math.max(0, l - definiteZeros - possibleZeros);
+	const newU = u === +Infinity ? +Infinity : Math.max(0, u - definiteZeros);
+	vectorLogger.trace(`Semantic: adjustForZeros newL=${newL}, newU=${newU} (l=${l}, u=${u}, definite=${definiteZeros}, possible=${possibleZeros})`);
+	const newLength = length.create([newL, newU]);
+
+	// Build modified known positions using propagate
+	const newKnownPositionValues: NAAwareDomain<IntervalDomain>[] = [];
+
+	if(known.isValue() && Array.isArray(known.value)) {
+		const knownPositionValues = known.value as readonly NAAwareDomain<IntervalDomain>[];
+
+		for(let i = 0; i < knownPositionValues.length; i++) {
+			// Count zeros before position i
+			let definiteBefore = 0;
+			let possibleBefore = 0;
+
+			for(let j = 0; j < i; j++) {
+				const prevVal = knownPositionValues[j].inner;
+				if(prevVal.isValue()) {
+					const [pl, pu] = prevVal.value;
+					if(pl === 0 && pu === 0) {
+						definiteBefore++;
+					} else if(pl <= 0 && pu >= 0) {
+						possibleBefore++;
+					}
+				}
+			}
+
+			vectorLogger.trace(`Semantic: adjustForZeros position ${i + 1}, definiteBefore=${definiteBefore}, possibleBefore=${possibleBefore}`);
+
+			const remainingValues = knownPositionValues.slice(i);
+			const propagated = propagate(remainingValues, summary, {
+				definite: definiteBefore,
+				possible: possibleBefore
+			});
+			vectorLogger.trace(`Semantic: adjustForZeros propagated for position ${i + 1} = ${propagated.toString()}`);
+
+			// Only include non-bottom results
+			if(!propagated.isBottom()) {
+				newKnownPositionValues.push(propagated);
+			}
+		}
+	}
+
+	const newValues = known.create(newKnownPositionValues);
+
+	const result = vector.create({
+		length:     newLength,
+		known:      newValues,
+		summary:    summary,
+		attributes: attributes,
+		type:       vector.type
+	});
+	vectorLogger.trace(`Semantic: adjustForZeros result = ${formatVectorDomain(result)}`);
 	return result;
 }
