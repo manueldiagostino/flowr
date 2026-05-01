@@ -553,7 +553,6 @@ export function rhoF<Domain extends AnyAbstractDomain>(
  *
  * When we encounter a zero (definite or possible) during propagation, we simply recurse
  * without decrementing counters - the counters track how many positions to skip ahead.
- *
  * @param knownPositions - The remaining known positions to process
  * @param summary - The summary value for positions beyond the known positions
  * @param counters - Zero counters {definite, possible} tracking positions to skip
@@ -635,7 +634,6 @@ export function propagate(
  * - u' = u - |{i ≤ n : γ(pᵢ) = {0}}| (subtract definite zeros from upper bound)
  *
  * And builds modified known positions using propagate with separate counters.
- *
  * @param vector - The selector abstract vector with IntervalDomain elements
  * @returns The adjusted abstract vector with maximal precision
  */

@@ -629,6 +629,126 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 	}
 
 	/**
+	 * Join (least upper bound) of two vector domains.
+	 *
+	 * Paper reference (03-abstract.tex:152-178):
+	 * Given ν₁ = (L₁, known₁, s₁, a₁) and ν₂ = (L₂, known₂, s₂, a₂) with
+	 * prefix lengths k₁ = |known₁| and k₂ = |known₂|, and m = min(k₁, k₂):
+	 *
+	 *   ν₁ ⊔ ν₂ = (L₁ ⊔ L₂, known₁ ⊔_val* known₂, s₁ ⊔ s₂, a₁ ⊔ a₂)
+	 *
+	 * Where the known-positions join is:
+	 *   known₁ ⊔_val* known₂ = ⟨p₁,i ⊔ p₂,i⟩_{i=1}^m ⊕ tail
+	 *
+	 *   tail = ⟨p₁,m+1 ⊔ s₂ ⊔ α(NA), ..., p₁,k₁ ⊔ s₂ ⊔ α(NA)⟩  if k₁ > k₂
+	 *        = ⟨p₂,m+1 ⊔ s₁ ⊔ α(NA), ..., p₂,k₂ ⊔ s₁ ⊔ α(NA)⟩  if k₂ > k₁
+	 *        = ε                                                  otherwise
+	 *
+	 * This overrides ProductDomain.join which does a naive component-wise join
+	 * and does not handle the excess-position soundness requirement.
+	 * @param other - The other VectorDomain to join with
+	 * @returns The joined VectorDomain (least upper bound)
+	 */
+	public join(other: this): this {
+		vectorLogger.debug(`VectorDomain.join: entry [this=${this.toString()}, other=${other.toString()}]`);
+
+		// Handle bottom/top edge cases
+		if(this.isBottom()) {
+			vectorLogger.debug('VectorDomain.join: this is bottom, returning other');
+			return this.create(other.value);
+		}
+		if(other.isBottom()) {
+			vectorLogger.debug('VectorDomain.join: other is bottom, returning this');
+			return this.create(this.value);
+		}
+		if(this.isTop() || other.isTop()) {
+			vectorLogger.debug('VectorDomain.join: one is top, returning top');
+			return this.top();
+		}
+
+		// Join the simple components
+		const newLength = this.length.join(other.length);
+		const newSummary = this.summary.join(other.summary);
+		const newAttributes = this.attributes.join(other.attributes);
+		const newType = this.type.join(other.type);
+
+		vectorLogger.debug(`VectorDomain.join: components joined [length=${newLength.toString()}, summary=${newSummary.toString()}]`);
+
+		// Handle known positions with the paper's ⊔_val* semantics
+		let newKnown: KnownInitialPositionsDomain<NAAwareDomain<Domain>>;
+
+		if(this.known.isTop() || other.known.isTop()) {
+			// If either is Top, result is Top (empty array = unknown length)
+			vectorLogger.debug('VectorDomain.join: one known is top, setting known to top');
+			const smartFactory = NAAwareDomain.createSmartFactory(this._factory);
+			newKnown = KnownInitialPositionsDomain.top<NAAwareDomain<Domain>>(smartFactory);
+		} else if(this.known.isBottom()) {
+			vectorLogger.debug('VectorDomain.join: this known is bottom, using other known');
+			newKnown = other.known;
+		} else if(other.known.isBottom()) {
+			vectorLogger.debug('VectorDomain.join: other known is bottom, using this known');
+			newKnown = this.known;
+		} else {
+			const thisArr = this.known.value as readonly NAAwareDomain<Domain>[];
+			const otherArr = other.known.value as readonly NAAwareDomain<Domain>[];
+			const k1 = thisArr.length;
+			const k2 = otherArr.length;
+			const m = Math.min(k1, k2);
+
+			vectorLogger.debug(`VectorDomain.join: known lengths [this=${k1}, other=${k2}, common=${m}]`);
+
+			// α(NA) for joining excess positions
+			const naValue = NAAwareDomain.na(this._factory);
+
+			// Join common prefix position-wise
+			const joinedPositions: NAAwareDomain<Domain>[] = [];
+			for(let i = 0; i < m; i++) {
+				const joined = thisArr[i].join(otherArr[i]);
+				vectorLogger.trace(`VectorDomain.join: joined common position [${i}]: ${thisArr[i].toString()} ⊔ ${otherArr[i].toString()} = ${joined.toString()}`);
+				joinedPositions.push(joined);
+			}
+
+			// Handle excess positions from the longer vector
+			// Each excess position is joined with the OTHER vector's summary ⊔ α(NA)
+			if(k1 > k2) {
+				// this is longer: excess positions joined with other.summary ⊔ naValue
+				const otherSummaryWithNA = other.summary.join(naValue);
+				vectorLogger.debug(`VectorDomain.join: this has ${k1 - k2} excess positions, joining with other.summary ⊔ α(NA) = ${otherSummaryWithNA.toString()}`);
+				for(let i = m; i < k1; i++) {
+					const joined = thisArr[i].join(otherSummaryWithNA);
+					vectorLogger.trace(`VectorDomain.join: joined excess position [${i}] from this: ${thisArr[i].toString()} ⊔ ${otherSummaryWithNA.toString()} = ${joined.toString()}`);
+					joinedPositions.push(joined);
+				}
+			} else if(k2 > k1) {
+				// other is longer: excess positions joined with this.summary ⊔ naValue
+				const thisSummaryWithNA = this.summary.join(naValue);
+				vectorLogger.debug(`VectorDomain.join: other has ${k2 - k1} excess positions, joining with this.summary ⊔ α(NA) = ${thisSummaryWithNA.toString()}`);
+				for(let i = m; i < k2; i++) {
+					const joined = otherArr[i].join(thisSummaryWithNA);
+					vectorLogger.trace(`VectorDomain.join: joined excess position [${i}] from other: ${otherArr[i].toString()} ⊔ ${thisSummaryWithNA.toString()} = ${joined.toString()}`);
+					joinedPositions.push(joined);
+				}
+			} else {
+				vectorLogger.debug('VectorDomain.join: equal known lengths, no excess positions (tail = ε)');
+			}
+			// If k1 === k2, no excess positions (tail = ε)
+
+			newKnown = this.known.create(joinedPositions);
+		}
+
+		const result = this.create({
+			length:     newLength,
+			known:      newKnown,
+			summary:    newSummary,
+			attributes: newAttributes,
+			type:       newType
+		});
+
+		vectorLogger.debug(`VectorDomain.join: complete [result=${result.toString()}]`);
+		return result;
+	}
+
+	/**
 	 * Widening operator for VectorDomain.
 	 * Unlike the default ProductDomain.widen(), this implementation handles
 	 * the known/summary split by collapsing excess positions into the summary
