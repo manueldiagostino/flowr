@@ -616,6 +616,66 @@ export function updateLogicalMain<Domain extends AnyAbstractDomain & ArithmeticD
 // ============================================================================
 
 /**
+ * Builds MustNotUpdated and MayNotUpdated sets from the adjusted selector.
+ *
+ * MustNotUpdated: positions definitely NOT updated (singleton negative indices
+ *   mapping to valid positions in [1, sourceBound])
+ * MayNotUpdated: positions possibly NOT updated (non-singleton intervals,
+ *   or from summary)
+ */
+function buildNotUpdatedSets(
+	adjustedSelector: VectorDomain<IntervalDomain>,
+	sourceBound: number
+): { mustNotUpdated: Set<number>; mayNotUpdated: Set<number> } {
+	const mustNotUpdated = new Set<number>();
+	const mayNotUpdated = new Set<number>();
+
+	if(!adjustedSelector.known.isValue()) {
+		// adjustedSelector.known is Bot: all positions may be not updated
+		for(let pos = 1; pos <= sourceBound; pos++) {
+			mayNotUpdated.add(pos);
+			mustNotUpdated.add(pos);
+		}
+		return { mustNotUpdated, mayNotUpdated };
+	}
+
+	const selectorKnownPositions = adjustedSelector.known.value;
+	for(const idx of selectorKnownPositions) {
+		if(idx.isBottom() || idx.isNA()) {
+			continue;
+		}
+		const innerInterval = idx.inner;
+		if(innerInterval.isValue()) {
+			const [l, u] = innerInterval.value;
+			// Negative indices: must be in range [-sourceBound, -1] to be valid
+			if(l <= 0 && u <= 0) {
+				const posLower = Math.abs(u); // |u| is smaller absolute value
+				const posUpper = Math.abs(l); // |l| is larger absolute value
+				if(card(innerInterval) === 1) {
+					// Singleton: definitely this position
+					const pos = posLower;
+					if(pos >= 1 && pos <= sourceBound) {
+						mustNotUpdated.add(pos);
+						mayNotUpdated.add(pos);
+					}
+				} else {
+					// Non-singleton interval: range of possible positions
+					for(let pos = posLower; pos <= posUpper && pos <= sourceBound; pos++) {
+						mayNotUpdated.add(pos);
+					}
+				}
+			}
+		} else {
+			// Top interval: all positions may be not updated
+			for(let pos = 1; pos <= sourceBound; pos++) {
+				mayNotUpdated.add(pos);
+			}
+		}
+	}
+	return { mustNotUpdated, mayNotUpdated };
+}
+
+/**
  * Applies the update operation to modify elements in a vector based on a selector.
  * Uses abstract filtering (paper Section 4.8) for numeric selectors and AST-based
  * detection for logical selectors.
@@ -1030,62 +1090,15 @@ export function applyUpdateNegative<Domain extends AnyAbstractDomain & Arithmeti
 	const adjustedSelector = adjustForZeros(selector);
 	vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
 
-	// 6. Compute MustNotUpdated set (Paper §4.8.2, lines 934-936)
-	// Positions definitely NOT updated: card(p) = 1 and valid positive index in [1, u₁]
-	// When u₁ = +∞, we only iterate over the known prefix; positions beyond are handled by the summary.
-	const mustNotUpdated = new Set<number>();
-	// 7. Compute MayNotUpdated set (Paper §4.8.2, lines 938-944)
-	// Positions possibly NOT updated (non-singleton intervals or from summary)
-	const mayNotUpdated = new Set<number>();
 	// Bound for set computation: use known prefix length when source is infinite
 	const sourceBound = sourceUpper === +Infinity
 		? (value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]).length : 0)
 		: sourceUpper;
 
-	if(adjustedSelector.known.isValue()) {
-		const selectorKnownPositions = adjustedSelector.known.value;
-		for(const idx of selectorKnownPositions) {
-			if(idx.isBottom() || idx.isNA()) {
-				continue;
-			}
+	// Compute NotUpdated sets (Paper §4.8.2, lines 934-948)
+	const { mustNotUpdated, mayNotUpdated } = buildNotUpdatedSets(adjustedSelector, sourceBound);
 
-			const innerInterval = idx.inner;
-			if(innerInterval.isValue()) {
-				const [l, u] = innerInterval.value;
-				// Negative indices: must be in range [-u₁, -1] to be valid
-				if(l <= 0 && u <= 0) {
-					const posLower = Math.abs(u); // |u| is smaller absolute value
-					const posUpper = Math.abs(l); // |l| is larger absolute value
-					if(card(innerInterval) === 1) {
-						// Singleton: definitely this position
-						const pos = posLower;
-						if(pos >= 1 && pos <= sourceBound) {
-							mustNotUpdated.add(pos);
-							mayNotUpdated.add(pos);
-						}
-					} else {
-						// Non-singleton interval: range of possible positions
-						for(let pos = posLower; pos <= posUpper && pos <= sourceBound; pos++) {
-							mayNotUpdated.add(pos);
-						}
-					}
-				}
-			} else {
-				// Top interval: all positions may be not updated
-				for(let pos = 1; pos <= sourceBound; pos++) {
-					mayNotUpdated.add(pos);
-				}
-			}
-		}
-	} else {
-		// adjustedSelector.known is Bot: all positions may be not updated
-		for(let pos = 1; pos <= sourceBound; pos++) {
-			mayNotUpdated.add(pos);
-			mustNotUpdated.add(pos);
-		}
-	}
-
-	// 8. Compute MustUpdated set (Paper §4.8.2, lines 946-948)
+	// Compute MustUpdated set (Paper §4.8.2, lines 946-948)
 	// Positions definitely updated: [1, |prefix₁|] \ (MustNotUpdated ∪ MayNotUpdated)
 	const mustUpdated = new Set<number>();
 	const prefixLength = value.known.isValue() ? value.known.value.length : 0;

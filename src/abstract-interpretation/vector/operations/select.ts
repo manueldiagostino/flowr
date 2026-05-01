@@ -250,6 +250,61 @@ export function selectPositiveInfinite<Domain extends AnyAbstractDomain & Arithm
 }
 
 /**
+ * Enumerates a single selector position to produce the corresponding result element.
+ * @param idx - The selector position (NAAwareDomain wrapping a PosIntervalDomain)
+ * @param value - The source VectorDomain
+ * @param naValue - The NA value for out-of-bounds access
+ * @param sourceLenUpper - Upper bound of source vector length
+ * @param sourceKnownEnumerable - Whether source known positions are enumerable
+ * @returns The NAAwareDomain result for this selector position
+ */
+function enumerateSelectedPosition<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	idx: NAAwareDomain<PosIntervalDomain>,
+	value: VectorDomain<Domain>,
+	naValue: NAAwareDomain<Domain>,
+	sourceLenUpper: number,
+	sourceKnownEnumerable: boolean
+): NAAwareDomain<Domain> {
+	const innerInterval = idx.inner;
+	if(!isEnumerable(innerInterval)) {
+		vectorLogger.trace('Subcase: selectPositive - non-enumerable selector, using squash');
+		return squash(value);
+	}
+	if(!innerInterval.isValue()) {
+		vectorLogger.trace('Subcase: selectPositive - enumerable selector with non-value interval, using squash');
+		return squash(value);
+	}
+
+	const [l, u] = innerInterval.value;
+	vectorLogger.trace(`Subcase: selectPositive - enumerable interval [${l}, ${u}]`);
+	let joinedAccessed: NAAwareDomain<Domain> | undefined;
+
+	if(sourceKnownEnumerable) {
+		// Source has enumerable positions - access each position
+		// After adjustForZeros, all positions are guaranteed to be > 0
+		// No zero-to-one conversion needed
+		for(let pos = l; pos <= u; pos++) {
+			if(pos > 0) {
+				const accessed = accessPosition(value, pos - 1, naValue);
+				joinedAccessed = joinedAccessed === undefined ? accessed : joinedAccessed.join(accessed);
+			}
+		}
+	} else {
+		// Source known not enumerable (e.g., Top vector with empty content but valorized summary)
+		// Use squash(value) per paper Section 4.3.1
+		joinedAccessed = squash(value);
+	}
+
+	// Check if selector position may exceed source bounds - join with NA if so
+	if(sourceLenUpper !== +Infinity && u > sourceLenUpper) {
+		joinedAccessed = (joinedAccessed ?? squash(value)).join(naValue);
+	}
+
+	guard(joinedAccessed !== undefined, `applySelectPositive: joinedAccessed undefined for idx=${idx.toString()}`);
+	return joinedAccessed;
+}
+
+/**
  * Applies positive indexing selection: x[c] where c >= 0.
  * Preconditions (guaranteed by dispatcher):
  * - value is not Bottom
@@ -307,54 +362,18 @@ export function applySelectPositive<Domain extends AnyAbstractDomain & Arithmeti
 	// Get source length upper bound for out-of-bounds checking
 	const sourceLenUpper = value.length.isValue() ? value.length.value[1] : +Infinity;
 
-	if(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value)) {
+	// If selector knowns aren't enumerable, produce squash-based positions
+	if(!adjustedSelector.known.isValue() || !Array.isArray(adjustedSelector.known.value)) {
+		// Each non-enumerable selector position maps to squash(value)
+		// For a single position: push squash(value). If there are multiple known positions,
+		// push squash(value) for each. Use the selector's known length if available.
+		resultKnownPositions.push(squash(value));
+	} else {
 		const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
-
-		let idxNumber = 0;
 		for(const idx of selectorValues) {
-			// Precondition: dispatcher guarantees selector positions are not bottom
-			// No redundant check needed here
-
-			const innerInterval = idx.inner;
-			if(isEnumerable(innerInterval)) {
-				if(innerInterval.isValue()) {
-					const [l, u] = innerInterval.value;
-					vectorLogger.trace(`Subcase: selectPositive - enumerable interval [${l}, ${u}]`);
-					let joinedAccessed: NAAwareDomain<Domain> | undefined;
-
-					if(sourceKnownEnumerable) {
-						// Source has enumerable positions - access each position
-						// After adjustForZeros, all positions are guaranteed to be > 0
-						// No zero-to-one conversion needed
-						for(let pos = l; pos <= u; pos++) {
-							if(pos > 0) {
-								const accessed = accessPosition(value, pos - 1, naValue);
-								joinedAccessed = joinedAccessed === undefined ? accessed : joinedAccessed.join(accessed);
-							}
-						}
-					} else {
-						// Source known not enumerable (e.g., Top vector with empty content but valorized summary)
-						// Use squash(value) per paper Section 4.3.1
-						joinedAccessed = squash(value);
-					}
-
-					// Check if selector position may exceed source bounds - join with NA if so
-					if(sourceLenUpper !== +Infinity && u > sourceLenUpper) {
-						joinedAccessed = (joinedAccessed ?? squash(value)).join(naValue);
-					}
-
-					guard(joinedAccessed !== undefined, `applySelectPositive: joinedAccessed undefined for position ${idxNumber}`);
-					resultKnownPositions.push(joinedAccessed);
-				} else {
-					vectorLogger.trace('Subcase: selectPositive - enumerable selector with non-value interval, using squash');
-					resultKnownPositions.push(squash(value));
-				}
-			} else {
-				vectorLogger.trace('Subcase: selectPositive - non-enumerable selector, using squash');
-				resultKnownPositions.push(squash(value));
-			}
-
-			idxNumber += 1;
+			resultKnownPositions.push(
+				enumerateSelectedPosition(idx, value, naValue, sourceLenUpper, sourceKnownEnumerable)
+			);
 		}
 	}
 
