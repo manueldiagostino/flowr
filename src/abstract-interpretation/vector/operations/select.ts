@@ -167,6 +167,88 @@ export function applySelect<Domain extends AnyAbstractDomain & ArithmeticDomain<
 	return result;
 }
 
+// ============================================================================
+// Positive Selection Helpers (Paper Section 4.7, L659-L693)
+// ============================================================================
+
+/**
+ * Constructs the result for positive selection with a finite selector.
+ * Paper Section 4.7, L659-L677: Finite selector case.
+ * Result length is determined by selector length, summary is ⊥ (unless may exceed bounds).
+ * @param value - The source VectorDomain
+ * @param adjustedSelector - The selector after adjustForZeros
+ * @param resultKnownPositions - The computed known positions for the result
+ * @param naValue - The NA value for out-of-bounds access
+ * @returns The resulting VectorDomain
+ */
+export function selectPositiveFinite<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	adjustedSelector: VectorDomain<PosIntervalDomain>,
+	resultKnownPositions: NAAwareDomain<Domain>[],
+	naValue: NAAwareDomain<Domain>
+): VectorDomain<Domain> {
+	// Check if selection may exceed source bounds (paper L611-613)
+	const squashedSelector = squash(adjustedSelector);
+	const selectorUpper = squashedSelector.inner.isValue() ? squashedSelector.inner.value[1] : +Infinity;
+	const sourceLower = value.length.isValue() ? value.length.value[0] : 0;
+	const mayExceedBounds = selectorUpper > sourceLower;
+
+	// Summary: ⊥ for finite selectors (paper L666)
+	// If may exceed bounds: ⊥ ⊔ NA (paper L611-613)
+	let resultSummary = value.summary.bottom();
+	if(mayExceedBounds) {
+		resultSummary = resultSummary.join(naValue);
+		vectorLogger.trace('Subcase: selectPositive - selector may exceed bounds, adding NA to summary');
+	}
+	const resultValues = value.known.create(resultKnownPositions);
+	return value.create({
+		length:     adjustedSelector.length,
+		known:      resultValues,
+		summary:    resultSummary,
+		attributes: value.attributes,
+		type:       value.type
+	});
+}
+
+/**
+ * Constructs the result for positive selection with an infinite selector.
+ * Paper Section 4.7, L680-L693: Infinite selector case.
+ * Result length is [l₂', +∞], summary is Squash(value).
+ * @param value - The source VectorDomain
+ * @param adjustedSelector - The selector after adjustForZeros
+ * @param resultKnownPositions - The computed known positions for the result
+ * @param naValue - The NA value for out-of-bounds access
+ * @returns The resulting VectorDomain
+ */
+export function selectPositiveInfinite<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	adjustedSelector: VectorDomain<PosIntervalDomain>,
+	resultKnownPositions: NAAwareDomain<Domain>[],
+	naValue: NAAwareDomain<Domain>
+): VectorDomain<Domain> {
+	// Check if selection may exceed source bounds (paper L611-613)
+	const squashedSelector = squash(adjustedSelector);
+	const selectorUpper = squashedSelector.inner.isValue() ? squashedSelector.inner.value[1] : +Infinity;
+	const sourceLower = value.length.isValue() ? value.length.value[0] : 0;
+	const mayExceedBounds = selectorUpper > sourceLower;
+
+	// Summary: Squash(value) for infinite selectors (paper L687)
+	// If may exceed bounds: Squash(value) ⊔ NA (paper L611-613)
+	let resultSummary = squash(value);
+	if(mayExceedBounds) {
+		resultSummary = resultSummary.join(naValue);
+		vectorLogger.trace('Subcase: selectPositive - selector may exceed bounds, adding NA to summary');
+	}
+	const resultValues = value.known.create(resultKnownPositions);
+	return value.create({
+		length:     adjustedSelector.length,
+		known:      resultValues,
+		summary:    resultSummary,
+		attributes: value.attributes,
+		type:       value.type
+	});
+}
+
 /**
  * Applies positive indexing selection: x[c] where c >= 0.
  * Preconditions (guaranteed by dispatcher):
@@ -212,6 +294,12 @@ export function applySelectPositive<Domain extends AnyAbstractDomain & Arithmeti
 		}
 	}
 
+	//
+	// === Position enumeration (Paper L659-L693) ===
+	// Both the Finite selector (L659) and Infinite selector (L680) cases
+	// enumerate each position in the adjusted selector. The cases differ
+	// only in the result's length and summary (see below).
+	//
 	const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 
 	// Check if source has enumerable known positions (paper: can we enumerate positions in ν₁?)
@@ -275,32 +363,15 @@ export function applySelectPositive<Domain extends AnyAbstractDomain & Arithmeti
 	const isInfinite = !selectorLen.isValue() || selectorLen.value[1] === +Infinity;
 	if(isInfinite) {
 		vectorLogger.trace('Subcase: selectPositive - infinite selector, valorizing summary');
+		return selectPositiveInfinite(value, adjustedSelector, resultKnownPositions, naValue);
+	} else {
+		return selectPositiveFinite(value, adjustedSelector, resultKnownPositions, naValue);
 	}
-
-	// Check if selection may exceed source bounds (paper L611-613)
-	// u_r > l_1 where [_, u_r] = Squash(selector)
-	const squashedSelector = squash(adjustedSelector);
-	const selectorUpper = squashedSelector.inner.isValue() ? squashedSelector.inner.value[1] : +Infinity;
-	const sourceLower = value.length.isValue() ? value.length.value[0] : 0;
-	const mayExceedBounds = selectorUpper > sourceLower;
-
-	// Summary: ⊥ for finite selectors, Squash(value) for infinite
-	// If may exceed bounds: Squash(value) ⊔ NA (paper L611-613)
-	let resultSummary = isInfinite ? squash(value) : value.summary.bottom();
-	if(mayExceedBounds) {
-		resultSummary = resultSummary.join(naValue);
-		vectorLogger.trace('Subcase: selectPositive - selector may exceed bounds, adding NA to summary');
-	}
-	const resultValues = value.known.create(resultKnownPositions);
-	const result = value.create({
-		length:     adjustedSelector.length,
-		known:      resultValues,
-		summary:    resultSummary,
-		attributes: value.attributes,
-		type:       value.type
-	});
-	return result;
 }
+
+// ============================================================================
+// Negative Selection Helpers (Paper Section 4.7, L704-L827)
+// ============================================================================
 
 /**
  * Builds the must-deleted and may-deleted sets for negative selection.
@@ -348,149 +419,111 @@ export function buildNegativeSets(
 }
 
 /**
- * Applies negative indexing selection: x[c] where c < 0.
- * Negative indices specify positions to delete from the vector.
- * Preconditions (guaranteed by dispatcher):
- * - value is not Bottom
- * - selector is not Bottom
- * - selector contains only non-positive positions (no NA)
- *
- * Postconditions:
- * - Result length is reduced by number of excluded positions
- * - Result summary is ⊥ for non-enumerable selectors, preserved for enumerable
- * - Result attributes are preserved from source
- * @param value - The source VectorDomain to select from (not Bottom)
- * @param selector - The selector VectorDomain with negative intervals (not Bottom)
- * @param naValue - The NA value for out-of-bounds access
- * @returns The resulting VectorDomain after negative selection
+ * Handles negative selection when source known positions are not enumerable.
+ * Paper Section 4.7, L734-L745: Special case for non-enumerable source.
+ * Uses Squash(value) for all positions instead of accessing individual positions.
+ * @param value - The source VectorDomain
+ * @param mustDeleted - Set of positions definitely deleted
+ * @param mayDeleted - Set of positions possibly deleted
+ * @param sourceLower - Lower bound of source length
+ * @param sourceUpper - Upper bound of source length
+ * @returns The resulting VectorDomain
  */
-export function applySelectNegative<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+export function selectNegativeSourceNotEnumerable<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
-	selector: VectorDomain<PosIntervalDomain>,
+	mustDeleted: Set<number>,
+	mayDeleted: Set<number>,
+	sourceLower: number,
+	sourceUpper: number
+): VectorDomain<Domain> {
+	vectorLogger.debug('Operation: selectNegative - source not enumerable, using squash');
+	const mayDeletedU1 = [...mayDeleted].filter(d => d <= sourceUpper).length;
+	const mustDeletedU1 = [...mustDeleted].filter(d => d <= sourceUpper).length;
+	const newLower = Math.max(0, sourceLower - mayDeletedU1);
+	const newUpper = Math.max(0, sourceUpper - mustDeletedU1);
+
+	const resultKnownPositions: NAAwareDomain<Domain>[] = [];
+	const squashedValue = squash(value);
+	const prefixBound = newUpper === +Infinity ? 0 : Math.min(newUpper, 0);
+	for(let i = 0; i < prefixBound; i++) {
+		resultKnownPositions.push(squashedValue);
+	}
+
+	const resultSummary = newUpper === +Infinity ? value.summary : value.summary.bottom();
+	const result = value.create({
+		length:     value.length.create([newLower, newUpper]),
+		known:      value.known.create(resultKnownPositions),
+		summary:    resultSummary,
+		attributes: value.attributes,
+		type:       value.type
+	});
+	vectorLogger.trace(`Result [length=${result.length.toString()}, values=${result.known.toString()}]`);
+	return result;
+}
+
+/**
+ * Handles negative selection when selector has non-enumerable positions.
+ * Paper Section 4.7, L734-L754 (Paragraph 1): Non-enumerable selector case.
+ * Uses SquashExcept with MustDeleted set.
+ * @param value - The source VectorDomain
+ * @param mustDeleted - Set of positions definitely deleted
+ * @param sourceUpper - Upper bound of source length
+ * @returns The resulting VectorDomain
+ */
+export function selectNegativeNonEnumerable<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	mustDeleted: Set<number>,
+	sourceUpper: number
+): VectorDomain<Domain> {
+	vectorLogger.debug('Paragraph 1: Non-enumerable position in selector, using SquashExcept');
+	const newUpper = sourceUpper === +Infinity ? +Infinity : Math.max(0, sourceUpper - mustDeleted.size);
+	const resultLength = value.length.create([0, newUpper]);
+	const resultKnownPositions: NAAwareDomain<Domain>[] = [];
+
+	// prefix_r = [SquashExcept(ν₁, MustDeleted)]_1^(min(k₁, u_r))
+	// When u₁ = +∞, u_r = +∞, so min(k₁, u_r) = k₁ (source's known prefix length)
+	const squashResult = squashedExcept(value, mustDeleted);
+	const sourceKnownCount = value.known.isValue() && Array.isArray(value.known.value)
+		? value.known.value.length
+		: 0;
+	const prefixBound = newUpper === +Infinity ? sourceKnownCount : newUpper;
+	for(let i = 0; i < prefixBound; i++) {
+		resultKnownPositions.push(squashResult);
+	}
+
+	const result = value.create({
+		length:     resultLength,
+		known:      value.known.create(resultKnownPositions),
+		summary:    sourceUpper === +Infinity ? value.summary : value.summary.bottom(),
+		attributes: value.attributes,
+		type:       value.type
+	});
+	vectorLogger.trace(`Result [length=${result.length.toString()}, values=${result.known.toString()}]`);
+	return result;
+}
+
+/**
+ * Handles negative selection when all selector positions are enumerable.
+ * Paper Section 4.7, L756-L827 (Paragraphs 2 & 3): Enumerable selector case.
+ * Uses CountMustDeleted to map positions from source to result.
+ * @param value - The source VectorDomain
+ * @param mustDeleted - Set of positions definitely deleted
+ * @param mayDeleted - Set of positions possibly deleted
+ * @param mustNotDeleted - Set of positions definitely kept
+ * @param sourceLower - Lower bound of source length
+ * @param sourceUpper - Upper bound of source length
+ * @param naValue - The NA value for out-of-bounds access
+ * @returns The resulting VectorDomain
+ */
+export function selectNegativeAllEnumerable<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	mustDeleted: Set<number>,
+	mayDeleted: Set<number>,
+	mustNotDeleted: Set<number>,
+	sourceLower: number,
+	sourceUpper: number,
 	naValue: NAAwareDomain<Domain>
 ): VectorDomain<Domain> {
-	// Entry logging
-	vectorLogger.trace(`applySelectNegative [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
-
-	// Preconditions (guaranteed by dispatcher):
-	// - value is not Bottom
-	// - selector is not Bottom
-
-	// Get source bounds
-	guard(value.length.isValue(), 'Source length is not value');
-	const sourceLower = value.length.value[0];
-	const sourceUpper = value.length.value[1];
-
-	// Compute adjusted selector: removes zero indices and adjusts length bounds
-	const adjustedSelector = adjustForZeros(selector);
-
-	vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
-
-	// Empty selector after adjusting for zeros means no positions are deleted
-	// Return source vector unchanged (no positions deleted)
-	if(adjustedSelector.length.isValue()) {
-		const [, newU] = adjustedSelector.length.value;
-		if(newU === 0) {
-			vectorLogger.debug('Operation: selectNegative - empty selector, returning source vector');
-			return value;
-		}
-	}
-
-	// Compute sets from ADJUSTED selector
-	let mustDeleted = new Set<number>();
-	let mayDeleted = new Set<number>();
-
-	guard(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value), 'Adjusted selector known positions not enumerable');
-	const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
-	// Sets construction
-	[mustDeleted, mayDeleted] = buildNegativeSets(sourceUpper, selectorValues);
-
-	// Check if source known positions are enumerable (array of values)
-	const sourceKnownEnumerable = value.known.isValue() && Array.isArray(value.known.value);
-
-	// If source is not enumerable (e.g., Top vector with empty content but valorized summary),
-	// use squash(value) for all positions instead of trying to access individual positions
-	if(!sourceKnownEnumerable) {
-		vectorLogger.debug('Operation: selectNegative - source not enumerable, using squash');
-		const mayDeletedU1 = [...mayDeleted].filter(d => d <= sourceUpper).length;
-		const mustDeletedU1 = [...mustDeleted].filter(d => d <= sourceUpper).length;
-		const newLower = Math.max(0, sourceLower - mayDeletedU1);
-		const newUpper = Math.max(0, sourceUpper - mustDeletedU1);
-
-		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
-		const squashedValue = squash(value);
-		const prefixBound = newUpper === +Infinity ? 0 : Math.min(newUpper, 0);
-		for(let i = 0; i < prefixBound; i++) {
-			resultKnownPositions.push(squashedValue);
-		}
-
-		const resultSummary = newUpper === +Infinity ? value.summary : value.summary.bottom();
-		const result = value.create({
-			length:     value.length.create([newLower, newUpper]),
-			known:      value.known.create(resultKnownPositions),
-			summary:    resultSummary,
-			attributes: value.attributes,
-			type:       value.type
-		});
-		vectorLogger.trace(`Result [length=${result.length.toString()}, values=${result.known.toString()}]`);
-		return result;
-	}
-
-	// Compute MustNotDeleted (positions definitely kept = not in MayDeleted)
-	const mustNotDeleted = new Set<number>();
-	for(let i = 1; i <= value.known.value.length; i++) {
-		if(!mayDeleted.has(i)) {
-			mustNotDeleted.add(i);
-		}
-	}
-
-	vectorLogger.trace(`Sets computed [mustDeleted=${mustDeleted.size}, mayDeleted=${mayDeleted.size}, mustNotDeleted=${mustNotDeleted.size}]`);
-
-	// Check for non-enumerable positions in adjusted selector
-	const hasNonEnumerable = adjustedSelector.known.isValue() &&
-		(adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[])
-			.some(idx => !isEnumerable(idx.inner));
-
-	// Paragraph 1: At least one non-enumerable position (Paper §4.7, L591-605)
-	if(hasNonEnumerable) {
-		vectorLogger.debug('Paragraph 1: Non-enumerable position in selector, using SquashExcept');
-		const newUpper = sourceUpper === +Infinity ? +Infinity : Math.max(0, sourceUpper - mustDeleted.size);
-		const resultLength = value.length.create([0, newUpper]);
-		const resultKnownPositions: NAAwareDomain<Domain>[] = [];
-
-		// prefix_r = [SquashExcept(ν₁, MustDeleted)]_1^(min(k₁, u_r))
-		// When u₁ = +∞, u_r = +∞, so min(k₁, u_r) = k₁ (source's known prefix length)
-		const squashResult = squashedExcept(value, mustDeleted);
-		const sourceKnownCount = value.known.isValue() && Array.isArray(value.known.value)
-			? value.known.value.length
-			: 0;
-		const prefixBound = newUpper === +Infinity ? sourceKnownCount : newUpper;
-		for(let i = 0; i < prefixBound; i++) {
-			resultKnownPositions.push(squashResult);
-		}
-
-		const result = value.create({
-			length:     resultLength,
-			known:      value.known.create(resultKnownPositions),
-			summary:    sourceUpper === +Infinity ? value.summary : value.summary.bottom(),
-			attributes: value.attributes,
-			type:       value.type
-		});
-		vectorLogger.trace(`Result [length=${result.length.toString()}, values=${result.known.toString()}]`);
-		return result;
-	}
-
-	// Paragraphs 2 & 3: All enumerable positions
-	// Determine if selector is finite or infinite
-	const selectorUpper = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
-	const isInfinite = selectorUpper === +Infinity;
-
-	if(isInfinite) {
-		vectorLogger.debug('Paragraph 2: Infinite selector, all enumerable');
-	} else {
-		vectorLogger.debug('Paragraph 3: Finite selector, all enumerable');
-	}
-
 	// CountMustDeleted helper
 	const countMustDeleted = (i: number) => [...mustDeleted].filter(d => d < i).length;
 
@@ -547,51 +580,181 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 }
 
 /**
- * Applies logical indexing selection: x[c] where c is a logical vector.
- * Elements are selected where the corresponding selector value is TRUE.
- * @param value - The source VectorDomain to select from
- * @param selector - The logical selector VectorDomain
- * @param naValue - The NA value for positions with NA selector
- * @returns The resulting VectorDomain after logical selection
+ * Applies negative indexing selection: x[c] where c < 0.
+ * Negative indices specify positions to delete from the vector.
+ * Preconditions (guaranteed by dispatcher):
+ * - value is not Bottom
+ * - selector is not Bottom
+ * - selector contains only non-positive positions (no NA)
+ *
+ * Postconditions:
+ * - Result length is reduced by number of excluded positions
+ * - Result summary is ⊥ for non-enumerable selectors, preserved for enumerable
+ * - Result attributes are preserved from source
+ * @param value - The source VectorDomain to select from (not Bottom)
+ * @param selector - The selector VectorDomain with negative intervals (not Bottom)
+ * @param naValue - The NA value for out-of-bounds access
+ * @returns The resulting VectorDomain after negative selection
  */
-export function applySelectLogical<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+export function applySelectNegative<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<PosIntervalDomain>,
 	naValue: NAAwareDomain<Domain>
 ): VectorDomain<Domain> {
-	vectorLogger.trace(`applySelectLogical [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
+	// Entry logging
+	vectorLogger.trace(`applySelectNegative [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
 
 	// Preconditions (guaranteed by dispatcher):
 	// - value is not Bottom
 	// - selector is not Bottom
-	guard(value.known.isValue(), 'Source is Bottom');
-	guard(selector.known.isValue(), 'Selector is Bottom');
-	guard(selector.length.isValue(), 'Selector length is Bottom');
 
-	const sourceLen = value.known.value.length;
-	const selectorLen = selector.known.value.length;
+	// Get source bounds
+	guard(value.length.isValue(), 'Source length is not value');
+	const sourceLower = value.length.value[0];
+	const sourceUpper = value.length.value[1];
 
-	if(selectorLen === 0) {
-		vectorLogger.trace('Subcase: selectLogical - empty selector');
-		return value;
+	// === Compute adjusted selector (Paper L704-L709) ===
+	// Apply AdjustForZeros to handle zero indices. If result is empty
+	// (u₂' = 0), the selector contains only zeros and we return source unchanged.
+	const adjustedSelector = adjustForZeros(selector);
+
+	vectorLogger.trace(`Adjusted selector [length=${adjustedSelector.length.toString()}]`);
+
+	// Empty selector after adjusting for zeros means no positions are deleted
+	// Return source vector unchanged (no positions deleted)
+	if(adjustedSelector.length.isValue()) {
+		const [, newU] = adjustedSelector.length.value;
+		if(newU === 0) {
+			vectorLogger.debug('Operation: selectNegative - empty selector, returning source vector');
+			return value;
+		}
 	}
 
-	if(sourceLen === +Infinity || selectorLen === +Infinity) {
-		vectorLogger.trace('Subcase: selectLogical - infinite source or selector');
-		const result = value.create({
-			length:     value.length.create([0, +Infinity]),
-			known:      value.known.top(),
-			summary:    squash(value),
-			attributes: value.attributes,
-			type:       value.type
-		});
-		return result;
+	// Compute sets from ADJUSTED selector
+	let mustDeleted = new Set<number>();
+	let mayDeleted = new Set<number>();
+
+	guard(adjustedSelector.known.isValue() && Array.isArray(adjustedSelector.known.value), 'Adjusted selector known positions not enumerable');
+	const selectorValues = adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[];
+	// Sets construction
+	[mustDeleted, mayDeleted] = buildNegativeSets(sourceUpper, selectorValues);
+
+	// Check if source known positions are enumerable (array of values)
+	const sourceKnownEnumerable = value.known.isValue() && Array.isArray(value.known.value);
+
+	// If source is not enumerable (e.g., Top vector with empty content but valorized summary),
+	// use squash(value) for all positions instead of trying to access individual positions
+	//
+	// === Special case: source not enumerable ===
+	// When the source vector has non-enumerable known positions (e.g., Top vector
+	// with empty content), we cannot access individual positions. Use Squash(value)
+	// to represent all possible values.
+	//
+	if(!sourceKnownEnumerable) {
+		return selectNegativeSourceNotEnumerable(value, mustDeleted, mayDeleted, sourceLower, sourceUpper);
 	}
 
+	// Compute MustNotDeleted (positions definitely kept = not in MayDeleted)
+	const mustNotDeleted = new Set<number>();
+	for(let i = 1; i <= value.known.value.length; i++) {
+		if(!mayDeleted.has(i)) {
+			mustNotDeleted.add(i);
+		}
+	}
+
+	vectorLogger.trace(`Sets computed [mustDeleted=${mustDeleted.size}, mayDeleted=${mayDeleted.size}, mustNotDeleted=${mustNotDeleted.size}]`);
+
+	//
+	// === Three paper paragraphs for negative selection ===
+	// The behavior depends on whether the adjusted selector has non-enumerable
+	// positions and whether it is finite vs infinite.
+	//
+
+	// Paragraph 1 (Paper L734-L754): At least one non-enumerable position.
+	// Cannot precisely track which positions are excluded. Uses SquashExcept
+	// with MustDeleted set. Result: [0, u₁ - |MustDeleted|] or [0, +∞] if u₁ = +∞.
+	const hasNonEnumerable = adjustedSelector.known.isValue() &&
+		(adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[])
+			.some(idx => !isEnumerable(idx.inner));
+
+	// Paragraph 1: At least one non-enumerable position (Paper §4.7, L591-605)
+	if(hasNonEnumerable) {
+		return selectNegativeNonEnumerable(value, mustDeleted, sourceUpper);
+	}
+
+	//
+	// Paragraph 2 (Paper L756-L819): Infinite selector, all enumerable positions.
+	// MustDeleted ⊆ MayDeleted. Result summary = s₁. Uses CountMustDeleted
+	// to map positions: for each i in MustNotDeleted (ascending), place at
+	// j ∈ [1, i - CountMustDeleted(i)]. Same for MayDeleted positions.
+	//
+	// Paragraph 3 (Paper L820-L827): Finite selector, all enumerable positions.
+	// Same as Paragraph 2 but MayDeleted contains only non-singleton abstract
+	// values from the content (summary contributes no positions since selector
+	// is finite).
+	//
+	// Determine if selector is finite or infinite
+	const selectorUpper = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
+	const isInfinite = selectorUpper === +Infinity;
+
+	if(isInfinite) {
+		vectorLogger.debug('Paragraph 2: Infinite selector, all enumerable');
+	} else {
+		vectorLogger.debug('Paragraph 3: Finite selector, all enumerable');
+	}
+
+	return selectNegativeAllEnumerable(value, mustDeleted, mayDeleted, mustNotDeleted, sourceLower, sourceUpper, naValue);
+}
+
+// ============================================================================
+// Logical Selection Helpers (Paper Section 4.7, L846-L884)
+// ============================================================================
+
+/**
+ * Handles logical selection when source or selector is infinite.
+ * Paper Section 4.7, L873-L884: Infinite case.
+ * Result is [0, +∞] with summary = Squash(value).
+ * @param value - The source VectorDomain
+ * @param naValue - The NA value for positions with NA selector
+ * @returns The resulting VectorDomain
+ */
+export function selectLogicalInfinite<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	_naValue: NAAwareDomain<Domain>
+): VectorDomain<Domain> {
+	vectorLogger.trace('Subcase: selectLogical - infinite source or selector');
+	return value.create({
+		length:     value.length.create([0, +Infinity]),
+		known:      value.known.top(),
+		summary:    squash(value),
+		attributes: value.attributes,
+		type:       value.type
+	});
+}
+
+/**
+ * Handles logical selection with finite source and selector, applying recycling.
+ * Paper Section 4.7, L846-L872: Finite case with ρₓ^♯ recycling.
+ * For each position, checks γ(cᵢ) to determine if element is selected.
+ * @param value - The source VectorDomain
+ * @param selector - The logical selector VectorDomain
+ * @param naValue - The NA value for positions with NA selector
+ * @param sourceLen - Length of source known positions
+ * @param selectorLen - Length of selector known positions
+ * @returns The resulting VectorDomain
+ */
+export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	selector: VectorDomain<PosIntervalDomain>,
+	naValue: NAAwareDomain<Domain>,
+	sourceLen: number,
+	selectorLen: number
+): VectorDomain<Domain> {
 	vectorLogger.trace('Subcase: selectLogical - finite source and selector with recycling');
 	const maxLen = Math.max(sourceLen, selectorLen);
 	const resultKnownPositions: NAAwareDomain<Domain>[] = [];
 
+	guard(selector.length.isValue(), 'Selector length is not a value');
 	const adjustedSelector = rhoF(selector.known, selector.length.value[0], maxLen, selector.naAwareFactory);
 	if(!adjustedSelector.isValue() || adjustedSelector.value.length === undefined) {
 		return value.bottom();
@@ -641,4 +804,64 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 		type:       value.type
 	});
 	return result;
+}
+
+/**
+ * Applies logical indexing selection: x[c] where c is a logical vector.
+ * Elements are selected where the corresponding selector value is TRUE.
+ * @param value - The source VectorDomain to select from
+ * @param selector - The logical selector VectorDomain
+ * @param naValue - The NA value for positions with NA selector
+ * @returns The resulting VectorDomain after logical selection
+ */
+export function applySelectLogical<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
+	value: VectorDomain<Domain>,
+	selector: VectorDomain<PosIntervalDomain>,
+	naValue: NAAwareDomain<Domain>
+): VectorDomain<Domain> {
+	vectorLogger.trace(`applySelectLogical [source length=${value.length.toString()}, selector length=${selector.length.toString()}]`);
+
+	// Preconditions (guaranteed by dispatcher):
+	// - value is not Bottom
+	// - selector is not Bottom
+	guard(value.known.isValue(), 'Source is Bottom');
+	guard(selector.known.isValue(), 'Selector is Bottom');
+	guard(selector.length.isValue(), 'Selector length is Bottom');
+
+	const sourceLen = value.known.value.length;
+	const selectorLen = selector.known.value.length;
+
+	//
+	// === Early guard: empty selector ===
+	// Empty logical selector returns source unchanged.
+	//
+
+	if(selectorLen === 0) {
+		vectorLogger.trace('Subcase: selectLogical - empty selector');
+		return value;
+	}
+
+	//
+	// === Paper L873-L884: Infinite source or selector ===
+	// Result is [0, +∞] with summary = Squash(value). Cannot enumerate all positions.
+	//
+
+	if(sourceLen === +Infinity || selectorLen === +Infinity) {
+		return selectLogicalInfinite(value, naValue);
+	}
+
+	//
+	// === Paper L846-L872: Finite source and selector (logical selection) ===
+	// Apply ρₓ^♯ to cycle selector to match max(|known₁|, |known₂|).
+	// For each position i, based on γ(cᵢ):
+	//   {1}       → select element from ν₁ (definitely TRUE)
+	//   {0,1}     → select element from ν₁ (may be TRUE/FALSE)
+	//   {1,NA}    → select ⊔ NA (may be TRUE or NA)
+	//   {0,1,NA}  → select ⊔ NA (may be TRUE/FALSE/NA)
+	//   {NA}      → result is NA
+	//   {0}       → skip (definitely FALSE)
+	// Result length: [0, |known_r|], summary: ⊥ if finite, Squash if infinite.
+	//
+
+	return selectLogicalFiniteRecycling(value, selector, naValue, sourceLen, selectorLen);
 }
