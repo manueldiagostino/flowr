@@ -463,12 +463,10 @@ describe('Vector Domain', () => {
 				let acc = mkVector([1, 1], [[0, 0]], undefined);
 				const iterations = [1, 2, 4, 8, 16, 32, 64, 128];
 				let fixpointReached = false;
-				let stepCount = 0;
 
 				for(const upper of iterations) {
 					const next = mkVector([1, 1], [[0, upper]], undefined);
 					const widened = acc.widen(next);
-					stepCount++;
 
 					if(widened.leq(acc) && acc.leq(widened)) {
 						fixpointReached = true;

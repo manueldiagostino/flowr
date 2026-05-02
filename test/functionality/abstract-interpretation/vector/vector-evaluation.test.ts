@@ -2,9 +2,6 @@ import { describe, test } from 'vitest';
 import type { IntervalDomain } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { IntervalTop } from '../../../../src/abstract-interpretation/domains/interval-domain';
 import { Bottom } from '../../../../src/abstract-interpretation/domains/lattice';
-// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
-// import type { BoundedSetDomain } from '../../../../src/abstract-interpretation/domains/bounded-set-domain';
-// import type { SingletonDomain } from '../../../../src/abstract-interpretation/domains/singleton-domain';
 import { VectorAttrEmpty } from '../../../../src/abstract-interpretation/domains/vector-attr-domain';
 import { RVectorTypeTop } from '../../../../src/abstract-interpretation/domains/vector-type-domain';
 import { withShell } from '../../_helper/shell';
@@ -16,14 +13,9 @@ import {
 	assertVectorDomainIntervals,
 	assertVectorDomainSound,
 	validateVectorDomainIntervals,
-	// Disabled: TestCase<Domain> requires Domain to implement ArithmeticDomain, but BoundedSetDomain<string>/SingletonDomain<boolean> don't.
-	// assertVectorDomainStrings,
-	// validateVectorDomainStrings,
-	// assertVectorDomainBooleans,
-	// validateVectorDomainBooleans,
 	type TestCase,
 	asNaAwareWithNA,
-    asNaAwareWithNAs
+	asNaAwareWithNAs
 } from '../_helper/vector-assertion-helpers';
 import './log-config';
 

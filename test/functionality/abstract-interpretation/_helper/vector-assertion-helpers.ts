@@ -371,7 +371,7 @@ export function assertVectorValue<Domain extends AnyAbstractDomain & ArithmeticD
 
 /**
  * Asserts that the inferred vector for a given criterion is a sound over-approximation of the expected vector.
- * This verifies that expected <= inferred in the lattice order, meaning the actual result
+ * This verifies that expected leq inferred in the lattice order, meaning the actual result
  * is a sound over-approximation that includes all possible concrete values.
  */
 export function assertVectorValueSound<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(criterion: string, inferred: VectorDomain<Domain> | undefined, expected: ExpectedVector<Domain> | undefined, domain: Domain) {

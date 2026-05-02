@@ -3,7 +3,6 @@ import type { NodeId } from '../../r-bridge/lang-4.x/ast/model/processing/node-i
 import { AbstractDomain, domainElementToString, type AnyAbstractDomain, type ConcreteDomain } from './abstract-domain';
 import { Bottom, BottomSymbol, Top } from './lattice';
 import { absintLogger } from '../logger';
-import { keys } from 'object-hash';
 
 /** The type of the concrete state of the concrete domain of a state abstract domain that maps keys to a concrete value in the concrete domain */
 export type ConcreteState<Domain extends AnyAbstractDomain> = ReadonlyMap<NodeId, ConcreteDomain<Domain>>;
