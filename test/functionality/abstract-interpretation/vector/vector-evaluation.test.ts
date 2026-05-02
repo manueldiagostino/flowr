@@ -22,7 +22,8 @@ import {
 	// assertVectorDomainBooleans,
 	// validateVectorDomainBooleans,
 	type TestCase,
-	asNaAwareWithNA
+	asNaAwareWithNA,
+    asNaAwareWithNAs
 } from '../_helper/vector-assertion-helpers';
 import './log-config';
 
@@ -238,7 +239,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		const expected = {
 			'6@v': {
 				length:     [1, 3],
-				known:      asNaAwares([1, 42], [2, 2], [3, 3]),
+				known:      asNaAwares([1, 42], ...asNaAwareWithNAs([2, 2], [3, 3])),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
@@ -383,7 +384,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		const expected = {
 			'7@r': {
 				length:     [3, 3],
-				known:      asNaAwares([9, 10], [11, 12], [11, 14]),
+				known:      asNaAwares([9, 10], [11, 12], asNaAwareWithNA([11, 14])),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
@@ -473,7 +474,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 			'6@v': {
 				length:     [3, 4],
 				// Position 4 (index 3) only exists in the else branch, so it has NA flag
-				known:      asNaAwares([1, 10], [99, 99], [3, 30], [40, 40]),
+				known:      asNaAwares([1, 10], [99, 99], [3, 30], asNaAwareWithNA([40, 40])),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,
 				type:       'double'
