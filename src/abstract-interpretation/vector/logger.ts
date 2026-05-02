@@ -1,7 +1,8 @@
-import { log } from '../../util/log';
+import { absintLogger } from '../logger';
 
 /**
  * Logger for the vector abstract interpretation module.
+ * This is a sub-logger of absintLogger.
  *
  * Usage:
  * ```typescript
@@ -9,4 +10,4 @@ import { log } from '../../util/log';
  * vectorLogger.trace('message');
  * ```
  */
-export const vectorLogger = log.getSubLogger({ name: 'vector' });
+export const vectorLogger = absintLogger.getSubLogger({ name: 'vector' });

@@ -16,6 +16,7 @@ import { guard, isNotUndefined } from '../util/assert';
 import { AbstractDomain, type AnyAbstractDomain } from './domains/abstract-domain';
 import type { StateAbstractDomain } from './domains/state-abstract-domain';
 import { MutableStateAbstractDomain } from './domains/state-abstract-domain';
+import { absintLogger } from './logger';
 import { UnsupportedFunctions } from './unsupported-functions';
 
 export type AbsintVisitorConfiguration = Omit<SemanticCfgGuidedVisitorConfiguration<NoInfo, ControlFlowInformation, NormalizedAst>, 'defaultVisitingOrder' | 'defaultVisitingType'>;
@@ -169,6 +170,7 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		guard(this.trace.size === 0, 'Abstract interpretation visitor has already been started');
 		super.start();
 		this.unassigned.clear();
+		absintLogger.debug(`Operation: start [totalNodes=${this.config.controlFlow.graph.vertices(false).size}]`);
 	}
 
 	protected override startVisitor(start: readonly NodeId[]): void {
@@ -177,10 +179,14 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		while(this.stack.length > 0) {
 			const current = this.stack.pop() as NodeId;
 
+			absintLogger.trace(`Operation: visitNode [nodeId=${current}, worklistSize=${this.stack.length}]`);
+
 			if(!this.visitNode(current)) {
 				continue;
 			}
 			const successors = this.config.controlFlow.graph.ingoingEdges(current)?.keys().toArray().reverse() ?? [];
+
+			absintLogger.trace(`Operation: scheduleSuccessors [nodeId=${current}, count=${successors.length}]`);
 
 			for(const next of successors) {
 				if(!this.stack.includes(next)) {  // prevent double entries in working list
@@ -201,6 +207,9 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		const predecessorStates = predecessors.map(pred => this.trace.get(pred)).filter(isNotUndefined);
 
 		// retrieve new abstract state by joining states of predecessor nodes
+		if(predecessorStates.length > 1) {
+			absintLogger.debug(`Operation: joinPredecessors [nodeId=${vertexId}, count=${predecessorStates.length}]`);
+		}
 		if(predecessorStates.length <= 1) {
 			this._currentState = predecessorStates[0] ?? this._currentState.top();
 		} else {
@@ -211,25 +220,38 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 
 		// differentiate between widening points and other vertices
 		if(this.isWideningPoint(nodeId)) {
+			const visitCount = this.visited.get(nodeId) ?? 0;
+			absintLogger.debug(`Operation: widen [nodeId=${nodeId}, visitCount=${visitCount}]`);
+
 			const oldState = this.trace.get(nodeId);
+			absintLogger.trace(`Subcase: widen - trace get [nodeId=${nodeId}, oldState=${oldState?.toString() ?? 'undefined'}]`);
+			absintLogger.trace(`Subcase: widen - state before [currentState=${this._currentState.toString()}]`);
 
 			if(oldState !== undefined && this.shouldWiden(vertex)) {
+				absintLogger.trace(`Subcase: widen - applying [oldState=${oldState.toString()}, currentState=${this._currentState.toString()}]`);
 				this._currentState = oldState.widen(this._currentState);
+				absintLogger.trace(`Subcase: widen - result [newState=${this._currentState.toString()}]`);
 				this.stateCopied = true;
 			}
+			absintLogger.trace(`Subcase: widen - trace set [nodeId=${nodeId}, state=${this._currentState.toString()}]`);
 			this.trace.set(nodeId, this._currentState);
 			this.stateCopied = false;
 
-			const visitedCount = this.visited.get(nodeId) ?? 0;
-			this.visited.set(nodeId, visitedCount + 1);
+			this.visited.set(nodeId, visitCount + 1);
+
+			const isConverged = visitCount !== 0 && oldState?.equals(this._currentState) === true;
+			absintLogger.trace(`Subcase: widen - convergence check [visitCount=${visitCount}, oldState=${oldState?.toString() ?? 'undefined'}, newState=${this._currentState.toString()}, equals=${oldState?.equals(this._currentState)}, isConverged=${isConverged}]`);
 
 			// continue visiting after widening point if visited for the first time or the state changed
-			return visitedCount === 0 || !oldState?.equals(this._currentState);
+			const shouldContinue = visitCount === 0 || !oldState?.equals(this._currentState);
+			absintLogger.trace(`Subcase: widen - continue decision [shouldContinue=${shouldContinue}, firstVisit=${visitCount === 0}, changed=${!oldState?.equals(this._currentState)}]`);
+			return shouldContinue;
 		} else {
 			this.onVisitNode(vertexId);
 
 			// discard the inferred abstract state when encountering unsupported function calls
 			if(this.isUnsupportedFunctionCall(nodeId)) {
+				absintLogger.warn(`Operation: unsupportedFunctionCall [nodeId=${nodeId}, action=resetToTop]`);
 				this._currentState = this._currentState.top();
 				this.stateCopied = true;
 			}
@@ -311,7 +333,10 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		this.unassigned.delete(target);
 
 		if(value !== undefined) {
+			const previous = this.trace.get(target);
+			absintLogger.debug(`Operation: onAssignmentCall [target=${target}, previous=${previous?.toString() ?? 'undefined'}, new=${value.toString()}]`);
 			this.updateState(target, value);
+			absintLogger.debug(`Operation: onAssignmentCall - trace.set [target=${target}, state=${this._currentState.toString()}]`);
 			this.trace.set(target, this._currentState);
 			this.stateCopied = false;
 
@@ -378,18 +403,23 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		const ingoingEdges = this.config.controlFlow.graph.outgoingEdges(nodeId)?.size;  // outgoing dependency edges are ingoing CFG edges
 
 		if(ingoingEdges === undefined || ingoingEdges <= 1) {
+			absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=false, reason=insufficientEdges, edges=${ingoingEdges}]`);
 			return false;
 		} else if(RLoopConstructs.is(this.getNormalizedAst(nodeId))) {
+			absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=true, reason=loopConstruct]`);
 			return true;
 		}
 		const dataflowVertex = this.getDataflowGraph(nodeId);
 
 		if(dataflowVertex?.tag !== VertexType.FunctionCall || !Array.isArray(dataflowVertex.origin)) {
+			absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=false, reason=notLoopFunctionCall]`);
 			return false;
 		}
 		const origin = dataflowVertex.origin;
+		const result = origin.includes(BuiltInProcName.ForLoop) || origin.includes(BuiltInProcName.WhileLoop) || origin.includes(BuiltInProcName.RepeatLoop);
 
-		return origin.includes(BuiltInProcName.ForLoop) || origin.includes(BuiltInProcName.WhileLoop) || origin.includes(BuiltInProcName.RepeatLoop);
+		absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=${result}, reason=loopFunctionOrigin]`);
+		return result;
 	}
 
 	/**
@@ -409,6 +439,10 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 	 * By default, we perform widening when the number of visits of the widening point reaches the widening threshold of the config.
 	 */
 	protected shouldWiden(wideningPoint: CfgVertex): boolean {
-		return (this.visited.get(CfgVertex.getId(wideningPoint)) ?? 0) >= this.config.ctx.config.abstractInterpretation.wideningThreshold;
+		const nodeId = CfgVertex.getId(wideningPoint);
+		const count = this.visited.get(nodeId) ?? 0;
+		const threshold = this.config.ctx.config.abstractInterpretation.wideningThreshold;
+		absintLogger.trace(`Operation: shouldWiden [nodeId=${nodeId}, visitCount=${count}, threshold=${threshold}, result=${count >= threshold}]`);
+		return count >= threshold;
 	}
 }

@@ -20,6 +20,8 @@ describe.sequential('Vector Widening', withShell(shell => {
 		// This while loop appends to vector x on each iteration.
 		// The vector grows: [1,2,3] -> [1,2,3,1] -> [1,2,3,1,2] -> ...
 		// After widening (threshold=4 visits), the length becomes unbounded.
+
+		// [3,3],<1,2,3> \cup [4,4],<1,2,3,1> =
 		const code = `
 			x <- c(1, 2, 3)
 			i <- 1

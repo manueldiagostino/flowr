@@ -2,6 +2,8 @@ import type { Writable } from 'ts-essentials';
 import type { NodeId } from '../../r-bridge/lang-4.x/ast/model/processing/node-id';
 import { AbstractDomain, domainElementToString, type AnyAbstractDomain, type ConcreteDomain } from './abstract-domain';
 import { Bottom, BottomSymbol, Top } from './lattice';
+import { absintLogger } from '../logger';
+import { keys } from 'object-hash';
 
 /** The type of the concrete state of the concrete domain of a state abstract domain that maps keys to a concrete value in the concrete domain */
 export type ConcreteState<Domain extends AnyAbstractDomain> = ReadonlyMap<NodeId, ConcreteDomain<Domain>>;
@@ -161,7 +163,10 @@ export class StateAbstractDomain<Domain extends AnyAbstractDomain, Value extends
 		}
 		const result = this.create(this.value) as this & StateAbstractDomain<Domain, StateDomainValue<Domain>>;
 
+
 		for(const [key, value] of other.value.entries()) {
+			absintLogger.debug(`MutableStateAbstractDomain widen: processing [key=${key}]`);
+
 			const currValue = result.get(key);
 
 			if(currValue === undefined) {
