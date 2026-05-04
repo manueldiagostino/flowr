@@ -12,7 +12,7 @@ import {
 	assertVectorDomainSound,
 	validateVectorDomainIntervals,
 	type TestCase,
-    asNaAwareWithNA
+	asNaAwareWithNA
 } from '../_helper/vector-assertion-helpers';
 import './log-config';
 
