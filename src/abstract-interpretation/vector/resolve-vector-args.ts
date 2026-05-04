@@ -47,13 +47,13 @@ function primitiveToRType(value: string | number | boolean, isMarkedAsInt = fals
  */
 function _computeVectorTypeFromValues(values: (string | number | boolean | undefined)[]): RVectorTypeDomain {
 	if(values.length === 0) {
-		return RVectorTypeDomain.top();
+		return RVectorTypeDomain.bottom();
 	}
 
 	// Filter out undefined values
 	const definedValues = values.filter((v): v is string | number | boolean => v !== undefined);
 	if(definedValues.length === 0) {
-		return RVectorTypeDomain.top();
+		return RVectorTypeDomain.bottom();
 	}
 
 	// Start with first value's type, then join with subsequent types

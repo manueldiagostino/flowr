@@ -136,7 +136,7 @@ export function applyConcatenate<Domain extends AnyAbstractDomain & ArithmeticDo
 
 		// Backward propagation: for each known₂ position i, join with preceding d positions
 		// Paper: ∀i ∈ [u₁+1, u₁+k₂], ∀j ∈ [1, d]: p'_{i-j} ← p'_{i-j} ⊔ p'_i
-		// where d = u₁ - l₁ + 1 and k₂ = |known₂|
+		// where d = u₁ - l₁ and k₂ = |known₂|
 		const d = u1 - l1;
 		const k2 = values2.length;
 

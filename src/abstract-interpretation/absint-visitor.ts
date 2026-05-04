@@ -206,13 +206,10 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		const predecessors = this.getPredecessorNodes(CfgVertex.getId(vertex));
 		const predecessorStates = predecessors.map(pred => this.trace.get(pred)).filter(isNotUndefined);
 
-		// retrieve new abstract state by joining states of predecessor nodes
-		if(predecessorStates.length > 1) {
-			absintLogger.debug(`Operation: joinPredecessors [nodeId=${vertexId}, count=${predecessorStates.length}]`);
-		}
 		if(predecessorStates.length <= 1) {
 			this._currentState = predecessorStates[0] ?? this._currentState.top();
 		} else {
+			absintLogger.debug(`Operation: joinPredecessors [nodeId=${vertexId}, count=${predecessorStates.length}]`);
 			this._currentState = AbstractDomain.joinAll(predecessorStates);
 			this.stateCopied = true;
 		}
