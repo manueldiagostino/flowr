@@ -127,7 +127,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 		// Widening should handle both the growing length and NA propagation.
 		const code = `
 			x <- c(1, NA, 3)
-			i <- 1
+			i <- 10
 			while(i <= 5) {
 				x <- c(x, i, NA)
 				i <- i + 1
@@ -142,7 +142,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 			'8@x': {
 				length:     [3, +Infinity],
 				known:      asNaAwares([1, 1], NaInterval, [3, 3]),
-				summary:    asNaAware([1, 5]),
+				summary:    asNaAwareWithNA([10, +Infinity]),
 				attributes: VectorAttrEmpty,
 				type:       'double'
 			},
@@ -154,13 +154,13 @@ describe.sequential('Vector Widening', withShell(shell => {
 		// Using runif() creates an uncertain loop condition, forcing the analysis
 		// to consider both branches and apply widening more aggressively.
 		const code = `
-			x <- c(1, 2)
-			i <- 1
-			while(runif(1) > 0.1 && i <= 10) {
-				if(runif(1) > 0.5) {
+			x <- c(1, 2, 3, 4, 5, 6, 7, 8)
+			i <- 100
+			while(runif(1)) {
+				if(runif(1)) {
 					x <- c(x, i)
 				} else {
-					x <- c(x, i * 2)
+					x <- x[c(TRUE, FALSE)]
 				}
 				i <- i + 1
 			}

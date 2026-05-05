@@ -93,7 +93,7 @@ export function updatePositiveInfiniteEnumSummary<Domain extends AnyAbstractDoma
 	const summaryInner = adjustedSelector.summary.inner;
 	guard(summaryInner.isValue(), '');
 	for(let i = summaryInner.value[0]-1; i < summaryInner.value[1]; i++) {
-		vectorLogger.trace(`Updating position ${i} with ${squashValues.toString()}`);
+		vectorLogger.trace(`Updating ˪ position ${i} with ${squashValues.toString()}`);
 		resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
 	}
 
@@ -136,7 +136,7 @@ export function updatePositiveInfiniteNonEnumSummary<Domain extends AnyAbstractD
 ): VectorDomain<Domain> {
 	if(lS2 <= uR) {
 		for(let i = lS2 - 1; i < uR; i++) {
-			vectorLogger.trace(`Updating position ${i} with ${squashValues.toString()}`);
+		vectorLogger.trace(`Updating ˪ position ${i} with ${squashValues.toString()}`);
 			resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
 		}
 	}
@@ -580,15 +580,15 @@ export function updateLogicalMain<Domain extends AnyAbstractDomain & ArithmeticD
 			const [selL, selU] = selectorVal.inner.value;
 			if(selL === 0 && selU === 0) {
 				// Definitely FALSE: keep original, do not update (line 1105-1106)
-				vectorLogger.trace(`Logical update: position ${i + 1} is FALSE, keeping original`);
+				vectorLogger.trace(`Logical ˪ update: position ${i + 1} is FALSE, keeping original`);
 				continue;
 			} else if(selL >= 1 && selU >= 1) {
 				// Definitely TRUE: strong update (replace) (line 1100)
-				vectorLogger.trace(`Logical update: position ${i + 1} is TRUE, strong update`);
+				vectorLogger.trace(`Logical ˪ update: position ${i + 1} is TRUE, strong update`);
 				resultKnownPositions[i] = cyclicValues[i % cyclicValues.length];
 			} else {
 				// May be TRUE or FALSE (contains 0 or 1, but not definite): weak update (join) (line 1103-1104)
-				vectorLogger.trace(`Logical update: position ${i + 1} may be TRUE/FALSE, weak update`);
+				vectorLogger.trace(`Logical ˪ update: position ${i + 1} may be TRUE/FALSE, weak update`);
 				resultKnownPositions[i] = resultKnownPositions[i].join(cyclicValues[i % cyclicValues.length]);
 			}
 		} else {

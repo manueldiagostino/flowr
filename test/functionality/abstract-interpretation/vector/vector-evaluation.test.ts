@@ -858,7 +858,7 @@ describe.sequential('Vector Inference Evaluation', withShell(shell => {
 		`.trim();
 		const expected = {
 			'2@v': {
-				length:     [0, 3],
+				length:     [3, 3],
 				known:      asNaAwares([1, 1], [3, 3], [5, 5]),
 				summary:    asNaAware(Bottom),
 				attributes: VectorAttrEmpty,

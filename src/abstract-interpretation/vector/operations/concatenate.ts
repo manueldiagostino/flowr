@@ -149,7 +149,7 @@ export function applyConcatenate<Domain extends AnyAbstractDomain & ArithmeticDo
 				for(let j = 1; j <= d; j++) {
 					const target = i0 - j;
 					if(target >= 0 && target < result.length) {
-						vectorLogger.trace(`Operation: concatenate back-prop: result[${target}] ⊔ result[${i0}]`);
+						vectorLogger.trace(`Operation: concatenate ˪ back-prop: result[${target}] ⊔ result[${i0}]`);
 						result[target] = result[target].join(result[i0]);
 					}
 				}

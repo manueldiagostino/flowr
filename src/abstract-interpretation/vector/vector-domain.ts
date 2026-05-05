@@ -704,7 +704,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 			const joinedPositions: NAAwareDomain<Domain>[] = [];
 			for(let i = 0; i < m; i++) {
 				const joined = thisArr[i].join(otherArr[i]);
-				vectorLogger.trace(`VectorDomain.join: joined common position [${i}]: ${thisArr[i].toString()} ⊔ ${otherArr[i].toString()} = ${joined.toString()}`);
+				vectorLogger.trace(`VectorDomain.join: ˪ joined common position [${i}]: ${thisArr[i].toString()} ⊔ ${otherArr[i].toString()} = ${joined.toString()}`);
 				joinedPositions.push(joined);
 			}
 
@@ -716,7 +716,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 				vectorLogger.debug(`VectorDomain.join: this has ${k1 - k2} excess positions, joining with other.summary ⊔ α(NA) = ${otherSummaryWithNA.toString()}`);
 				for(let i = m; i < k1; i++) {
 					const joined = thisArr[i].join(otherSummaryWithNA);
-					vectorLogger.trace(`VectorDomain.join: joined excess position [${i}] from this: ${thisArr[i].toString()} ⊔ ${otherSummaryWithNA.toString()} = ${joined.toString()}`);
+					vectorLogger.trace(`VectorDomain.join: ˪ joined excess position [${i}] from this: ${thisArr[i].toString()} ⊔ ${otherSummaryWithNA.toString()} = ${joined.toString()}`);
 					joinedPositions.push(joined);
 				}
 			} else if(k2 > k1) {
@@ -725,7 +725,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 				vectorLogger.debug(`VectorDomain.join: other has ${k2 - k1} excess positions, joining with this.summary ⊔ α(NA) = ${thisSummaryWithNA.toString()}`);
 				for(let i = m; i < k2; i++) {
 					const joined = otherArr[i].join(thisSummaryWithNA);
-					vectorLogger.trace(`VectorDomain.join: joined excess position [${i}] from other: ${otherArr[i].toString()} ⊔ ${thisSummaryWithNA.toString()} = ${joined.toString()}`);
+					vectorLogger.trace(`VectorDomain.join: ˪ joined excess position [${i}] from other: ${otherArr[i].toString()} ⊔ ${thisSummaryWithNA.toString()} = ${joined.toString()}`);
 					joinedPositions.push(joined);
 				}
 			} else {
@@ -816,7 +816,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 			const commonKnown: NAAwareDomain<Domain>[] = [];
 			for(let i = 0; i < commonLen; i++) {
 				const widened = thisArr[i].widen(otherArr[i]);
-				vectorLogger.trace(`VectorDomain.widen: widened position [${i}]: ${thisArr[i].toString()} ▽ ${otherArr[i].toString()} = ${widened.toString()}`);
+				vectorLogger.trace(`VectorDomain.widen: ˪ widened position [${i}]: ${thisArr[i].toString()} ▽ ${otherArr[i].toString()} = ${widened.toString()}`);
 				commonKnown.push(widened);
 			}
 
@@ -835,7 +835,7 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 				vectorLogger.debug('VectorDomain.widen: extending known positions to max length');
 				const longerArr = thisArr.length > otherArr.length ? thisArr : otherArr;
 				for(let i = commonLen; i < maxLen; i++) {
-					vectorLogger.trace(`VectorDomain.widen: extending position [${i}] from longer vector: ${longerArr[i].toString()}`);
+					vectorLogger.trace(`VectorDomain.widen: ˪ extending position [${i}] from longer vector: ${longerArr[i].toString()}`);
 					commonKnown.push(longerArr[i]);
 				}
 				// Summary is already correct: ⊥ when finite, joined when infinite (first reaching)
@@ -843,11 +843,11 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 				// Truncate to common prefix: fold excess positions into summary
 				vectorLogger.debug('VectorDomain.widen: truncating to common prefix, folding excess into summary');
 				for(let i = commonLen; i < thisArr.length; i++) {
-					vectorLogger.trace(`VectorDomain.widen: folding this[${i}] into summary: ${thisArr[i].toString()}`);
+					vectorLogger.trace(`VectorDomain.widen: ˪ folding this[${i}] into summary: ${thisArr[i].toString()}`);
 					newSummary = newSummary.join(thisArr[i]);
 				}
 				for(let i = commonLen; i < otherArr.length; i++) {
-					vectorLogger.trace(`VectorDomain.widen: folding other[${i}] into summary: ${otherArr[i].toString()}`);
+					vectorLogger.trace(`VectorDomain.widen: ˪ folding other[${i}] into summary: ${otherArr[i].toString()}`);
 					newSummary = newSummary.join(otherArr[i]);
 				}
 			}

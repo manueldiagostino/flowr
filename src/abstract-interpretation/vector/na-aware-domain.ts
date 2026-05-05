@@ -7,7 +7,6 @@ import type {
 import { AbstractDomain } from '../domains/abstract-domain';
 import { Top, Bottom, NA, BottomSymbol, NASymbol } from '../domains/lattice';
 import type { DomainFactory } from './known-initial-positions-domain';
-import { vectorLogger } from './logger';
 
 /**
  * Type for the inner value stored in NAAwareDomain.
@@ -256,11 +255,9 @@ export class NAAwareDomain<
 	public join(other: NAAwareDomain<Domain>): this;
 	public join(other: this | NAAwareDomain<Domain>): this {
 		if(this.isBottom() && other.isValue()) {
-			vectorLogger.trace('this.isBottom() && other.isValue()');
 			return this.create(other.value);
 		}
 		if(other.isBottom()) {
-			vectorLogger.trace('this.isBottom() && other.isValue()');
 			return this.create(this.value);
 		}
 		if(this.isTop() || other.isTop()) {

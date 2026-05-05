@@ -731,19 +731,22 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 
 /**
  * Handles logical selection when source or selector is infinite.
- * Paper Section 4.7, L873-L884: Infinite case.
- * Result is [0, +∞] with summary = Squash(value).
+ * Paper Section 4.7, L907-L914: Infinite case.
+ * Result is [l_r, +∞] with summary = Squash(value),
+ * where l_r counts definite TRUE positions (computed by dispatcher).
  * @param value - The source VectorDomain
  * @param naValue - The NA value for positions with NA selector
+ * @param definiteTrueCount - Number of definite TRUE positions in adjusted selector
  * @returns The resulting VectorDomain
  */
 export function selectLogicalInfinite<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
-	_naValue: NAAwareDomain<Domain>
+	_naValue: NAAwareDomain<Domain>,
+	definiteTrueCount: number
 ): VectorDomain<Domain> {
 	vectorLogger.trace('Subcase: selectLogical - infinite source or selector');
 	return value.create({
-		length:     value.length.create([0, +Infinity]),
+		length:     value.length.create([definiteTrueCount, +Infinity]),
 		known:      value.known.top(),
 		summary:    squash(value),
 		attributes: value.attributes,
@@ -760,6 +763,7 @@ export function selectLogicalInfinite<Domain extends AnyAbstractDomain & Arithme
  * @param naValue - The NA value for positions with NA selector
  * @param sourceLen - Length of source known positions
  * @param selectorLen - Length of selector known positions
+ * @param definiteTrueCount - Number of definite TRUE positions (computed by dispatcher)
  * @returns The resulting VectorDomain
  */
 export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
@@ -767,7 +771,8 @@ export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & 
 	selector: VectorDomain<PosIntervalDomain>,
 	naValue: NAAwareDomain<Domain>,
 	sourceLen: number,
-	selectorLen: number
+	selectorLen: number,
+	definiteTrueCount: number
 ): VectorDomain<Domain> {
 	vectorLogger.trace('Subcase: selectLogical - finite source and selector with recycling');
 	const maxLen = Math.max(sourceLen, selectorLen);
@@ -790,23 +795,23 @@ export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & 
 		const iVal = plainSelector[i];
 		let sourceVal = NAAwareDomain.bottom(value.plainFactory);
 
-		let [u, l] = [0, 0];
+		let [l, u] = [0, 0];
 		if(iVal.inner.isValue()) {
-			[u, l] = iVal.inner.value;
+			[l, u] = iVal.inner.value;
 
 			if(l == 0 && u == 0) {
-				vectorLogger.trace(`Extracted FALSE in position ${i}`);
+				vectorLogger.trace(`Extracted ˪ FALSE in position ${i}`);
 				continue;
 			} else if(u == 1) {
-				vectorLogger.trace(`Contained TRUE in position ${i}`);
+				vectorLogger.trace(`Contained ˪ TRUE in position ${i}`);
 				const accessed = accessPosition(value, i, naValue);
-				vectorLogger.trace(`Accessed value [${accessed.toString()}]`);
+				vectorLogger.trace(`Accessed ˪ value [${accessed.toString()}]`);
 				sourceVal = sourceVal.join(accessed);
 			}
 		}
 
 		if(iVal.containsNA()) {
-			vectorLogger.trace(`Contained NA in position ${i}`);
+			vectorLogger.trace(`Contained ˪ NA in position ${i}`);
 			sourceVal = sourceVal.join(naValue);
 		}
 
@@ -816,7 +821,8 @@ export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & 
 
 	const isInfinite = selector.length.isValue() && selector.length.value[1] === +Infinity;
 	const result = value.create({
-		length:     value.length.create([0, resultKnownPositions.length]),
+		// Paper L896-L898: lower bound = count of definite TRUE values
+		length:     value.length.create([definiteTrueCount, resultKnownPositions.length]),
 		known:      value.known.create(resultKnownPositions),
 		summary:    isInfinite ? squash(value) : value.summary.bottom(),
 		attributes: value.attributes,
@@ -851,6 +857,26 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 	const selectorLen = selector.known.value.length;
 
 	//
+	// === Paper L896-L898: compute definite TRUE count for length lower bound ===
+	// l_r = |{i ∈ [1,|known_r|] | {1} = γ(p_j)}|
+	// Compute once here and pass to both the finite and infinite submethods.
+	//
+	const maxLen = Math.max(sourceLen, selectorLen);
+	const adjustedSelector = rhoF(selector.known, selector.length.value[0], maxLen, selector.naAwareFactory);
+	let definiteTrueCount = 0;
+	if(adjustedSelector.isValue() && adjustedSelector.value.length !== undefined) {
+		const plainSelector = adjustedSelector.toArray();
+		for(let i = 0; i < plainSelector.length; i++) {
+			if(plainSelector[i].inner.isValue()) {
+				const [l, u] = plainSelector[i].inner.value;
+				if(l == 1 && u == 1) {
+					definiteTrueCount++;
+				}
+			}
+		}
+	}
+
+	//
 	// === Early guard: empty selector ===
 	// Empty logical selector returns source unchanged.
 	//
@@ -861,26 +887,18 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 	}
 
 	//
-	// === Paper L873-L884: Infinite source or selector ===
-	// Result is [0, +∞] with summary = Squash(value). Cannot enumerate all positions.
+	// === Paper L907-L914: Infinite source or selector ===
+	// Result is [l_r, +∞] with summary = Squash(value). Cannot enumerate all positions.
 	//
 
 	if(sourceLen === +Infinity || selectorLen === +Infinity) {
-		return selectLogicalInfinite(value, naValue);
+		return selectLogicalInfinite(value, naValue, definiteTrueCount);
 	}
 
 	//
 	// === Paper L846-L872: Finite source and selector (logical selection) ===
-	// Apply ρₓ^♯ to cycle selector to match max(|known₁|, |known₂|).
-	// For each position i, based on γ(cᵢ):
-	//   {1}       → select element from ν₁ (definitely TRUE)
-	//   {0,1}     → select element from ν₁ (may be TRUE/FALSE)
-	//   {1,NA}    → select ⊔ NA (may be TRUE or NA)
-	//   {0,1,NA}  → select ⊔ NA (may be TRUE/FALSE/NA)
-	//   {NA}      → result is NA
-	//   {0}       → skip (definitely FALSE)
-	// Result length: [0, |known_r|], summary: ⊥ if finite, Squash if infinite.
+	// Result length: [l_r, |known_r|], summary: ⊥ if finite, Squash if infinite.
 	//
 
-	return selectLogicalFiniteRecycling(value, selector, naValue, sourceLen, selectorLen);
+	return selectLogicalFiniteRecycling(value, selector, naValue, sourceLen, selectorLen, definiteTrueCount);
 }
