@@ -17,7 +17,7 @@ import {
 import './log-config';
 
 describe.sequential('Vector Widening', withShell(shell => {
-	test('while loop with growing vector triggers widening', async() => {
+	test('Loop: while loop with growing vector triggers widening', async() => {
 		const code = `
 			x <- c(1, 2, 3)
 			i <- 1
@@ -40,7 +40,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 		// await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('while loop with selection and concatenation', async() => {
+	test('Loop: while loop with selection and concatenation', async() => {
 		const code = `
 			x <- c(1, 2, 3)
 			y <- 0
@@ -66,7 +66,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 	});
 
 
-	test('while loop with vector element modification triggers widening', async() => {
+	test('Loop: while loop with vector element modification triggers widening', async() => {
 		const code = `
 			x <- c(1, 2, 3)
 			i <- 1
@@ -89,7 +89,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 		await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('nested while loop with vector concatenation triggers widening', async() => {
+	test('Loop: nested while loop with vector concatenation triggers widening', async() => {
 		const code = `
 			result <- c()
 			j <- 1
@@ -129,7 +129,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 		await assertVectorDomainSound(shell, code, expected2);
 	});
 
-	test('while loop with NA propagation and widening', async() => {
+	test('Loop: while loop with NA propagation and widening', async() => {
 		const code = `
 			x <- c(1, NA, 3)
 			i <- 10
@@ -177,7 +177,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 		await assertVectorDomainSound(shell, code, expected);
 	});
 
-	test('widening produces sound over-approximation for vector arithmetic in loop', async() => {
+	test('Loop: widening produces sound over-approximation for vector arithmetic in loop', async() => {
 		// This test verifies that widening produces a sound result when
 		// vector arithmetic is performed inside a loop.
 		const code = `
@@ -203,7 +203,7 @@ describe.sequential('Vector Widening', withShell(shell => {
 		// await validateVectorDomainIntervals(shell, code, Record.keys(expected));
 	});
 
-	test('widening with vector type uncertainty in loop', async() => {
+	test('Loop: widening with vector type uncertainty in loop', async() => {
 		const code = `
 			x <- c(1, 2, 3)
 			i <- 1
