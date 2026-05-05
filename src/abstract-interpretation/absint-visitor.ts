@@ -406,7 +406,7 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		const ingoingEdges = this.config.controlFlow.graph.outgoingEdges(nodeId)?.size;  // outgoing dependency edges are ingoing CFG edges
 
 		if(ingoingEdges === undefined || ingoingEdges <= 1) {
-			absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=false, reason=insufficientEdges, edges=${ingoingEdges}]`);
+			// absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=false, reason=insufficientEdges, edges=${ingoingEdges}]`);
 			return false;
 		} else if(RLoopConstructs.is(this.getNormalizedAst(nodeId))) {
 			absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=true, reason=loopConstruct]`);
@@ -415,7 +415,7 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		const dataflowVertex = this.getDataflowGraph(nodeId);
 
 		if(dataflowVertex?.tag !== VertexType.FunctionCall || !Array.isArray(dataflowVertex.origin)) {
-			absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=false, reason=notLoopFunctionCall]`);
+			// absintLogger.trace(`Operation: isWideningPoint [nodeId=${nodeId}, result=false, reason=notLoopFunctionCall]`);
 			return false;
 		}
 		const origin = dataflowVertex.origin;

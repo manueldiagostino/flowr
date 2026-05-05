@@ -10,7 +10,8 @@ import { RVectorTypeDomain } from '../../../../src/abstract-interpretation/domai
 import { KnownInitialPositionsDomain } from '../../../../src/abstract-interpretation/vector/known-initial-positions-domain';
 import { NAAwareDomain } from '../../../../src/abstract-interpretation/vector/na-aware-domain';
 import type { ValueToDomainConverter } from '../../../../src/abstract-interpretation/vector/resolve-vector-args';
-import type { VectorDomain, VectorProduct } from '../../../../src/abstract-interpretation/vector/vector-domain';
+import { VectorDomain } from '../../../../src/abstract-interpretation/vector/vector-domain';
+import type { VectorProduct } from '../../../../src/abstract-interpretation/vector/vector-domain';
 import { Identifier } from '../../../../src/dataflow/environments/identifier';
 import type { RSymbol } from '../../../../src/r-bridge/lang-4.x/ast/model/nodes/r-symbol';
 import type { ParentInformation } from '../../../../src/r-bridge/lang-4.x/ast/model/processing/decorate';
@@ -331,23 +332,25 @@ export function assertVectorValue<Domain extends AnyAbstractDomain & ArithmeticD
 	console.log(`  Inferred -> length: ${inferred.length.toString()}, known: ${inferred.known.toString()}, summary: ${inferred.summary.toString()}, attributes: ${inferred.attributes.toString()}, type: ${inferred.type.toString()}`);
 
 	if(overapproximation) {
-		const lengthOk = length.leq(inferred.length);
-		const knownOk = known.leq(inferred.known);
-		const summaryOk = summary.leq(inferred.summary);
-		const attributesOk = attributes.leq(inferred.attributes);
-		const typeOk = type.leq(inferred.type);
+		// Build expected VectorDomain and use its leq method which properly handles
+		// the infinite-length case (condition 2 from the paper)
+		const expectedVector = new VectorDomain({
+			length,
+			known,
+			summary,
+			attributes,
+			type
+		}, factory);
 
-		if(!lengthOk || !knownOk || !summaryOk || !attributesOk || !typeOk) {
+		const sound = expectedVector.leq(inferred);
+
+		if(!sound) {
 			console.error(`[VectorAssertion FAILED] Criterion "${criterion}":`);
 			console.error(`  Expected -> length: ${length.toString()}, known: ${known.toString()}, summary: ${summary.toString()}, attributes: ${attributes.toString()}, type: ${type.toString()}`);
 			console.error(`  Inferred -> length: ${inferred.length.toString()}, known: ${inferred.known.toString()}, summary: ${inferred.summary.toString()}, attributes: ${inferred.attributes.toString()}, type: ${inferred.type.toString()}`);
 		}
 
-		assert.ok(lengthOk, `Expected vector for criterion "${criterion}" to have an over-approximation of length ${length.toString()}, but got ${inferred.length.toString()}`);
-		assert.ok(knownOk, `Expected vector for criterion "${criterion}" to have an over-approximation of known values ${known.toString()}, but got ${inferred.known.toString()}`);
-		assert.ok(summaryOk, `Expected vector for criterion "${criterion}" to have an over-approximation of summary ${summary.toString()}, but got ${inferred.summary.toString()}`);
-		assert.ok(attributesOk, `Expected vector for criterion "${criterion}" to have an over-approximation of attributes ${attributes.toString()}, but got ${inferred.attributes.toString()}`);
-		assert.ok(typeOk, `Expected vector for criterion "${criterion}" to have an over-approximation of type ${type.toString()}, but got ${inferred.type.toString()}`);
+		assert.ok(sound, `Expected vector for criterion "${criterion}" to be a sound over-approximation`);
 	} else {
 		const lengthOk = inferred.length.equals(length);
 		const knownOk = inferred.known.equals(known);
