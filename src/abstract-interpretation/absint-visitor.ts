@@ -11,6 +11,7 @@ import { type NoInfo, RNode, RLoopConstructs } from '../r-bridge/lang-4.x/ast/mo
 import { EmptyArgument } from '../r-bridge/lang-4.x/ast/model/nodes/r-function-call';
 import type { NormalizedAst, ParentInformation } from '../r-bridge/lang-4.x/ast/model/processing/decorate';
 import type { NodeId } from '../r-bridge/lang-4.x/ast/model/processing/node-id';
+import { recoverName } from '../r-bridge/lang-4.x/ast/model/processing/node-id';
 import { RType } from '../r-bridge/lang-4.x/ast/model/type';
 import { guard, isNotUndefined } from '../util/assert';
 import { AbstractDomain, type AnyAbstractDomain } from './domains/abstract-domain';
@@ -221,23 +222,30 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 			absintLogger.debug(`Operation: widen [nodeId=${nodeId}, visitCount=${visitCount}]`);
 
 			const oldState = this.trace.get(nodeId);
-			absintLogger.trace(`Subcase: widen - trace get [nodeId=${nodeId}, oldState=${oldState?.toString() ?? 'undefined'}]`);
-			absintLogger.trace(`Subcase: widen - state before [currentState=${this._currentState.toString()}]`);
 
 			if(oldState !== undefined && this.shouldWiden(vertex)) {
-				absintLogger.trace(`Subcase: widen - applying [oldState=${oldState.toString()}, currentState=${this._currentState.toString()}]`);
 				this._currentState = oldState.widen(this._currentState);
-				absintLogger.trace(`Subcase: widen - result [newState=${this._currentState.toString()}]`);
 				this.stateCopied = true;
 			}
-			absintLogger.trace(`Subcase: widen - trace set [nodeId=${nodeId}, state=${this._currentState.toString()}]`);
+
+			// Log loop-carried (interesting) keys - vars shared between loop iterations
+			if(oldState !== undefined && oldState.value !== undefined && this._currentState.value !== undefined) {
+				const oldKeys = [...oldState.value.keys()];
+				const currentKeySet = new Set([...this._currentState.value.keys()]);
+				const loopCarriedKeys = oldKeys.filter(k => currentKeySet.has(k));
+				if(loopCarriedKeys.length > 0) {
+					const idMap = this.config.dfg?.idMap;
+					const names = loopCarriedKeys.map(k => recoverName(k, idMap) ?? k);
+					absintLogger.debug(`Widen: loop-carried [count=${loopCarriedKeys.length}, keys=[${names.join(', ')}]]`);
+				}
+			}
+
 			this.trace.set(nodeId, this._currentState);
 			this.stateCopied = false;
 
 			this.visited.set(nodeId, visitCount + 1);
 
 			const isConverged = visitCount !== 0 && oldState?.equals(this._currentState) === true;
-			absintLogger.trace(`Subcase: widen - convergence check [visitCount=${visitCount}, oldState=${oldState?.toString() ?? 'undefined'}, newState=${this._currentState.toString()}, equals=${oldState?.equals(this._currentState)}, isConverged=${isConverged}]`);
 
 			// continue visiting after widening point if visited for the first time or the state changed
 			const shouldContinue = visitCount === 0 || !oldState?.equals(this._currentState);
@@ -330,10 +338,8 @@ export abstract class AbstractInterpretationVisitor<Domain extends AnyAbstractDo
 		this.unassigned.delete(target);
 
 		if(value !== undefined) {
-			const previous = this.trace.get(target);
-			absintLogger.debug(`Operation: onAssignmentCall [target=${target}, previous=${previous?.toString() ?? 'undefined'}, new=${value.toString()}]`);
+			absintLogger.debug(`Operation: onAssignmentCall [target=${target}, source=${source}]`);
 			this.updateState(target, value);
-			absintLogger.debug(`Operation: onAssignmentCall - trace.set [target=${target}, state=${this._currentState.toString()}]`);
 			this.trace.set(target, this._currentState);
 			this.stateCopied = false;
 

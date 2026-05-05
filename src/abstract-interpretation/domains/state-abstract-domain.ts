@@ -164,7 +164,7 @@ export class StateAbstractDomain<Domain extends AnyAbstractDomain, Value extends
 
 
 		for(const [key, value] of other.value.entries()) {
-			absintLogger.debug(`MutableStateAbstractDomain widen: processing [key=${key}]`);
+			// absintLogger.debug(`MutableStateAbstractDomain.widen: processing [key=${key}]`);
 
 			const currValue = result.get(key);
 
