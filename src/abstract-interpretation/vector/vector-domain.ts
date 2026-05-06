@@ -749,6 +749,167 @@ export class VectorDomain<Domain extends AnyAbstractDomain & ArithmeticDomain<Do
 	}
 
 	/**
+	 * Meet (greatest lower bound) of two vector domains.
+	 *
+	 * Paper reference (03-abstract.tex:178-221):
+	 * Given ν₁ = (L₁, known₁, s₁, a₁) and ν₂ = (L₂, known₂, s₂, a₂) with
+	 * prefix lengths k₁ = |known₁| and k₂ = |known₂|, m = min(k₁, k₂), M = max(k₁, k₂):
+	 *
+	 *   ν₁ ⊓ ν₂ =
+	 *     Case 1: ([max(l₁, l₂), min(M, u')], known', ⊥, a₁ ⊓ a₂)
+	 *             if max(l₁, l₂) ≤ u' AND ¬(u₁ = u₂ = +∞ ∧ s₁ ⊓ s₂ ≠ ⊥)
+	 *
+	 *     Case 2: ([max(l₁, l₂), +∞], known', s₁ ⊓ s₂, a₁ ⊓ a₂)
+	 *             if max(l₁, l₂) ≤ u' AND u₁ = u₂ = +∞ AND s₁ ⊓ s₂ ≠ ⊥
+	 *
+	 *     Case 3: ⊥ (bottom)
+	 *             otherwise
+	 *
+	 * Where:
+	 *   u' = max{i ∈ [0, max(l₁, l₂, M)] | ∀j ∈ [1,i] : p'ⱼ ≠ ⊥}
+	 *   known' = ⟨p'ᵢ⟩ᵢ₌₁^min(M,u') with p'ᵢ = p'₁,ᵢ ⊓ p'₂,ᵢ
+	 *   p'₁,ᵢ = p₁,ᵢ if i ≤ k₁, else s₁
+	 *   p'₂,ᵢ = p₂,ᵢ if i ≤ k₂, else s₂
+	 *
+	 * This overrides ProductDomain.meet which does a naive component-wise comparison
+	 * and does not handle the infinite-length case or u' truncation.
+	 * @param other - The other VectorDomain to meet with
+	 * @returns The meeted VectorDomain (greatest lower bound), or bottom if incompatible
+	 */
+	public meet(other: this): this {
+		vectorLogger.debug(`VectorDomain.meet: entry [this=${this.toString()}, other=${other.toString()}]`);
+
+		// Handle bottom/top edge cases
+		if(this.isBottom() || other.isBottom()) {
+			vectorLogger.debug('VectorDomain.meet: one is bottom, returning bottom');
+			return this.bottom();
+		}
+		if(this.isTop()) {
+			vectorLogger.debug('VectorDomain.meet: this is top, returning other');
+			return this.create(other.value);
+		}
+		if(other.isTop()) {
+			vectorLogger.debug('VectorDomain.meet: other is top, returning this');
+			return this.create(this.value);
+		}
+
+		// Extract components
+		const thisLength = this.length;
+		const otherLength = other.length;
+
+		const l1 = thisLength.isValue() ? thisLength.value[0] : 0;
+		const u1 = thisLength.isValue() ? thisLength.value[1] : +Infinity;
+		const l2 = otherLength.isValue() ? otherLength.value[0] : 0;
+		const u2 = otherLength.isValue() ? otherLength.value[1] : +Infinity;
+
+		const k1 = this.known.isValue() ? (this.known.value as readonly NAAwareDomain<Domain>[]).length : 0;
+		const k2 = other.known.isValue() ? (other.known.value as readonly NAAwareDomain<Domain>[]).length : 0;
+		const m = Math.min(k1, k2);
+		const M = Math.max(k1, k2);
+
+		const thisArr = this.known.isValue() ? this.known.value as readonly NAAwareDomain<Domain>[] : [];
+		const otherArr = other.known.isValue() ? other.known.value as readonly NAAwareDomain<Domain>[] : [];
+
+		vectorLogger.debug(`VectorDomain.meet: lengths [l1=${l1}, u1=${u1}, l2=${l2}, u2=${u2}]`);
+		vectorLogger.debug(`VectorDomain.meet: known lengths [k1=${k1}, k2=${k2}, m=${m}, M=${M}]`);
+
+		// Compute extended positions p'₁,ᵢ and p'₂,ᵢ for i = 1..M
+		// p'₁,ᵢ = p₁,ᵢ if i ≤ k₁, else s₁
+		// p'₂,ᵢ = p₂,ᵢ if i ≤ k₂, else s₂
+		const extendedPositions1: NAAwareDomain<Domain>[] = [];
+		const extendedPositions2: NAAwareDomain<Domain>[] = [];
+
+		for(let i = 0; i < M; i++) {
+			const p1 = i < k1 ? thisArr[i] : this.summary;
+			const p2 = i < k2 ? otherArr[i] : other.summary;
+			extendedPositions1.push(p1);
+			extendedPositions2.push(p2);
+		}
+
+		vectorLogger.trace(`VectorDomain.meet: extended positions computed for M=${M}`);
+
+		// Compute p'ᵢ = p'₁,ᵢ ⊓ p'₂,ᵢ for each position
+		const meetedPositions: NAAwareDomain<Domain>[] = [];
+		for(let i = 0; i < M; i++) {
+			const meeted = extendedPositions1[i].meet(extendedPositions2[i]);
+			vectorLogger.trace(`VectorDomain.meet: ˪ meeted position [${i}]: ${extendedPositions1[i].toString()} ⊓ ${extendedPositions2[i].toString()} = ${meeted.toString()}`);
+			meetedPositions.push(meeted);
+		}
+
+		// Compute u' = max{i ∈ [0, max(l₁, l₂, M)] | ∀j ∈ [1,i] : p'ⱼ ≠ ⊥}
+		// This is the maximum index where all positions up to that index are non-bottom
+		const maxIndex = Math.max(Math.ceil(Math.max(l1, l2)), M);
+		let uPrime = 0;
+		for(let i = 0; i < maxIndex; i++) {
+			if(i < meetedPositions.length && !meetedPositions[i].isBottom()) {
+				uPrime = i + 1; // positions are 1-indexed in paper
+			} else {
+				break; // first bottom position stops the count
+			}
+		}
+
+		vectorLogger.debug(`VectorDomain.meet: u'=${uPrime} (maxIndex=${maxIndex})`);
+
+		// Check the validity condition: max(l₁, l₂) ≤ u'
+		const maxLower = Math.max(l1, l2);
+		if(maxLower > uPrime) {
+			vectorLogger.debug(`VectorDomain.meet: max(l1,l2)=${maxLower} > u'=${uPrime}, returning bottom`);
+			return this.bottom();
+		}
+
+		// Compute s₁ ⊓ s₂
+		const summaryMeet = this.summary.meet(other.summary);
+		vectorLogger.debug(`VectorDomain.meet: summary meet = ${summaryMeet.toString()}`);
+
+		// Check if both lengths are infinite AND summary meet is non-bottom
+		const bothInfinite = (u1 === +Infinity) && (u2 === +Infinity);
+		const summaryMeetNonBottom = !summaryMeet.isBottom();
+
+		vectorLogger.debug(`VectorDomain.meet: bothInfinite=${bothInfinite}, summaryMeetNonBottom=${summaryMeetNonBottom}`);
+
+		// Build known' = ⟨p'ᵢ⟩ᵢ₌₁^min(M, u')
+		const knownLength = Math.min(M, uPrime);
+		const knownPositions: NAAwareDomain<Domain>[] = [];
+		for(let i = 0; i < knownLength; i++) {
+			knownPositions.push(meetedPositions[i]);
+		}
+
+		vectorLogger.debug(`VectorDomain.meet: known' length = ${knownLength}`);
+
+		// Meet the simple components
+		const newAttributes = this.attributes.meet(other.attributes);
+		const newType = this.type.meet(other.type);
+
+		let newLength: PosIntervalDomain;
+		const newKnown: KnownInitialPositionsDomain<NAAwareDomain<Domain>> = this.known.create(knownPositions);
+		let newSummary: NAAwareDomain<Domain>;
+
+		if(bothInfinite && summaryMeetNonBottom) {
+			// Case 2: ([max(l₁, l₂), +∞], known', s₁ ⊓ s₂, a₁ ⊓ a₂)
+			vectorLogger.debug('VectorDomain.meet: Case 2 - both infinite and summary meet non-bottom');
+			newLength = new PosIntervalDomain([maxLower, +Infinity]);
+			newSummary = summaryMeet;
+		} else {
+			// Case 1: ([max(l₁, l₂), min(M, u')], known', ⊥, a₁ ⊓ a₂)
+			vectorLogger.debug('VectorDomain.meet: Case 1 - finite or summary meet is bottom');
+			const newUpper = Math.min(M, uPrime);
+			newLength = new PosIntervalDomain([maxLower, newUpper]);
+			newSummary = this.summary.bottom();
+		}
+
+		const result = this.create({
+			length:     newLength,
+			known:      newKnown,
+			summary:    newSummary,
+			attributes: newAttributes,
+			type:       newType
+		});
+
+		vectorLogger.debug(`VectorDomain.meet: complete [result=${result.toString()}]`);
+		return result;
+	}
+
+	/**
 	 * Widening operator for VectorDomain.
 	 * Unlike the default ProductDomain.widen(), this implementation handles
 	 * the known/summary split by collapsing excess positions into the summary
