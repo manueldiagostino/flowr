@@ -618,7 +618,18 @@ export function propagate(
 
 		// Check if may contain zero: 0 ∈ γ(pᵢ) but γ(pᵢ) ≠ {0}
 		if(l <= 0 && u >= 0) {
-			// Possible zero - skip and continue without changing counters
+			if(counters.definite > 0) {
+				// Branch: this position could be a zero (consuming one definite counter)
+				// OR it could be a non-zero (counters unchanged)
+				vectorLogger.trace('Semantic: propagate possible zero with pending definite, branching');
+				const asZero = propagate(rest, summary, {
+					definite: counters.definite - 1,
+					possible: counters.possible
+				});
+				const notZero = propagate(rest, summary, counters);
+				return asZero.join(notZero);
+			}
+			// No pending definite zeros: skip (possible zero consumed elsewhere)
 			vectorLogger.trace('Semantic: propagate possible zero detected, continuing');
 			return propagate(rest, summary, counters);
 		}

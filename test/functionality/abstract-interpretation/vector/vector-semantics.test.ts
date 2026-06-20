@@ -125,10 +125,11 @@ describe('propagate', () => {
 		const positions = toNAAwareDomains(asNaAwares([0, 2], [5, 5]));
 		const summary = toNAAwareDomain(asNaAware([10, 10]));
 		const result = propagate(positions, summary, { definite: 1, possible: 1 });
-		// [0,2] is possible zero (contains 0 but not exactly {0}) so we continue
-		// Then [5,5] with d=1,p=1: non-zero, consume d→0, propagate([], summary, {d:0,p:1})
-		// Base case returns summary [10,10]
-		assertNAAwareEquals(result, asNaAware([10, 10]));
+		// [0,2] is possible zero with d=1>0 → branch:
+		//   asZero (d=0,p=1): [5,5] with d=0,p=1 → consume possible → [5,5] ⊔ [10,10] = [5,10]
+		//   notZero (d=1,p=1): [5,5] with d=1 → consume → [10,10]
+		// Result: [5,10] ⊔ [10,10] = [5,10]
+		assertNAAwareEquals(result, asNaAware([5, 10]));
 	});
 
 	test('propagate with bottom position returns bottom', () => {

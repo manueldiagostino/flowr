@@ -922,13 +922,13 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			}
 			if(result.known.isValue()) {
 				const vals = result.known.value as readonly NAAwareDomain<IntervalDomain>[];
-				assert.strictEqual(vals.length, 1);
+				assert.strictEqual(vals.length, 2);
 				// Position 0: skip [0,0], [-1,1], [0,0] → [5,5] with d=0,p=0
 				assert.strictEqual(vals[0].inner.isValue(), true);
 				if(vals[0].inner.isValue()) {
 					assert.deepStrictEqual(vals[0].inner.value, [5, 5]);
 				}
-				// Position 1: definiteBefore=1, skips [-1,1], [0,0], then [5,5] with d=1 → consume → bottom
+				// Position 1: [-1,1] possible with d=1>0 → branch → [5,5]
 				// Position 2: definiteBefore=1, skips [0,0], then [5,5] with d=1 → consume → bottom
 				// Position 3: definiteBefore=2, [5,5] with d=2 → consume → bottom
 			}
@@ -991,8 +991,10 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 
 		test('propagate with definite counter passing through possible zero', () => {
 			// Counters {d:1, p:0}, positions: [-1,1] (possible zero), [5,5] (non-zero)
-			// [-1,1] is possible zero → skip → [5,5] with d=1 → consume → [] → summary(bottom)
-			// This should return bottom because after consuming the definite counter, no positions remain
+			// [-1,1] possible zero with d=1>0 → branch:
+			//   asZero (d=0,p=0): [5,5] with d=0,p=0 → returns [5,5]
+			//   notZero (d=1,p=0): [5,5] with d=1 → consume → [] → summary(bottom)
+			// Result: [5,5] ⊔ bottom = [5,5]
 			const positions = [
 				new NAAwareDomain({ inner: new IntervalDomain([-1, 1]), hasNA: false }, intervalFactory),
 				new NAAwareDomain({ inner: new IntervalDomain([5, 5]), hasNA: false }, intervalFactory)
@@ -1003,7 +1005,9 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			);
 			const result = propagate(positions, summary, { definite: 1, possible: 0 });
 
-			assert.strictEqual(result.isBottom(), true);
+			assert.strictEqual(result.isBottom(), false);
+			assert.strictEqual(result.inner.isValue(), true);
+			assert.deepStrictEqual(result.inner.value, [5, 5]);
 		});
 
 		test('propagate with both definite and possible counters on non-zero', () => {
@@ -1282,8 +1286,11 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 
 		test('propagate: IntervalDomain.top() inner with nonzero counters', () => {
 			// Counter {d:1, p:0}, positions: [IntervalTop, [5,5]]
-			// IntervalTop is [-∞,+∞], isValue=true, l=-∞<=0 && u=+∞>=0 → possible zero → skip
-			// [5,5] with d=1 → consume → [] → summary(bottom)
+			// IntervalTop is [-∞,+∞], isValue=true, l=-∞<=0 && u=+∞>=0 → possible zero
+			// d=1>0 → branch:
+			//   asZero (d=0,p=0): [5,5] with d=0,p=0 → returns [5,5]
+			//   notZero (d=1,p=0): [5,5] with d=1 → consume → [] → summary(bottom)
+			// Result: [5,5] ⊔ bottom = [5,5]
 			const topElement = NAAwareDomain.top(intervalFactory) as NAAwareDomain<IntervalDomain>;
 			const positions = [
 				topElement,
@@ -1295,7 +1302,9 @@ describe('NA-Aware Vector Semantics Unit Tests', () => {
 			);
 			const result = propagate(positions, summary, { definite: 1, possible: 0 });
 
-			assert.strictEqual(result.isBottom(), true);
+			assert.strictEqual(result.isBottom(), false);
+			assert.strictEqual(result.inner.isValue(), true);
+			assert.deepStrictEqual(result.inner.value, [5, 5]);
 		});
 	});
 });

@@ -13,7 +13,7 @@ export const BottomSymbol = '⊥';
 /**
  * The NA symbol to represent the Not Available value in R.
  */
-export const NA = Symbol('na');
+export const NA: unique symbol = Symbol('na');
 export const NASymbol = 'NA';
 
 /**

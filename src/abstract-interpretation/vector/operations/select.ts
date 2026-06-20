@@ -1,10 +1,11 @@
 /* eslint-disable tsdoc/syntax */
-import type { AnyAbstractDomain } from '../../domains/abstract-domain';
+import type { AnyAbstractDomain, ConcreteDomain } from '../../domains/abstract-domain';
 import type { ArithmeticDomain } from '../../domains/arithmetic-domain';
 import { VectorDomain } from '../vector-domain';
 import { NAAwareDomain } from '../na-aware-domain';
 import type { IntervalDomain } from '../../domains/interval-domain';
 import { PosIntervalDomain } from '../../domains/positive-interval-domain';
+import type { DomainFactory } from '../known-initial-positions-domain';
 import { vectorLogger } from '../logger';
 import { guard } from '../../../util/assert';
 import {
@@ -730,6 +731,32 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
 // ============================================================================
 
 /**
+ * Converts an NAAwareDomain from one domain type to another.
+ * Extracts the inner domain values (bounds [l, u]) and hasNA flag,
+ * then reconstructs using the target domain factory.
+ * Used to convert selector.summary (PosIntervalDomain) to the value domain
+ * for the summary join in logical selection.
+ */
+function convertNAAwareDomain<Source extends AnyAbstractDomain, Target extends AnyAbstractDomain>(
+	source: NAAwareDomain<Source>,
+	targetFactory: DomainFactory<Target>,
+): NAAwareDomain<Target> {
+	if(source.isBottom()) return NAAwareDomain.bottom(targetFactory);
+	if(source.isTop())    return NAAwareDomain.top(targetFactory);
+	if(source.isNA())     return NAAwareDomain.na(targetFactory);
+
+	const inner = source.inner;
+	const hasNA = source.containsNA();
+
+	if(inner.isValue()) {
+		const [l, u] = inner.value as [number, number];
+		const domainInner = targetFactory(new Set([l, u]) as unknown as ReadonlySet<ConcreteDomain<Target>>);
+		return new NAAwareDomain({ inner: domainInner, hasNA }, targetFactory);
+	}
+	return NAAwareDomain.bottom(targetFactory);
+}
+
+/**
  * Handles logical selection when source or selector is infinite.
  * Paper Section 4.7, L907-L914: Infinite case.
  * Result is [l_r, +∞] with summary = Squash(value),
@@ -738,21 +765,19 @@ export function applySelectNegative<Domain extends AnyAbstractDomain & Arithmeti
  * @param selector - The logical selector VectorDomain
  * @param naValue - The NA value for positions with NA selector
  * @param definiteTrueCount - Number of definite TRUE positions in adjusted selector
- * @param definiteFalseCount - Number of definite FALSE positions in adjusted selector
  * @returns The resulting VectorDomain
  */
 export function selectLogicalInfinite<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
 	value: VectorDomain<Domain>,
 	selector: VectorDomain<PosIntervalDomain>,
 	naValue: NAAwareDomain<Domain>,
-	definiteTrueCount: number,
-	definiteFalseCount: number
+	definiteTrueCount: number
 ): VectorDomain<Domain> {
 	vectorLogger.trace('Subcase: selectLogical - infinite source or selector');
 	return value.create({
 		length:     value.length.create([definiteTrueCount, +Infinity]),
 		known:      value.known.top(),
-		summary:    squash(value).join(selector.summary as unknown as NAAwareDomain<Domain>).join(naValue),
+		summary:    squash(value).join(convertNAAwareDomain(selector.summary, value.plainFactory)).join(naValue),
 		attributes: value.attributes,
 		type:       value.type
 	});
@@ -768,7 +793,6 @@ export function selectLogicalInfinite<Domain extends AnyAbstractDomain & Arithme
  * @param sourceLen - Length of source known positions
  * @param selectorLen - Length of selector known positions
  * @param definiteTrueCount - Number of definite TRUE positions (computed by dispatcher)
- * @param definiteFalseCount - Number of definite FALSE positions (computed by dispatcher)
  * @returns The resulting VectorDomain
  */
 export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & ArithmeticDomain<Domain>>(
@@ -777,8 +801,7 @@ export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & 
 	naValue: NAAwareDomain<Domain>,
 	sourceLen: number,
 	selectorLen: number,
-	definiteTrueCount: number,
-	definiteFalseCount: number
+	definiteTrueCount: number
 ): VectorDomain<Domain> {
 	vectorLogger.trace('Subcase: selectLogical - finite source and selector with recycling');
 	const maxLen = Math.max(sourceLen, selectorLen);
@@ -830,7 +853,7 @@ export function selectLogicalFiniteRecycling<Domain extends AnyAbstractDomain & 
 		// Paper L896-L898: lower bound = count of definite TRUE values
 		length:     value.length.create([definiteTrueCount, resultKnownPositions.length]),
 		known:      value.known.create(resultKnownPositions),
-		summary:    isInfinite ? squash(value).join(selector.summary as unknown as NAAwareDomain<Domain>).join(naValue) : value.summary.bottom(),
+		summary:    isInfinite ? squash(value).join(convertNAAwareDomain(selector.summary, value.plainFactory)).join(naValue) : value.summary.bottom(),
 		attributes: value.attributes,
 		type:       value.type
 	});
@@ -883,20 +906,6 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 		}
 	}
 
-	let definiteFalseCount = 0;
-	if(adjustedSelector.isValue() && adjustedSelector.value.length !== undefined) {
-		const plainSelector = adjustedSelector.toArray();
-		for(let i = 0; i < plainSelector.length; i++) {
-			const inner = plainSelector[i].inner;
-			if(inner.isValue()) {
-				const [l, u] = inner.value;
-				if(l === 0 && u === 0) {
-					definiteFalseCount++;
-				}
-			}
-		}
-	}
-
 	//
 	// === Early guard: empty selector ===
 	// Empty logical selector returns source unchanged.
@@ -913,7 +922,7 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 	//
 
 	if(sourceLen === +Infinity || selectorLen === +Infinity) {
-		return selectLogicalInfinite(value, selector, naValue, definiteTrueCount, definiteFalseCount);
+		return selectLogicalInfinite(value, selector, naValue, definiteTrueCount);
 	}
 
 	//
@@ -921,5 +930,5 @@ export function applySelectLogical<Domain extends AnyAbstractDomain & Arithmetic
 	// Result length: [l_r, |known_r|], summary: ⊥ if finite, Squash if infinite.
 	//
 
-	return selectLogicalFiniteRecycling(value, selector, naValue, sourceLen, selectorLen, definiteTrueCount, definiteFalseCount);
+	return selectLogicalFiniteRecycling(value, selector, naValue, sourceLen, selectorLen, definiteTrueCount);
 }

@@ -396,7 +396,7 @@ export class NAAwareDomain<
 		}
 
 		// Separate NA from concrete values
-		const hasNA = concrete.has(NA as unknown as ConcreteDomain<Domain> | typeof NA);
+		const hasNA = concrete.has(NA);
 		const concreteValues = new Set<ConcreteDomain<Domain>>();
 
 		for(const value of concrete) {
