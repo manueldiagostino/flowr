@@ -97,15 +97,11 @@ export function updatePositiveInfiniteEnumSummary<Domain extends AnyAbstractDoma
 		resultKnownPositions[i] = resultKnownPositions[i].join(squashValues);
 	}
 
-	// Check if update may exceed source bounds - per paper Section 4.9.1
-	const selectorUpperBound = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
-	const mayExceedBounds = selectorUpperBound > sourceLower;
-	const resultSummary = mayExceedBounds
-		? value.summary.bottom().join(naValue)
-		: value.summary.bottom();
+	// Summary: use s₁ (source summary) per paper
+	const resultSummary = value.summary;
 
-	// Result is finite: length [max(l_3, l_r), u_r]
-	const resultLengthLower = Math.max(vLower, lR);
+	// Result is finite: length [max(l_3, l_r, l₂♭), u_r]
+	const resultLengthLower = Math.max(vLower, lR, summaryInner.value[0]);
 	const result = value.create({
 		length:     value.length.create([resultLengthLower, finalUR]),
 		known:      value.known.create(resultKnownPositions),
@@ -141,15 +137,20 @@ export function updatePositiveInfiniteNonEnumSummary<Domain extends AnyAbstractD
 		}
 	}
 
+	// l₂^♭: refined lower bound from selector summary
+	const summaryInner = adjustedSelector.summary.inner;
+	const summaryLower = summaryInner !== undefined && summaryInner.isValue() ? summaryInner.value[0] : sourceLower;
+
 	// Check if update may exceed source bounds - per paper Section 4.9.1
 	const selectorUpperBoundInf = adjustedSelector.length.isValue() ? adjustedSelector.length.value[1] : +Infinity;
 	const mayExceedBoundsInf = selectorUpperBoundInf > sourceLower;
+	// Summary: s₁ ⊔ Squash(ν₃) ⊔ α(NA) when may exceed bounds
 	let resultSummary = value.summary.join(squash(values));
 	if(mayExceedBoundsInf) {
 		resultSummary = resultSummary.join(naValue);
 	}
 	const result = value.create({
-		length:     value.length.create([sourceLower, +Infinity]),
+		length:     value.length.create([Math.max(sourceLower, summaryLower), +Infinity]),
 		known:      value.known.create(resultKnownPositions),
 		summary:    resultSummary,
 		attributes: value.attributes,
@@ -190,11 +191,20 @@ export function updatePositiveFinite<Domain extends AnyAbstractDomain & Arithmet
 		}
 	}
 
+	// Build source known positions and prefix length
+	const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
+	const knownPrefixLength = sourceKnownPositions.length;
+	const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
+
+	// Compute l_{s₂} — lower bound of values vector length
+	const valuesLower = values.length.isValue() ? values.length.value[0] : 1;
+
 	// contentLength = u_r for InitKnown (must be >= sourceUpper per paper line 915)
 	// When source is infinite (+Infinity), don't extend to infinity.
+	// Uses max(|known₁|, u_r, l_{s₂})
 	const contentLength = sourceUpper === +Infinity
-		? selectorMax
-		: Math.max(selectorMax, sourceUpper);
+		? Math.max(knownPrefixLength, selectorMax, valuesLower)
+		: Math.max(knownPrefixLength, selectorMax, sourceUpper, valuesLower);
 
 	if(lR === +Infinity) {
 		lR = sourceLower;
@@ -205,21 +215,20 @@ export function updatePositiveFinite<Domain extends AnyAbstractDomain & Arithmet
 	//   - if u_r <= u_1: use source positions as-is
 	//   - if l_r <= u_1 < u_r: fill positions (u_1+1) to u_r with NA
 	//   - otherwise (l_r > u_1): grow from source vector
-	const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
 
 	// Build base prefix based on the three cases from paper
-	const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
-	const knownPrefixLength = sourceKnownPositions.length;
+	// When source is infinite, fill extended positions with s₁ instead of NA
+	const fillValue = sourceUpper === +Infinity ? value.summary : naValue;
 	let baseKnownPositions: NAAwareDomain<Domain>[];
 	if(contentLength <= knownPrefixLength) {
 		// Case 1: u_r <= |p_1| - selector fits within source prefix, use source positions directly
 		baseKnownPositions = sourceKnownPositions.slice(0, contentLength);
 	} else if(sourceLower < lR && lR <= knownPrefixLength) {
-		// Case 2: l_r <= |p_1| < u_r - need to fill gap with NA
-		baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, knownPrefixLength, contentLength, naValue);
+		// Case 2: l_r <= |p_1| < u_r - need to fill gap
+		baseKnownPositions = initKnownPositions(sourceKnownPositions, lR, knownPrefixLength, contentLength, fillValue);
 	} else {
 		// Case 3: l_r > |p_1| - need to grow from source based on l_1
-		baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, knownPrefixLength, contentLength, naValue);
+		baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, knownPrefixLength, contentLength, fillValue);
 	}
 
 	let valuesUpper = 0;
@@ -227,7 +236,7 @@ export function updatePositiveFinite<Domain extends AnyAbstractDomain & Arithmet
 		valuesUpper = values.length.value[1];
 	}
 	const vLower = values.length.isValue() ? values.length.value[0] : 1;
-	const rhoFResult = rhoF(values.known, vLower, Math.max(contentLength, valuesUpper), values.naAwareFactory);
+	const rhoFResult = rhoF(values.known, values.summary, vLower, Math.max(contentLength, valuesUpper), values.naAwareFactory);
 	const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 	const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 
@@ -236,7 +245,7 @@ export function updatePositiveFinite<Domain extends AnyAbstractDomain & Arithmet
 	//   - If u_1 ≠ +∞ (source is finite): s_r = ⊥
 	//   - If u_1 = +∞ (source is infinite): s_r = s_1 ⊔ Squash(ν₃)
 	// Note: resultLower uses selectorMax (pure u_r), not contentLength
-	const resultLower = Math.max(sourceLower, selectorMax);
+	const resultLower = Math.max(sourceLower, selectorMax, valuesLower);
 	let resultSummary = sourceUpper === +Infinity
 		? value.summary.join(squash(values))
 		: value.summary.bottom();
@@ -441,7 +450,7 @@ export function updateNegativeFiniteEnumerable<Domain extends AnyAbstractDomain 
 		valuesUpper = values.length.value[1];
 	}
 	const vLower = values.length.isValue() ? values.length.value[0] : 1;
-	const rhoFResult = rhoF(values.known, vLower, Math.max(selectorUpper, valuesUpper), values.factory);
+	const rhoFResult = rhoF(values.known, values.summary, vLower, Math.max(selectorUpper, valuesUpper), values.factory);
 	const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 
 	// Build base positions from source
@@ -558,7 +567,7 @@ export function updateLogicalMain<Domain extends AnyAbstractDomain & ArithmeticD
 
 	// Generate cyclic values up to max(|prefix_1|, |prefix_2|) - per theory line 1092
 	const vLower = values.length.isValue() ? values.length.value[0] : 1;
-	const rhoFResult = rhoF(values.known, vLower, maxLen, values.factory);
+	const rhoFResult = rhoF(values.known, values.summary, vLower, maxLen, values.factory);
 	const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 
 	// Sliding operation - per theory lines 1097-1108
@@ -597,12 +606,28 @@ export function updateLogicalMain<Domain extends AnyAbstractDomain & ArithmeticD
 		}
 	}
 
-	// Result length: [l_1, u_r] where u_r = max(u_1, u_2) - per theory lines 1114-1115
+	// Count definite TRUE positions in result (d_r) for lower bound
+	let definiteTrueInResult = 0;
+	for(let i = 0; i < resultKnownPositions.length; i++) {
+		// Check if the selector at position i was definitely TRUE
+		const selectorIdx = i % Math.max(1, selectorKnownPositions.length);
+		if(selectorIdx < selectorKnownPositions.length) {
+			const selVal = selectorKnownPositions[selectorIdx];
+			if(selVal.isValue() && selVal.inner.isValue()) {
+				const [selL, selU] = selVal.inner.value;
+				if(selL >= 1 && selU >= 1) {
+					definiteTrueInResult++;
+				}
+			}
+		}
+	}
+
+	// Result length: [max(l_1, d_r), u_r] where u_r = max(u_1, u_2) - per theory lines 1114-1115
 	const resultUpper = isInfinite ? +Infinity : Math.max(sourceUpper, selectorUpper);
 	// Summary: Squash(values) when infinite, bottom otherwise - per theory lines 1116-1117
 	const resultSummary = isInfinite ? squash(values) : value.summary.bottom();
 	const result = value.create({
-		length:     value.length.create([sourceLower, resultUpper]),
+		length:     value.length.create([Math.max(sourceLower, definiteTrueInResult), resultUpper]),
 		known:      value.known.create(resultKnownPositions),
 		summary:    resultSummary,
 		attributes: value.attributes,
@@ -979,13 +1004,13 @@ export function applyUpdatePositive<Domain extends AnyAbstractDomain & Arithmeti
 		const selectorKnownPositions = adjustedSelector.known.isValue() ? (adjustedSelector.known.value as readonly NAAwareDomain<PosIntervalDomain>[]) : [];
 		// Per paper line 826: InitPrefix(prefix_1, l_1, u_1, u_r) - use source vector prefix
 		const sourceKnownPositions = value.known.isValue() ? (value.known.value as readonly NAAwareDomain<Domain>[]) : [];
-		const baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceUpper, uR, naValue);
+		const baseKnownPositions = initKnownPositions(sourceKnownPositions, sourceLower, sourceKnownPositions.length, uR, naValue);
 
 		guard(values.length.isValue(), '');
 		const vUpper = uR;
 		const vLower = values.length.value[0];
 
-		const rhoFResult = rhoF(values.known, vLower, vUpper, values.naAwareFactory);
+		const rhoFResult = rhoF(values.known, values.summary, vLower, vUpper, values.naAwareFactory);
 		const cyclicValues = rhoFResult.isValue() ? (rhoFResult.value as NAAwareDomain<Domain>[]) : [];
 		const resultKnownPositions = updateKnownPositions(baseKnownPositions, selectorKnownPositions, cyclicValues);
 		const squashValues = squash(values);

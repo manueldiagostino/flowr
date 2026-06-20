@@ -473,7 +473,7 @@ describe('rhoF', () => {
 		const known = KnownInitialPositionsDomain.bottom<NAAwareDomain<IntervalDomain>>(
 			NAAwareDomain.createSmartFactory(intervalFactory)
 		);
-		const result = rhoF(known, 1, 3, NAAwareDomain.createSmartFactory(intervalFactory));
+		const result = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 1, 3, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isBottom());
 	});
 
@@ -481,13 +481,13 @@ describe('rhoF', () => {
 		const known = KnownInitialPositionsDomain.top<NAAwareDomain<IntervalDomain>>(
 			NAAwareDomain.createSmartFactory(intervalFactory)
 		);
-		const result = rhoF(known, 1, 3, NAAwareDomain.createSmartFactory(intervalFactory));
+		const result = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 1, 3, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isBottom());
 	});
 
 	test('returns bottom when n=0', () => {
 		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
-		const result = rhoF(known, 1, 0, NAAwareDomain.createSmartFactory(intervalFactory));
+		const result = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 1, 0, NAAwareDomain.createSmartFactory(intervalFactory));
 		assert.ok(result.isBottom());
 	});
 
@@ -497,7 +497,7 @@ describe('rhoF', () => {
 		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
-		const rhoFResult = rhoF(known, 2, 2, smartFactory);
+		const rhoFResult = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 2, 2, smartFactory);
 		const rhoCResult = rhoC(known, 2, 2, smartFactory);
 
 		assert.ok(rhoFResult.equals(rhoCResult));
@@ -512,7 +512,7 @@ describe('rhoF', () => {
 		const known = createTestKnown([[1, 1], [2, 2]]);
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
-		const result = rhoF(known, 1, 2, smartFactory);
+		const result = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 1, 2, smartFactory);
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -535,7 +535,7 @@ describe('rhoF', () => {
 		const known = createTestKnown([[1, 1], [2, 2], [3, 3]]);
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
-		const result = rhoF(known, 1, 3, smartFactory);
+		const result = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 1, 3, smartFactory);
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {
@@ -559,7 +559,7 @@ describe('rhoF', () => {
 		const known = createTestKnown(toNAAwareDomains([asNaAware([1, 1]), naValue]));
 		const smartFactory = NAAwareDomain.createSmartFactory(intervalFactory);
 
-		const result = rhoF(known, 1, 2, smartFactory);
+		const result = rhoF(known, toNAAwareDomain(asNaAware(Bottom)), 1, 2, smartFactory);
 
 		assert.ok(result.isValue());
 		if(result.isValue()) {

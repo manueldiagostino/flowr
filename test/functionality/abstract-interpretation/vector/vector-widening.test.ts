@@ -187,11 +187,12 @@ describe.sequential('Vector Widening', withShell(shell => {
 				x <- x + i
 				i <- i + 1
 			}
+      print(x)
 		`;
 		// The vector length stays constant at 3, but values grow each iteration.
 		// After widening, values should be over-approximated to unbounded intervals.
 		const expected = {
-			'5@x': {
+			'8@x': {
 				length:     [3, 3],
 				known:      asNaAwares([2, +Infinity], [3, +Infinity], [4, +Infinity]),
 				summary:    asNaAware(Bottom),
@@ -213,10 +214,11 @@ describe.sequential('Vector Widening', withShell(shell => {
 				}
 				i <- i + 1
 			}
+      print(x)
 		`;
 		// After widening, length is unbounded, type remains double.
 		const expected = {
-			'6@x': {
+			'10@x': {
 				length:     [3, +Infinity],
 				known:      asNaAwares([1, 1], [2, 2], [3, 3]),
 				summary:    asNaAware([1, 5]),

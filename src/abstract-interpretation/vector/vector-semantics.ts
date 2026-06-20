@@ -499,21 +499,26 @@ export function rhoC<Domain extends AnyAbstractDomain>(
 
 /**
  * Abstract recycle helper function (paper Section 4.5: ρ_f^♯).
- * Joins all ρ_c^♯ results from i=l to n.
+ * Joins all ρ_c^♯ results from i=l to n, using the summary to extend
+ * known positions for positions beyond |prefix|.
  *
  * More formally:
- * ρ_f^♯(prefix, l, n) ≡ ⊔_{i=l}^{n} ρ_c^♯(prefix, i, n)
+ * - If summary is ⊥: ρ_f^♯(prefix, l, n) ≡ ⊔_{i=l}^{min(n,|prefix|)} ρ_c^♯(prefix, i, n)
+ * - If summary ≠ ⊥: extends prefix to length i with summary for positions > |prefix|,
+ *   then joins over i ∈ [l, min(n, |prefix|)] (or extended length)
  *
  * This is used in the abstract recycling operation (paper Section 4.5)
  * to compute the joined prefix for all possible starting positions.
  * @param prefix - The known positions domain (genvaldom^* in paper)
- * @param i - Starting position (1-indexed in paper)
- * @param h - Target length to reach
+ * @param summary - The summary value for extending prefix beyond known positions
+ * @param l - Starting position (1-indexed in paper)
+ * @param n - Target length to reach
  * @param factory - Domain factory for creating elements
  * @returns Joined abstract value (callers must handle wrapping if needed)
  */
 export function rhoF<Domain extends AnyAbstractDomain>(
 	prefix: KnownInitialPositionsDomain<Domain>,
+	summary: Domain,
 	l: number,
 	n: number,
 	factory: DomainFactory<Domain>
@@ -532,8 +537,32 @@ export function rhoF<Domain extends AnyAbstractDomain>(
 	const prefixLen = prefix.length;
 	guard(prefixLen !== undefined, 'KnownInitialPositionsDomain.length is undefined after isValue check');
 
+	// If summary is non-bottom, extend known positions with summary
+	// for positions beyond |prefix| before recycling
+	if(!summary.isBottom()) {
+		const sourceElements = prefix.value as Domain[];
+		const maxN = Math.min(n, prefixLen);
+
+		let result = rhoC(new KnownInitialPositionsDomain(sourceElements.slice(0, maxN), factory), l, n, factory);
+
+		for(let i = l; i <= maxN; i++) {
+			// Extend prefix to length i with summary for positions beyond |prefix|
+			const extended: Domain[] = [...sourceElements.slice(0, i)];
+			while(extended.length < i) {
+				extended.push(summary);
+			}
+			const extendedPrefix = new KnownInitialPositionsDomain(extended, factory);
+			const rhoCResult = rhoC(extendedPrefix, i, n, factory);
+			result = result.join(rhoCResult);
+		}
+
+		vectorLogger.trace(`Semantic: rhoF result = ${result.toString()}`);
+		return result;
+	}
+
+	// Old behavior: union over i ∈ [l, min(n, |known|)]
 	let result = rhoC(prefix, l, n, factory);
-	for(let i = l + 1; i <= n; i++) {
+	for(let i = l + 1; i <= Math.min(n, prefixLen); i++) {
 		const rhoCResult = rhoC(prefix, i, n, factory);
 		vectorLogger.trace(`Semantic: rhoF joining rhoC(i=${i}) length=${rhoCResult.length} into result`);
 		result = result.join(rhoCResult);
